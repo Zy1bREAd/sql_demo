@@ -11,47 +11,92 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-// 数据库连接部分
-type QueryService struct {
-	DB *sql.DB
+// 数据库SQL执行器（抽象层）
+type SQLExecutor interface {
+	// Query(string) (*sql.Rows, error)
+	Query(string) (*QueryResult, error)
+	HealthCheck(context.Context) error
+	Close() error
 }
 
-type QueryResult struct {
-	Results   []map[string]any // 结果集列表
-	QueryRaw  string           // 查询的原生SQL
-	RowCount  int              // 返回结果条数
-	QueryTime float64          // 查询花费的时间
+type registerFn func() SQLExecutor
+
+// 数据库驱动注册表
+var DriversMap map[string]registerFn = make(map[string]registerFn)
+
+// 驱动注册函数
+func RegisterDriver(name string, fn registerFn) {
+	nameLower := strings.ToLower(name)
+	DriversMap[nameLower] = fn
 }
 
-func NewDBEngine(driverName string, dsnName string) (*QueryService, error) {
-	db, err := sql.Open(driverName, dsnName)
+// 获取数据库驱动
+func GetDriver(name string) (SQLExecutor, error) {
+	nameLower := strings.ToLower(name)
+	if driver, exist := DriversMap[nameLower]; exist {
+		return driver(), nil
+	}
+	return nil, GenerateError("DriverError", fmt.Sprintf("driver %s not found", name))
+}
+
+// MySQL 数据库驱动注册
+func RegisterMySQLDriver(dsnName string) *MySQLEx {
+	db, err := sql.Open("mysql", dsnName)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 	// db conncetion setting
 	db.SetConnMaxIdleTime(time.Minute * 3)
 	db.SetMaxOpenConns(250)
 	db.SetMaxIdleConns(100)
-	return &QueryService{
+	return &MySQLEx{
 		DB: db,
-	}, nil
+	}
 }
 
-func (q *QueryService) QueryForRaw(sqlRaw string) (*QueryResult, error) {
+// SQL执行器接口的实现
+type MySQLEx struct {
+	// config map[string]string    // 配置中心
+	DB *sql.DB
+}
+
+// 健康检查
+func (ex *MySQLEx) HealthCheck(ctx context.Context) error {
+	return ex.DB.PingContext(ctx)
+}
+
+// 关闭数据库连接，释放资源。
+func (ex *MySQLEx) Close() error {
+	return ex.DB.Close()
+}
+
+func (ex *MySQLEx) QueryForRaw(statement string) (*sql.Rows, error) {
+	// 语法校验
+	sqlRaw, err := ex.validateCheck(statement)
+	if err != nil {
+		return nil, err
+	}
+	// 执行SQL查询的Core Code
+	return ex.DB.Query(sqlRaw)
+}
+
+func (ex *MySQLEx) Query(sqlRaw string) (*QueryResult, error) {
 	// 校验SQL合法性...
 	queryResult := &QueryResult{
 		QueryRaw: sqlRaw,
 	}
 	// 通过传入原生SQL语句进行查询（后期抽出来）
-	queryStart := time.Now()
-	rows, err := q.DB.Query(sqlRaw)
+	start := time.Now()
+	rows, err := ex.QueryForRaw(sqlRaw)
 	if err != nil {
-		log.Println("SQL query error :", err)
+		log.Println("SQL Query Failed")
+		// log.Println("trace error stack:", err)
 		return nil, err
 	}
 	defer rows.Close()
-	queryEnd := time.Since(queryStart)
-	queryResult.QueryTime = queryEnd.Seconds()
+	end := time.Since(start)
+	queryResult.QueryTime = end.Seconds()
+	fmt.Println(queryResult)
 
 	// 获取SQL要查询的列名
 	cols, _ := rows.Columns()
@@ -89,32 +134,38 @@ func (q *QueryService) QueryForRaw(sqlRaw string) (*QueryResult, error) {
 	return queryResult, nil
 }
 
-func (q *QueryService) Healthz(ctx context.Context) error {
-	return q.DB.PingContext(ctx)
+func (ex *MySQLEx) Healthz(ctx context.Context) error {
+	return ex.DB.PingContext(ctx)
 }
 
-func (q *QueryService) validateCheck(sqlRaw string) (string, error) {
+func (ex *MySQLEx) validateCheck(statement string) (string, error) {
 	// 目前只支持一条SQL的查询，多余的直接丢弃
-	sqls := strings.Split(sqlRaw, ";")
+	sqls := strings.Split(statement, ";")
 	sqlCount := len(sqls)
+	fmt.Println(sqlCount, sqls)
 	// sql语句数错误处理
 	if sqlCount != 1 {
 		if sqlCount == 0 {
 			return "", GenerateError("SQLValidateCheck", "validate check failed, synatx or format problem, no sql match")
 		} else if sqlCount > 1 {
+			// 提示出现的多余SQL语句
+			// 因为split分割出来最低是1，即无论是否找到分隔符都是1
+			for _, v := range sqls[1:] {
+				log.Printf("<...> Others SQL %s\n", v)
+			}
 			return "", GenerateError("SQLValidateCheck", "only 1 SQL `SELECT` query is suppoerted")
 		}
 	}
-	sqlRaw = sqls[0] + ";"
-	fmt.Println(sqlRaw)
+	statement = sqls[0] + ";"
+	fmt.Println(statement)
 
 	// 除SELECT外语句都不支持
-	illegalSQL := []string{"UPDATE", "DELETE", "DROP", "INSERT"}
+	illegalSQL := []string{"UPDATE", "DELETE", "DROP", "INSERT", "CREATE", "ALTER"}
 	for _, illegal := range illegalSQL {
-		if strings.ContainsAny(strings.ToUpper(sqlRaw), illegal) {
+		if strings.Contains(strings.ToUpper(statement), illegal) {
 			return "", GenerateError("SQLValidateCheck", "illegal operations exist in sql statement")
 		}
 	}
 
-	return sqlRaw, nil
+	return statement, nil
 }

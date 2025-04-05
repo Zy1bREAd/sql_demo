@@ -9,7 +9,8 @@ import (
 
 func ErrorRecover() {
 	if err := recover(); err != nil {
-		log.Printf("[ERRRO] - [%s] - %s", time.Now().GoString(), err)
+		now := time.Now()
+		log.Printf("[%s][ERRRO] - %s", now.Format("2006-01-02T15:04:05"), err)
 		// panic(err)
 	}
 }
