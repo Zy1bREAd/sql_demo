@@ -6,4 +6,5 @@ type QueryResult struct {
 	QueryRaw  string           // 查询的原生SQL
 	RowCount  int              // 返回结果条数
 	QueryTime float64          // 查询花费的时间
+	Error     error
 }

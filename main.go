@@ -25,5 +25,5 @@ func main() {
 	// statement := "UPDATE zabbix.actions set status = 3 WHERE actionid = 6;"
 	statement := "select * from actions;"
 	apis.SubmitSQLTask(context.Background(), statement)
-	time.Sleep(10 * time.Second)
+	time.Sleep(30 * time.Second)
 }
