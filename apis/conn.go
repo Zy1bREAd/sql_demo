@@ -143,8 +143,8 @@ func (ex *MySQLEx) validateCheck(statement string) (string, error) {
 	sqls := strings.Split(statement, ";")
 	sqlCount := len(sqls)
 	fmt.Println(sqlCount, sqls)
-	// sql语句数错误处理
-	if sqlCount != 2 && strings.HasSuffix(statement, ";") {
+	// sql语句数错误处理(目前只支持单SQL查询)
+	if sqlCount != 2 || !strings.HasSuffix(statement, ";") {
 		if sqlCount == 0 {
 			return "", GenerateError("SQLValidateCheck", "validate check failed, synatx or format problem, no sql match")
 		} else if sqlCount > 1 {
