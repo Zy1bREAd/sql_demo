@@ -13,16 +13,16 @@ var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
 type QueryTask struct {
 	ID        string
 	Statement string
-	Deadline  int // 超时时间（单位为秒）,默认写死30s
+	Deadline  int64 // 超时时间（单位为秒）,默认 30s
 }
 
 // 提交SQL查询任务入队
-func SubmitSQLTask(ctx context.Context, statement string) {
+func SubmitSQLTask(statement string) {
 	//! context控制超时
 	task := &QueryTask{
 		ID:        GenerateUUIDKey(),
 		Statement: statement,
-		Deadline:  5,
+		Deadline:  10,
 	}
 	TaskQueue <- task
 	log.Printf("task id:%s is enqueue", task.ID)
@@ -36,32 +36,25 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	}()
 	// 只关注执行任务的逻辑本身
 	// 应该复用连接
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline))
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second)
 	defer cancel()
 
 	op, err := GetDriver("mysql")
 	if err != nil {
 		panic(err)
 	}
-	err = op.HealthCheck(context.Background())
+	err = op.HealthCheck(ctx)
+	// health check error handle
 	if err != nil {
-		panic(err)
+		panic(GenerateError("HealthCheck Failed", "sql task or db health check is timeout."))
 	}
 	log.Println("DB Connection Health is OK!")
-	result, err := op.Query(task.Statement)
-	if err != nil {
-		panic(err)
+	result := op.Query(ctx, task.Statement)
+	if result.Error != nil {
+		panic(result.Error)
 	}
-	// time.Sleep(10 * time.Second)
 	//! 有必要管理sqltask的状态吗？
-	// ResultQueue <- result
-	select {
-	case ResultQueue <- result:
-		log.Println("Task Done")
-	case <-ctx.Done():
-		log.Println("SQLTask超时导致中断退出")
-		ResultQueue <- &QueryResult{Error: GenerateError("Task TimeOut", "sql task is failed -> 30s timeout")}
-	}
+	ResultQueue <- result
 	defer op.Close()
 }
 
@@ -75,7 +68,7 @@ func StartWorkerPool(ctx context.Context) {
 				case t := <-TaskQueue:
 					ExcuteSQLTask(ctx, t)
 				case <-ctx.Done():
-					log.Println("ERROR ERROR ERROR!!")
+					log.Println("因错误退出，关闭当前Worker. Error:", ctx.Err().Error())
 					return
 				}
 			}
@@ -93,13 +86,14 @@ func StartResultReader(ctx context.Context) {
 				case t := <-ResultQueue:
 					if t.Error != nil {
 						// result有错误将暴露出来
-						log.Printf("no result.the error:%s\n", t.Error)
+						log.Println(t.Error)
+						log.Println("Your Result is Null")
 						return
 					}
 					// 获取对应task id的结果集
 					fmt.Println("your result:", t)
 				case <-ctx.Done():
-					log.Println("ERROR ERROR ERROR!!")
+					log.Println("因错误退出，关闭当前Reader. Error:", ctx.Err().Error())
 					return
 				}
 			}

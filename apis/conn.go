@@ -14,7 +14,7 @@ import (
 // 数据库SQL执行器（抽象层）
 type SQLExecutor interface {
 	// Query(string) (*sql.Rows, error)
-	Query(string) (*QueryResult, error)
+	Query(context.Context, string) *QueryResult
 	HealthCheck(context.Context) error
 	Close() error
 }
@@ -70,38 +70,36 @@ func (ex *MySQLEx) Close() error {
 	return ex.DB.Close()
 }
 
-func (ex *MySQLEx) QueryForRaw(statement string) (*sql.Rows, error) {
+func (ex *MySQLEx) QueryForRaw(ctx context.Context, statement string) (*sql.Rows, error) {
 	// 语法校验
 	sqlRaw, err := ex.validateCheck(statement)
 	if err != nil {
 		return nil, err
 	}
 	// 执行SQL查询的Core Code
-	return ex.DB.Query(sqlRaw)
+	return ex.DB.QueryContext(ctx, sqlRaw)
 }
 
-func (ex *MySQLEx) Query(sqlRaw string) (*QueryResult, error) {
+// 对内暴露的查询SQL接口
+func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string) *QueryResult {
 	// 校验SQL合法性...
 	queryResult := &QueryResult{
 		QueryRaw: sqlRaw,
 	}
 	// 通过传入原生SQL语句进行查询（后期抽出来）
 	start := time.Now()
-	rows, err := ex.QueryForRaw(sqlRaw)
+	rows, err := ex.QueryForRaw(ctx, sqlRaw)
 	if err != nil {
-		log.Println("SQL Query Failed")
 		// log.Println("trace error stack:", err)
-		return nil, err
+		return &QueryResult{Error: GenerateError("SQLTask Query Error", err.Error())}
 	}
 	defer rows.Close()
 	end := time.Since(start)
 	queryResult.QueryTime = end.Seconds()
 	fmt.Println(queryResult)
-
 	// 获取SQL要查询的列名
 	cols, _ := rows.Columns()
 	fmt.Println("column: ", cols)
-
 	// 遍历结果集，逐行处理结果
 	for rows.Next() {
 		values := make([]any, len(cols)) // 每一行都创建结果集容器的切片,按照列的顺序进行存储
@@ -112,7 +110,7 @@ func (ex *MySQLEx) Query(sqlRaw string) (*QueryResult, error) {
 		}
 		// 获取结果集，填充进来
 		if err := rows.Scan(values...); err != nil {
-			return nil, err
+			return &QueryResult{Error: GenerateError("TaskResult Handle Error", err.Error())}
 		}
 
 		rowResultMap := make(map[string]any, 0) // 创建每行结果的Map
@@ -130,8 +128,13 @@ func (ex *MySQLEx) Query(sqlRaw string) (*QueryResult, error) {
 		queryResult.Results = append(queryResult.Results, rowResultMap)
 		queryResult.RowCount = len(queryResult.Results)
 	}
+	select {
+	default:
+	case <-ctx.Done():
+		return &QueryResult{Error: GenerateError("Task TimeOut", "sql task is failed ,timeout 10s")}
+	}
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
-	return queryResult, nil
+	return queryResult
 }
 
 func (ex *MySQLEx) Healthz(ctx context.Context) error {
@@ -146,14 +149,14 @@ func (ex *MySQLEx) validateCheck(statement string) (string, error) {
 	// sql语句数错误处理(目前只支持单SQL查询)
 	if sqlCount != 2 || !strings.HasSuffix(statement, ";") {
 		if sqlCount == 0 {
-			return "", GenerateError("SQLValidateCheck", "validate check failed, synatx or format problem, no sql match")
+			return "", GenerateError("SQL Validate Check", "validate check failed, synatx or format problem, no sql match")
 		} else if sqlCount > 1 {
 			// 提示出现的多余SQL语句
 			// 因为split分割出来最低是1，即无论是否找到分隔符都是1
 			for _, v := range sqls[1:] {
 				log.Printf("<...> Others SQL %s\n", v)
 			}
-			return "", GenerateError("SQLValidateCheck", "only 1 SQL `SELECT` query is suppoerted")
+			return "", GenerateError("SQL Validate Check", "only 1 SQL `SELECT` query is suppoerted")
 		}
 	}
 	statement = sqls[0] + ";"
@@ -163,7 +166,7 @@ func (ex *MySQLEx) validateCheck(statement string) (string, error) {
 	illegalSQL := []string{"UPDATE", "DELETE", "DROP", "INSERT", "CREATE", "ALTER"}
 	for _, illegal := range illegalSQL {
 		if strings.Contains(strings.ToUpper(statement), illegal) {
-			return "", GenerateError("SQLValidateCheck", "illegal operations exist in sql statement")
+			return "", GenerateError("SQL Validate Check", "illegal operations exist in sql statement")
 		}
 	}
 
