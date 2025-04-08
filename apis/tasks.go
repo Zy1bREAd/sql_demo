@@ -90,8 +90,9 @@ func StartResultReader(ctx context.Context) {
 						log.Println("Your Result is Null")
 						return
 					}
-					// 获取对应task id的结果集
+					//! 后期核心处理结果集的代码逻辑块
 					fmt.Println("your result:", t)
+					// 难道回调前端函数？
 				case <-ctx.Done():
 					log.Println("因错误退出，关闭当前Reader. Error:", ctx.Err().Error())
 					return
