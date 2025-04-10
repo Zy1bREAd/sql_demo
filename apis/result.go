@@ -2,6 +2,7 @@ package apis
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 	"sync"
 )
@@ -42,6 +43,26 @@ func (rc *ResultCaches) Get(taskId string) (*QueryResult, error) {
 // 删除Key
 func (rc *ResultCaches) Del(taskId string) {
 	rc.cache.Delete(taskId)
+}
+
+func (rc *ResultCaches) Keys() []string {
+	allKey := []string{}
+	rc.cache.Range(func(key, value any) bool {
+		if val, ok := key.(string); ok {
+			allKey = append(allKey, val)
+		}
+		return true
+	})
+	return allKey
+}
+
+// 清理所有Keys
+func (rc *ResultCaches) Clean() {
+	keys := rc.Keys()
+	for _, k := range keys {
+		rc.Del(k)
+	}
+	log.Println("housekeeping completed.")
 }
 
 // 遍历sync.Map中的kv（DEBUG）

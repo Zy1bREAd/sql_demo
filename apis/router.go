@@ -44,6 +44,7 @@ func InitBaseRoutes() {
 	RegisterRoute(func(rgPublic, rgAuth *gin.RouterGroup) {
 		rgAuth.POST("/query", QueryForGin)
 		rgAuth.POST("/result", getQueryResult)
+		rgAuth.GET("/keys", getMapKeys)
 	})
 
 }
@@ -76,6 +77,10 @@ func getQueryResult(ctx *gin.Context) {
 	ctx.BindJSON(&q)
 	userResult, err := ResultMap.Get(q.TaskID)
 	fmt.Println(q.TaskID)
+	// defer func() {
+	// 	// 确认返回结果后，塞入已读的taskID到ResultReaader队列中
+	// 	HouseKeepingQueue <- q.TaskID
+	// }()
 	if err != nil {
 		ctx.JSON(200, gin.H{
 			"status": 500,
@@ -89,5 +94,14 @@ func getQueryResult(ctx *gin.Context) {
 		"msg":    "get result ok ",
 		"data":   userResult.Results,
 	})
+}
 
+func getMapKeys(ctx *gin.Context) {
+	userResult := ResultMap.Keys()
+	fmt.Println(userResult)
+	ctx.JSON(200, gin.H{
+		"status": 200,
+		"msg":    "get result ok ",
+		"data":   userResult,
+	})
 }

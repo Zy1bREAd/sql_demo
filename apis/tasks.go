@@ -2,7 +2,6 @@ package apis
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -11,6 +10,8 @@ import (
 var TaskQueue chan *QueryTask = make(chan *QueryTask, 30) // 预分配空间
 var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
 var ResultMap *ResultCaches = &ResultCaches{cache: &sync.Map{}}
+
+// var HouseKeepingQueue chan string = make(chan string, 30) // 针对结果集读取后的housekeeping
 
 type QueryTask struct {
 	ID        string
@@ -59,49 +60,4 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	//! 有必要管理sqltask的状态吗？
 	ResultQueue <- result
 	defer op.Close()
-}
-
-// WorkerPool
-func StartWorkerPool(ctx context.Context) {
-	fmt.Println("worker starting....")
-	for i := 0; i < 3; i++ {
-		go func() {
-			for {
-				select {
-				case t := <-TaskQueue:
-					ExcuteSQLTask(ctx, t)
-				case <-ctx.Done():
-					log.Println("因错误退出，关闭当前Worker. Error:", ctx.Err().Error())
-					return
-				}
-			}
-		}()
-	}
-}
-
-// Resulter Inform
-func StartResultReader(ctx context.Context) {
-	fmt.Println("result reader starting....")
-	for i := 0; i < 3; i++ {
-		go func() {
-			for {
-				select {
-				case res := <-ResultQueue:
-					if res.Error != nil {
-						// result有错误将暴露出来
-						log.Println(res.Error)
-						log.Println("Your Result is Null")
-						return
-					}
-					//! 后期核心处理结果集的代码逻辑块
-					ResultMap.Set(res.ID, res)
-					// ResultMap.Range()
-					// fmt.Println("your result:", t)
-				case <-ctx.Done():
-					log.Println("因错误退出，关闭当前Reader. Error:", ctx.Err().Error())
-					return
-				}
-			}
-		}()
-	}
 }

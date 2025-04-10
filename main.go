@@ -10,8 +10,9 @@ func main() {
 	// 针对请求-工作-处理结果的context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	apis.StartWorkerPool(ctx)
+	apis.StartTaskWorkerPool(ctx)
 	apis.StartResultReader(ctx)
+	apis.StartCleanWorker(ctx)
 	dsnName := "zabbix:zabbix_password@tcp(124.220.17.5:23366)/zabbix"
 	apis.RegisterDriver("mysql", func() apis.SQLExecutor {
 		return apis.RegisterMySQLDriver(dsnName)
