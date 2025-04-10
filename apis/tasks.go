@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// 维护全局变量
 var TaskQueue chan *QueryTask = make(chan *QueryTask, 30) // 预分配空间
 var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
 var ResultMap *ResultCaches = &ResultCaches{cache: &sync.Map{}}

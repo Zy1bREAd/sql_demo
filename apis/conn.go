@@ -11,6 +11,10 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+var illegalKeys = []string{
+	"privatekey", "itemid",
+}
+
 // 数据库SQL执行器（抽象层）
 type SQLExecutor interface {
 	// Query(string) (*sql.Rows, error)
@@ -103,7 +107,6 @@ func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string, taskId string) *Que
 	// 遍历结果集，逐行处理结果
 	for rows.Next() {
 		values := make([]any, len(cols)) // 每一行都创建结果集容器的切片,按照列的顺序进行存储
-
 		// 初始化结果集容器；将该切片中的元素都初始化为sql.RawBytes容器，用于存放列值
 		for i := range values {
 			values[i] = new(sql.RawBytes) // 原始SQL语句最终以字节切片的方式进行存储；type RawBytes []byte
@@ -113,13 +116,21 @@ func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string, taskId string) *Que
 			return &QueryResult{Error: GenerateError("TaskResult Handle Error", err.Error())}
 		}
 
-		rowResultMap := make(map[string]any, 0) // 创建每行结果的Map
+		rowResultMap := make(map[string]any, 0) // 创建存储每行数据结果的容器（Map）
 		for i, colName := range cols {
 			// 列名切片顺序和values顺序一致，断言结果类型，然后进行存储
 			if value, ok := values[i].(*sql.RawBytes); ok {
 				if value != nil {
-					// 输出的类型待优化... 目前只有string
-					rowResultMap[colName] = string(*value)
+					//! 数据处理（数据脱敏，过滤等）
+					for _, key := range illegalKeys {
+						if key == colName {
+							rowResultMap[colName] = "******"
+						} else {
+							// 输出的类型待优化... 目前只支持string
+							rowResultMap[colName] = string(*value)
+						}
+
+					}
 				} else {
 					rowResultMap[colName] = nil
 				}
