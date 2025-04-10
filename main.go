@@ -7,6 +7,11 @@ import (
 
 func main() {
 	defer apis.ErrorRecover()
+	// 连接本地应用的DB存储数据
+	demoDsn := "root:uxje6+pbQQUP@tcp(124.220.17.5:23366)/sql_demo?charset=utf8mb4&parseTime=True&loc=Local"
+	self := apis.InitSelfDB(demoDsn)
+	defer self.Close()
+
 	// 针对请求-工作-处理结果的context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

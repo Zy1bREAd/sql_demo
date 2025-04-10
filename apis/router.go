@@ -45,6 +45,7 @@ func InitBaseRoutes() {
 		rgAuth.POST("/query", QueryForGin)
 		rgAuth.POST("/result", getQueryResult)
 		rgAuth.GET("/keys", getMapKeys)
+		rgAuth.POST("/user_create", userCreate)
 	})
 
 }
@@ -103,5 +104,26 @@ func getMapKeys(ctx *gin.Context) {
 		"status": 200,
 		"msg":    "get result ok ",
 		"data":   userResult,
+	})
+}
+
+// User obj
+type UserInfo struct {
+	Name     string `json:"name"`
+	Password string `json:"password`
+	Email    string `json:"email"`
+}
+
+func userCreate(ctx *gin.Context) {
+	var userInfo UserInfo
+	ctx.ShouldBind(&userInfo)
+	err := CreateUser(userInfo.Name, userInfo.Password, userInfo.Email)
+	if err != nil {
+		panic(err)
+	}
+	ctx.JSON(200, gin.H{
+		"code":   200,
+		"status": "Success",
+		"msg":    "create success",
 	})
 }
