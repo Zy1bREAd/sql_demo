@@ -3,7 +3,6 @@ package apis
 import (
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,8 +15,9 @@ var fnRoutes []FnRegisterRoute
 
 // 添加路由注册函数
 func RegisterRoute(fn FnRegisterRoute) {
-	if fnRoutes == nil {
-		log.Println("不需要注册")
+	// 如果注册函数为nil，则跳过；反之加入路由注册表中
+	if fn == nil {
+		log.Println("FnRegisterRoute 不需要注册")
 		return
 	}
 	fnRoutes = append(fnRoutes, fn)
@@ -29,7 +29,10 @@ func InitRouter() {
 	rgPublic := r.Group("/api/v1/public")
 	rgAuth := r.Group("/api/v1/")
 	// rgPublic.GET("xxx", func(ctx *gin.Context) {})
+	InitBaseRoutes()
 
+	// 加载路由注册函数
+	fmt.Println(fnRoutes)
 	for _, fn := range fnRoutes {
 		fn(rgPublic, rgAuth)
 	}
@@ -39,13 +42,16 @@ func InitRouter() {
 // 初始化基础路由
 func InitBaseRoutes() {
 	RegisterRoute(func(rgPublic, rgAuth *gin.RouterGroup) {
-		rgPublic.POST("/query", QueryForGin)
+		rgAuth.POST("/query", QueryForGin)
+		rgAuth.POST("/result", getQueryResult)
 	})
+
 }
 
 type UserQuery struct {
-	Database  string `json:"db_name" binding:"required"`
-	Statement string `json:"query_sql" binding:"required"` // 暂且是string类型
+	Database  string `json:"db_name"`
+	Statement string `json:"query_sql"` // 暂且是string类型
+	TaskID    string `json:"task_id"`   // 任务ID
 }
 
 // /api/v1/query
@@ -54,12 +60,34 @@ func QueryForGin(ctx *gin.Context) {
 	ctx.BindJSON(&q)
 	fmt.Println("user query params:", q)
 	// 后续提交任务进行执行
-	SubmitSQLTask(q.Statement)
-	time.Sleep(5 * time.Second)
+	taskID := SubmitSQLTask(q.Statement)
 	// 暂时取出结果看看（后续需要异步通知用户查看）
 	ctx.JSON(200, gin.H{
 		"status": 200,
 		"msg":    "test",
-		"data":   "result...",
+		"data": map[string]string{
+			"task_id": taskID,
+		},
 	})
+}
+
+func getQueryResult(ctx *gin.Context) {
+	var q UserQuery
+	ctx.BindJSON(&q)
+	userResult, err := ResultMap.Get(q.TaskID)
+	fmt.Println(q.TaskID)
+	if err != nil {
+		ctx.JSON(200, gin.H{
+			"status": 500,
+			"msg":    err.Error(),
+			"data":   "",
+		})
+		return
+	}
+	ctx.JSON(200, gin.H{
+		"status": 200,
+		"msg":    "get result ok ",
+		"data":   userResult.Results,
+	})
+
 }

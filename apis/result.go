@@ -1,5 +1,11 @@
 package apis
 
+import (
+	"fmt"
+	"reflect"
+	"sync"
+)
+
 type QueryResult struct {
 	ID        string           // task id
 	Results   []map[string]any // 结果集列表
@@ -7,4 +13,41 @@ type QueryResult struct {
 	RowCount  int              // 返回结果条数
 	QueryTime float64          // 查询花费的时间
 	Error     error
+}
+
+// 仅针对QueryResult结果集的并发安全哈希表
+type ResultCaches struct {
+	cache *sync.Map
+}
+
+// 添加kv
+func (rc *ResultCaches) Set(taskId string, result *QueryResult) {
+	rc.cache.Store(taskId, result) // 应该存储结果集结构体
+	// fmt.Println("now map:", rc.cache)
+}
+
+// 获取Key对应的values
+func (rc *ResultCaches) Get(taskId string) (*QueryResult, error) {
+	val, exist := rc.cache.Load(taskId)
+	if !exist {
+		return nil, GenerateError("Get Result Error", "result is not exist")
+	}
+	fmt.Println("val type=", reflect.TypeOf(val))
+	if val, ok := val.(*QueryResult); ok {
+		return val, nil
+	}
+	return nil, GenerateError("Get Result Error", "result is not `QueryResult` type")
+}
+
+// 删除Key
+func (rc *ResultCaches) Del(taskId string) {
+	rc.cache.Delete(taskId)
+}
+
+// 遍历sync.Map中的kv（DEBUG）
+func (rc *ResultCaches) Range() {
+	rc.cache.Range(func(key, value any) bool {
+		fmt.Printf("sync.Map key=%v , values=%v", key, value)
+		return true
+	})
 }

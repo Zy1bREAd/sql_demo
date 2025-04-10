@@ -14,7 +14,7 @@ import (
 // 数据库SQL执行器（抽象层）
 type SQLExecutor interface {
 	// Query(string) (*sql.Rows, error)
-	Query(context.Context, string) *QueryResult
+	Query(context.Context, string, string) *QueryResult
 	HealthCheck(context.Context) error
 	Close() error
 }
@@ -81,10 +81,11 @@ func (ex *MySQLEx) QueryForRaw(ctx context.Context, statement string) (*sql.Rows
 }
 
 // 对内暴露的查询SQL接口
-func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string) *QueryResult {
+func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string, taskId string) *QueryResult {
 	// 校验SQL合法性...
 	queryResult := &QueryResult{
 		QueryRaw: sqlRaw,
+		ID:       taskId,
 	}
 	// 通过传入原生SQL语句进行查询（后期抽出来）
 	start := time.Now()
@@ -99,7 +100,6 @@ func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string) *QueryResult {
 	fmt.Println(queryResult)
 	// 获取SQL要查询的列名
 	cols, _ := rows.Columns()
-	fmt.Println("column: ", cols)
 	// 遍历结果集，逐行处理结果
 	for rows.Next() {
 		values := make([]any, len(cols)) // 每一行都创建结果集容器的切片,按照列的顺序进行存储
