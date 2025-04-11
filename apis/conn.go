@@ -183,3 +183,44 @@ func (ex *MySQLEx) validateCheck(statement string) (string, error) {
 
 	return statement, nil
 }
+
+//! 多数据库实例连接
+
+// 数据库配置（从特定源读取）
+type DataBaseConfig struct {
+	DBConfig map[string]MySQLConfig `yaml:"database"`
+}
+type MySQLConfig struct {
+	MaxConn  int    `yaml:"max_conn"`
+	DSN      string `yaml:"dsn"`
+	IdleTime int    `yaml:"idle_time"`
+}
+
+type DBInstance struct {
+	conn   *sql.DB
+	name   string
+	config *DBConfig
+	// idleTime time.Time
+}
+
+// 读取DB配置信息
+func LoadDBConfig() {
+	fmt.Println("load in db config")
+}
+
+// 打开实例连接
+func NewDBInstance(name string) (*DBInstance, error) {
+	// e.g: zabbix:zabbix_password@tcp(124.220.17.5:23366)/zabbix
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	return &DBInstance{
+		conn: db,
+		name: name,
+	}, nil
+}
+
+type DBPoolManagner struct {
+	Pool map[string]*DBInstance
+}

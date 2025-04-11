@@ -3,6 +3,7 @@ package apis
 
 import (
 	"fmt"
+	"log"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -15,7 +16,7 @@ type SelfDatabase struct {
 }
 
 func connect(dsn string) error {
-	if selfDB.conn == nil {
+	if selfDB == nil {
 		db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 		if err != nil {
 			return GenerateError("DB Connect Failed", "sql demo self db unable to connect")
@@ -36,6 +37,7 @@ func InitSelfDB(dsn string) *SelfDatabase {
 	}
 	// 迁移表
 	selfDB.autoMigrator()
+	log.Println("DB migrator完成")
 	return selfDB
 }
 
@@ -80,3 +82,5 @@ func CreateUser(name, pass, email string) error {
 	tx.Commit()
 	return nil
 }
+
+// 查询操作的日志审计
