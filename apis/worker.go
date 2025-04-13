@@ -9,15 +9,14 @@ import (
 
 // 清理已读结果集队列
 func StartCleanWorker(ctx context.Context) {
-	fmt.Println("result housekeeping worker starting....")
-	ticker := time.NewTicker(60 * time.Second)
+	fmt.Println("HouseKeeping Worker Starting ...")
+	ticker := time.NewTicker(180 * time.Second)
 	// defer ticker.Stop()
 	go func() {
 		for {
 			select {
 			// 定时执行清理清理动作
 			case <-ticker.C:
-				log.Println("start clean.....")
 				ResultMap.Clean()
 			case <-ctx.Done():
 				log.Println("因错误退出，关闭Clean Worker. Error:", ctx.Err().Error())
@@ -29,7 +28,7 @@ func StartCleanWorker(ctx context.Context) {
 
 // WorkerPool
 func StartTaskWorkerPool(ctx context.Context) {
-	fmt.Println("task worker starting....")
+	log.Println("Task Worker Starting ....")
 	for i := 0; i < 3; i++ {
 		go func() {
 			for {
@@ -37,7 +36,7 @@ func StartTaskWorkerPool(ctx context.Context) {
 				case t := <-TaskQueue:
 					ExcuteSQLTask(ctx, t)
 				case <-ctx.Done():
-					log.Println("因错误退出，关闭当前Worker. Error:", ctx.Err().Error())
+					log.Println("因错误退出，关闭当前Task Worker, Error:", ctx.Err().Error())
 					return
 				}
 			}
@@ -47,7 +46,7 @@ func StartTaskWorkerPool(ctx context.Context) {
 
 // Resulter Inform
 func StartResultReader(ctx context.Context) {
-	fmt.Println("result reader starting....")
+	fmt.Println("Result Reader Starting ...")
 	for i := 0; i < 3; i++ {
 		go func() {
 			for {
@@ -55,16 +54,13 @@ func StartResultReader(ctx context.Context) {
 				case res := <-ResultQueue:
 					if res.Error != nil {
 						// result有错误将暴露出来
-						log.Println(res.Error)
-						log.Println("Your Result is Null")
+						log.Println("Your Result is Null, ERROR:", res.Error)
 						return
 					}
 					//! 后期核心处理结果集的代码逻辑块
 					ResultMap.Set(res.ID, res)
-					// ResultMap.Range()
-					// fmt.Println("your result:", t)
 				case <-ctx.Done():
-					log.Println("因错误退出，关闭当前Reader. Error:", ctx.Err().Error())
+					log.Println("因错误退出，关闭当前Reader, Error:", ctx.Err().Error())
 					return
 				}
 			}

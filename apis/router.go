@@ -62,7 +62,7 @@ func QueryForGin(ctx *gin.Context) {
 	ctx.BindJSON(&q)
 	fmt.Println("user query params:", q)
 	// 后续提交任务进行执行
-	taskID := SubmitSQLTask(q.Statement)
+	taskID := SubmitSQLTask(q.Statement, q.Database)
 	// 暂时取出结果看看（后续需要异步通知用户查看）
 	ctx.JSON(200, gin.H{
 		"status": 200,
@@ -110,7 +110,7 @@ func getMapKeys(ctx *gin.Context) {
 // User obj
 type UserInfo struct {
 	Name     string `json:"name"`
-	Password string `json:"password`
+	Password string `json:"password"`
 	Email    string `json:"email"`
 }
 

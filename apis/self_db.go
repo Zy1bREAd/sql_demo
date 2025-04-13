@@ -42,8 +42,8 @@ func InitSelfDB(dsn string) *SelfDatabase {
 }
 
 func (db *SelfDatabase) Close() {
-	closer, _ := db.conn.DB()
-	closer.Close()
+	dber, _ := db.conn.DB()
+	dber.Close()
 }
 
 func (db *SelfDatabase) healthCheck() error {

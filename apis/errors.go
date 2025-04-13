@@ -16,6 +16,6 @@ func ErrorRecover() {
 }
 
 func GenerateError(errorTitle string, msg string) error {
-	formatErrorMsg := fmt.Sprintf("<%s> %s", errorTitle, msg)
+	formatErrorMsg := fmt.Sprintf("[ERROR] <%s> %s", errorTitle, msg)
 	return errors.New(formatErrorMsg)
 }

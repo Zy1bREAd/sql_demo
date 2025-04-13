@@ -5,10 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"gopkg.in/yaml.v3"
 )
 
 var illegalKeys = []string{
@@ -23,69 +26,90 @@ type SQLExecutor interface {
 	Close() error
 }
 
-type registerFn func() SQLExecutor
+// ! 多数据库实例连接
+var once sync.Once
+var globalDBPool *DBPoolManager
 
-// 数据库驱动注册表
-var DriversMap map[string]registerFn = make(map[string]registerFn)
-
-// 驱动注册函数
-func RegisterDriver(name string, fn registerFn) {
-	nameLower := strings.ToLower(name)
-	DriversMap[nameLower] = fn
+// 数据库配置（从特定源读取）
+type DataBaseConfig struct {
+	DBConfig map[string]MySQLConfig `yaml:"database"`
+}
+type MySQLConfig struct {
+	MaxConn  int    `yaml:"max_conn"`
+	DSN      string `yaml:"dsn"`
+	IdleTime int    `yaml:"idle_time"`
 }
 
-// 获取数据库驱动
-func GetDriver(name string) (SQLExecutor, error) {
-	nameLower := strings.ToLower(name)
-	if driver, exist := DriversMap[nameLower]; exist {
-		return driver(), nil
-	}
-	return nil, GenerateError("DriverError", fmt.Sprintf("driver %s not found", name))
+// 多数据库连接的新实例
+type DBInstance struct {
+	conn   *sql.DB
+	name   string // 数据库名称
+	config *MySQLConfig
+	// idleTime time.Time
 }
 
-// MySQL 数据库驱动注册
-func RegisterMySQLDriver(dsnName string) *MySQLEx {
-	db, err := sql.Open("mysql", dsnName)
-	if err != nil {
-		return nil
-	}
-	// db conncetion setting
-	db.SetConnMaxIdleTime(time.Minute * 3)
-	db.SetMaxOpenConns(250)
-	db.SetMaxIdleConns(100)
-	return &MySQLEx{
-		DB: db,
-	}
+type DBPoolManager struct {
+	Pool map[string]*DBInstance
+	mu   sync.RWMutex // 引入读写锁保证并发安全
 }
 
-// SQL执行器接口的实现
-type MySQLEx struct {
-	// config map[string]string    // 配置中心
-	DB *sql.DB
-}
+// type registerFn func() SQLExecutor
+
+// // 数据库驱动注册表
+// var DriversMap map[string]registerFn = make(map[string]registerFn)
+
+// // 驱动注册函数
+// func RegisterDriver(name string, fn registerFn) {
+// 	nameLower := strings.ToLower(name)
+// 	DriversMap[nameLower] = fn
+// }
+
+// // 获取数据库驱动
+// func GetDriver(name string) (SQLExecutor, error) {
+// 	nameLower := strings.ToLower(name)
+// 	if driver, exist := DriversMap[nameLower]; exist {
+// 		return driver(), nil
+// 	}
+// 	return nil, GenerateError("DriverError", fmt.Sprintf("driver %s not found", name))
+// }
+
+// // MySQL 数据库驱动注册
+// func RegisterMySQLDriver(dsnName string) *MySQLEx {
+// 	db, err := sql.Open("mysql", dsnName)
+// 	if err != nil {
+// 		return nil
+// 	}
+// 	// db conncetion setting
+// 	db.SetConnMaxIdleTime(time.Minute * 3)
+// 	db.SetMaxOpenConns(250)
+// 	db.SetMaxIdleConns(100)
+// 	return &MySQLEx{
+// 		DB: db,
+// 	}
+// }
 
 // 健康检查
-func (ex *MySQLEx) HealthCheck(ctx context.Context) error {
-	return ex.DB.PingContext(ctx)
+func (instance *DBInstance) HealthCheck(ctx context.Context) error {
+	return instance.conn.PingContext(ctx)
 }
 
 // 关闭数据库连接，释放资源。
-func (ex *MySQLEx) Close() error {
-	return ex.DB.Close()
+func (instance *DBInstance) Close() error {
+	return instance.conn.Close()
 }
 
-func (ex *MySQLEx) QueryForRaw(ctx context.Context, statement string) (*sql.Rows, error) {
+func (instance *DBInstance) QueryForRaw(ctx context.Context, statement string) (*sql.Rows, error) {
 	// 语法校验
-	sqlRaw, err := ex.validateCheck(statement)
+	sqlRaw, err := instance.validateCheck(statement)
 	if err != nil {
 		return nil, err
 	}
 	// 执行SQL查询的Core Code
-	return ex.DB.QueryContext(ctx, sqlRaw)
+	return instance.conn.QueryContext(ctx, sqlRaw)
 }
 
 // 对内暴露的查询SQL接口
-func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string, taskId string) *QueryResult {
+func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) *QueryResult {
 	// 校验SQL合法性...
 	queryResult := &QueryResult{
 		QueryRaw: sqlRaw,
@@ -93,7 +117,7 @@ func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string, taskId string) *Que
 	}
 	// 通过传入原生SQL语句进行查询（后期抽出来）
 	start := time.Now()
-	rows, err := ex.QueryForRaw(ctx, sqlRaw)
+	rows, err := instance.QueryForRaw(ctx, sqlRaw)
 	if err != nil {
 		// log.Println("trace error stack:", err)
 		return &QueryResult{Error: GenerateError("SQLTask Query Error", err.Error())}
@@ -101,7 +125,8 @@ func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string, taskId string) *Que
 	defer rows.Close()
 	end := time.Since(start)
 	queryResult.QueryTime = end.Seconds()
-	fmt.Println(queryResult)
+
+	//! 结果集处理
 	// 获取SQL要查询的列名
 	cols, _ := rows.Columns()
 	// 遍历结果集，逐行处理结果
@@ -148,15 +173,14 @@ func (ex *MySQLEx) Query(ctx context.Context, sqlRaw string, taskId string) *Que
 	return queryResult
 }
 
-func (ex *MySQLEx) Healthz(ctx context.Context) error {
-	return ex.DB.PingContext(ctx)
+func (instance *DBInstance) Healthz(ctx context.Context) error {
+	return instance.conn.PingContext(ctx)
 }
 
-func (ex *MySQLEx) validateCheck(statement string) (string, error) {
+func (instance *DBInstance) validateCheck(statement string) (string, error) {
 	// 目前只支持一条SQL的查询，多余的直接丢弃
 	sqls := strings.Split(statement, ";")
 	sqlCount := len(sqls)
-	fmt.Println(sqlCount, sqls)
 	// sql语句数错误处理(目前只支持单SQL查询)
 	if sqlCount != 2 || !strings.HasSuffix(statement, ";") {
 		if sqlCount == 0 {
@@ -184,34 +208,60 @@ func (ex *MySQLEx) validateCheck(statement string) (string, error) {
 	return statement, nil
 }
 
-//! 多数据库实例连接
-
-// 数据库配置（从特定源读取）
-type DataBaseConfig struct {
-	DBConfig map[string]MySQLConfig `yaml:"database"`
-}
-type MySQLConfig struct {
-	MaxConn  int    `yaml:"max_conn"`
-	DSN      string `yaml:"dsn"`
-	IdleTime int    `yaml:"idle_time"`
-}
-
-type DBInstance struct {
-	conn   *sql.DB
-	name   string
-	config *DBConfig
-	// idleTime time.Time
+// 初始化数据库池管理者（全局一次）
+func NewDBPoolManager() *DBPoolManager {
+	once.Do(func() {
+		globalDBPool = &DBPoolManager{
+			Pool: make(map[string]*DBInstance),
+		}
+		log.Println("Once.Do Init Pool Success, ", globalDBPool)
+	})
+	return globalDBPool
 }
 
-// 读取DB配置信息
-func LoadDBConfig() {
-	fmt.Println("load in db config")
+// 读取配置，加载数据库池
+func LoadInDB() {
+	var config DataBaseConfig
+	// 从YAML方式读取
+	fileData, err := os.ReadFile("config/db.yaml")
+	if err != nil {
+		panic(err)
+	}
+	err = yaml.Unmarshal(fileData, &config)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("yaml config: ", config)
+
+	// 将读取到DB配置注册进数据库池子中进行管理
+	pool := NewDBPoolManager()
+	err = pool.register(&config)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (manager *DBPoolManager) register(configData *DataBaseConfig) error {
+	manager.mu.Lock()
+	for dbName, conf := range configData.DBConfig {
+		db, err := NewDBInstance(dbName, conf.DSN, conf.MaxConn, conf.IdleTime)
+		if err != nil {
+			return err
+		}
+		manager.Pool[dbName] = db
+		log.Printf("<%s> DataBase Register Success")
+	}
+	manager.mu.Unlock()
+	return nil
 }
 
 // 打开实例连接
-func NewDBInstance(name string) (*DBInstance, error) {
+func NewDBInstance(name, dsn string, maxConn, idleTime int) (*DBInstance, error) {
 	// e.g: zabbix:zabbix_password@tcp(124.220.17.5:23366)/zabbix
 	db, err := sql.Open("mysql", dsn)
+	db.SetConnMaxIdleTime(time.Minute * 3)
+	db.SetMaxOpenConns(maxConn)
+	db.SetMaxIdleConns(maxConn)
 	if err != nil {
 		return nil, err
 	}
@@ -221,6 +271,11 @@ func NewDBInstance(name string) (*DBInstance, error) {
 	}, nil
 }
 
-type DBPoolManagner struct {
-	Pool map[string]*DBInstance
+func GetDBInstance(name string) (*DBInstance, error) {
+	globalDBPool.mu.RLock()
+	defer globalDBPool.mu.RUnlock()
+	if instance, ok := globalDBPool.Pool[name]; ok {
+		return instance, nil
+	}
+	return nil, GenerateError("Get DB Instance Failed", fmt.Sprintf("%s db instance not found", name))
 }

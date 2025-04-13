@@ -9,17 +9,17 @@
 # 仅支持MySQL数据库
 database:
   zabbix:
-    dsn: "zabbix:zabbix_password@tcp(124.220.17.5:23366)/zabbix"
+    dsn: 'zabbix:zabbix_password@tcp(124.220.17.5:23366)/zabbix'
     max_conn: 10
     idle_time: 60
 
   sql_demo:
-    dsn: "ocean:uxje67pbQQUP@tcp(124.220.17.5:23366)/sql_demo"
+    dsn: 'oceanwang:uxje67pbQQUP@tcp(124.220.17.5:23366)/sql_demo'
     max_conn: 10
     idle_time: 60
 
   shower:
-    dsn: "ocean:uxje67pbQQUP@tcp(124.220.17.5:23366)/shower"
+    dsn: 'oceanwang:uxje67pbQQUP@tcp(124.220.17.5:23366)/shower'
     max_conn: 10
     idle_time: 60
   
