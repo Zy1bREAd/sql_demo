@@ -53,9 +53,8 @@ func StartResultReader(ctx context.Context) {
 				select {
 				case res := <-ResultQueue:
 					if res.Error != nil {
-						// result有错误将暴露出来
-						log.Println("Your Result is Null, ERROR:", res.Error)
-						return
+						// 展示SQL任务执行的错误，并一同写入ResultMap
+						log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
 					}
 					//! 后期核心处理结果集的代码逻辑块
 					ResultMap.Set(res.ID, res)

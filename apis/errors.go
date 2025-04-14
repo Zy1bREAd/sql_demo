@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+var levelMap = map[int]string{
+	0: "ERROR",
+	1: "WARN",
+	2: "INFO",
+	3: "DEBUG",
+}
+
 func ErrorRecover() {
 	if err := recover(); err != nil {
 		now := time.Now()
@@ -15,7 +22,28 @@ func ErrorRecover() {
 	}
 }
 
-func GenerateError(errorTitle string, msg string) error {
-	formatErrorMsg := fmt.Sprintf("[ERROR] <%s> %s", errorTitle, msg)
+func generateLog(level int, errorTitle string, msg string) error {
+	levelStr, ok := levelMap[level]
+	if !ok {
+		return errors.New("log level is not found")
+	}
+	formatErrorMsg := fmt.Sprintf("[%s] <%s> %s", levelStr, errorTitle, msg)
+	log.Println(formatErrorMsg)
 	return errors.New(formatErrorMsg)
+}
+
+func GenerateError(errorTitle string, msg string) error {
+	return generateLog(0, errorTitle, msg)
+}
+
+func GenerateWarn(errorTitle string, msg string) error {
+	return generateLog(1, errorTitle, msg)
+}
+
+func GenerateInfo(errorTitle string, msg string) error {
+	return generateLog(2, errorTitle, msg)
+}
+
+func GenerateDebug(errorTitle string, msg string) error {
+	return generateLog(3, errorTitle, msg)
 }

@@ -47,19 +47,33 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	// 获取对应数据库实例进行SQL查询
 	op, err := GetDBInstance(task.DBName)
 	if err != nil {
-		panic(err)
+		ResultQueue <- &QueryResult{
+			Results: nil,
+			Error:   err,
+		}
+		return
+		// panic(err)
 	}
 	// 执行前健康检查DB
 	err = op.HealthCheck(ctx)
 	if err != nil {
 		errMsg := fmt.Sprintf("excute sql task is failed : %s", err.Error())
-		panic(GenerateError("HealthCheck Failed", errMsg))
+		ResultQueue <- &QueryResult{
+			Results: nil,
+			Error:   GenerateError("HealthCheck Failed", errMsg),
+		}
+		return
 	}
 	log.Printf("<%s> DB Connection HealthCheck OK", op.name)
 	result := op.Query(ctx, task.Statement, task.ID)
-	if result.Error != nil {
-		panic(result.Error)
-	}
+	// if result.Error != nil {
+	// 	ResultQueue <- &QueryResult{
+	// 		Results: nil,
+	// 		Error:   result.Error,
+	// 	}
+	// 	return
+	// 	// panic(result.Error)
+	// }
 	//! 有必要管理sqltask的状态吗？
 	ResultQueue <- result
 	// defer op.Close()			引入多数据库实例连接查询，因此移除执行完SQL查询后断开连接

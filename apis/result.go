@@ -31,12 +31,12 @@ func (rc *ResultCaches) Set(taskId string, result *QueryResult) {
 func (rc *ResultCaches) Get(taskId string) (*QueryResult, error) {
 	val, exist := rc.cache.Load(taskId)
 	if !exist {
-		return nil, GenerateError("Get Result Error", "result is not exist")
+		return nil, GenerateError("GetResultError", "result key is not exist")
 	}
 	if val, ok := val.(*QueryResult); ok {
 		return val, nil
 	}
-	return nil, GenerateError("Get Result Error", "result is not `QueryResult` type")
+	return nil, GenerateError("GetResultError", "result is not `QueryResult` type")
 }
 
 // 删除Key

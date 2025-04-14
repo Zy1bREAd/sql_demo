@@ -77,11 +77,6 @@ func getQueryResult(ctx *gin.Context) {
 	var q UserQuery
 	ctx.BindJSON(&q)
 	userResult, err := ResultMap.Get(q.TaskID)
-	fmt.Println(q.TaskID)
-	// defer func() {
-	// 	// 确认返回结果后，塞入已读的taskID到ResultReaader队列中
-	// 	HouseKeepingQueue <- q.TaskID
-	// }()
 	if err != nil {
 		ctx.JSON(200, gin.H{
 			"status": 500,
@@ -94,6 +89,7 @@ func getQueryResult(ctx *gin.Context) {
 		"status": 200,
 		"msg":    "get result ok ",
 		"data":   userResult.Results,
+		"error":  userResult.Error.Error(),
 	})
 }
 

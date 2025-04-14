@@ -119,8 +119,8 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 	start := time.Now()
 	rows, err := instance.QueryForRaw(ctx, sqlRaw)
 	if err != nil {
-		// log.Println("trace error stack:", err)
-		return &QueryResult{Error: GenerateError("SQLTask Query Error", err.Error())}
+		queryResult.Error = GenerateError("SQLTask Query Error", err.Error())
+		return queryResult
 	}
 	defer rows.Close()
 	end := time.Since(start)
@@ -138,7 +138,8 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 		}
 		// 获取结果集，填充进来
 		if err := rows.Scan(values...); err != nil {
-			return &QueryResult{Error: GenerateError("TaskResult Handle Error", err.Error())}
+			queryResult.Error = GenerateError("TaskResult Handle Error", err.Error())
+			return queryResult
 		}
 
 		rowResultMap := make(map[string]any, 0) // 创建存储每行数据结果的容器（Map）
@@ -167,7 +168,8 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 	select {
 	default:
 	case <-ctx.Done():
-		return &QueryResult{Error: GenerateError("Task TimeOut", "sql task is failed ,timeout 10s")}
+		queryResult.Error = GenerateError("Task TimeOut", "sql task is failed ,timeout 10s")
+		return queryResult
 	}
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
 	return queryResult
@@ -209,7 +211,7 @@ func (instance *DBInstance) validateCheck(statement string) (string, error) {
 }
 
 // 初始化数据库池管理者（全局一次）
-func NewDBPoolManager() *DBPoolManager {
+func newDBPoolManager() *DBPoolManager {
 	once.Do(func() {
 		globalDBPool = &DBPoolManager{
 			Pool: make(map[string]*DBInstance),
@@ -234,7 +236,7 @@ func LoadInDB() {
 	fmt.Println("yaml config: ", config)
 
 	// 将读取到DB配置注册进数据库池子中进行管理
-	pool := NewDBPoolManager()
+	pool := newDBPoolManager()
 	err = pool.register(&config)
 	if err != nil {
 		panic(err)
@@ -243,25 +245,31 @@ func LoadInDB() {
 
 func (manager *DBPoolManager) register(configData *DataBaseConfig) error {
 	manager.mu.Lock()
+	defer manager.mu.Unlock()
 	for dbName, conf := range configData.DBConfig {
-		db, err := NewDBInstance(dbName, conf.DSN, conf.MaxConn, conf.IdleTime)
+		db, err := newDBInstance(dbName, conf.DSN, conf.MaxConn, conf.IdleTime)
 		if err != nil {
-			return err
+			log.Printf("<%s> Database Register Failed,error: %s\n", dbName, err.Error())
+			continue
+			// return err
 		}
 		manager.Pool[dbName] = db
-		log.Printf("<%s> DataBase Register Success")
+		log.Printf("<%s> DataBase Register Success", dbName)
 	}
-	manager.mu.Unlock()
 	return nil
 }
 
-// 打开实例连接
-func NewDBInstance(name, dsn string, maxConn, idleTime int) (*DBInstance, error) {
+// 打开数据库实例连接
+func newDBInstance(name, dsn string, maxConn, idleTime int) (*DBInstance, error) {
 	// e.g: zabbix:zabbix_password@tcp(124.220.17.5:23366)/zabbix
 	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
 	db.SetConnMaxIdleTime(time.Minute * 3)
 	db.SetMaxOpenConns(maxConn)
 	db.SetMaxIdleConns(maxConn)
+	err = db.Ping()
 	if err != nil {
 		return nil, err
 	}
@@ -277,5 +285,5 @@ func GetDBInstance(name string) (*DBInstance, error) {
 	if instance, ok := globalDBPool.Pool[name]; ok {
 		return instance, nil
 	}
-	return nil, GenerateError("Get DB Instance Failed", fmt.Sprintf("%s db instance not found", name))
+	return nil, GenerateError("Instance Error", fmt.Sprintf("%s db instance not found", name))
 }
