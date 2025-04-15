@@ -42,9 +42,9 @@ type MySQLConfig struct {
 
 // 多数据库连接的新实例
 type DBInstance struct {
-	conn   *sql.DB
-	name   string // 数据库名称
-	config *MySQLConfig
+	conn *sql.DB
+	name string // 数据库名称
+	// config *MySQLConfig
 	// idleTime time.Time
 }
 
@@ -52,41 +52,6 @@ type DBPoolManager struct {
 	Pool map[string]*DBInstance
 	mu   sync.RWMutex // 引入读写锁保证并发安全
 }
-
-// type registerFn func() SQLExecutor
-
-// // 数据库驱动注册表
-// var DriversMap map[string]registerFn = make(map[string]registerFn)
-
-// // 驱动注册函数
-// func RegisterDriver(name string, fn registerFn) {
-// 	nameLower := strings.ToLower(name)
-// 	DriversMap[nameLower] = fn
-// }
-
-// // 获取数据库驱动
-// func GetDriver(name string) (SQLExecutor, error) {
-// 	nameLower := strings.ToLower(name)
-// 	if driver, exist := DriversMap[nameLower]; exist {
-// 		return driver(), nil
-// 	}
-// 	return nil, GenerateError("DriverError", fmt.Sprintf("driver %s not found", name))
-// }
-
-// // MySQL 数据库驱动注册
-// func RegisterMySQLDriver(dsnName string) *MySQLEx {
-// 	db, err := sql.Open("mysql", dsnName)
-// 	if err != nil {
-// 		return nil
-// 	}
-// 	// db conncetion setting
-// 	db.SetConnMaxIdleTime(time.Minute * 3)
-// 	db.SetMaxOpenConns(250)
-// 	db.SetMaxIdleConns(100)
-// 	return &MySQLEx{
-// 		DB: db,
-// 	}
-// }
 
 // 健康检查
 func (instance *DBInstance) HealthCheck(ctx context.Context) error {

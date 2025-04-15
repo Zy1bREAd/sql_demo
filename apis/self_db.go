@@ -2,8 +2,10 @@
 package apis
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -62,16 +64,19 @@ func (db *SelfDatabase) autoMigrator() error {
 	return db.conn.AutoMigrate(&User{}, &QueryAuditLog{})
 }
 
-// 用户的逻辑
+// 创建用户逻辑
 func CreateUser(name, pass, email string) error {
 	// 事务开启
 	tx := selfDB.conn.Begin()
 	// 创建User(避免明文传入)
+	salt := GenerateSalt()
 	user := &User{
 		Name:     name,
 		Email:    email,
-		Password: EncryptWithMd5(pass),
+		Password: EncryptWithSaltMd5(salt, pass),
+		CreateAt: time.Now(),
 	}
+	fmt.Println(user)
 	if err := tx.Create(user).Error; err != nil {
 		tx.Rollback()
 		errMsg := fmt.Sprintln("create user is failed, ", err.Error())
@@ -81,6 +86,30 @@ func CreateUser(name, pass, email string) error {
 	//提交事务
 	tx.Commit()
 	return nil
+}
+
+// 登录
+func Login(email, pass string) (*UserResp, error) {
+	// 使用该用户相同的salt，对用户密码进行加密验证，与数据库的加密密码进行对比
+	var user User
+	result := selfDB.conn.Where("email = ?", email).First(&user)
+	if result.Error != nil {
+		// 判断记录是否不存在
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			errMsg := fmt.Sprintf("the account=%s is not exist", email)
+			return nil, GenerateError("UserNotExist", errMsg)
+		}
+		return nil, result.Error
+	}
+	// 校验用户密码
+	if ok := ValidateValueWithMd5(pass, user.Password); ok {
+		// 登录成功
+		// 过滤隐私关键字段（将结构体映射成专用响应结构体）
+		userResp := user.ToUserResp()
+		return &userResp, nil
+	}
+
+	return nil, GenerateError("LoginFailed", "the user account or password is incorrect")
 }
 
 // 查询操作的日志审计

@@ -3,6 +3,8 @@ package apis
 import (
 	"fmt"
 	"log"
+	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,6 +28,7 @@ func RegisterRoute(fn FnRegisterRoute) {
 // 封装路由组件
 func InitRouter() {
 	r := gin.New()
+	r.Use(AuthMiddleware())
 	rgPublic := r.Group("/api/v1/public")
 	rgAuth := r.Group("/api/v1/")
 	// rgPublic.GET("xxx", func(ctx *gin.Context) {})
@@ -46,14 +49,37 @@ func InitBaseRoutes() {
 		rgAuth.POST("/result", getQueryResult)
 		rgAuth.GET("/keys", getMapKeys)
 		rgAuth.POST("/user_create", userCreate)
+		rgPublic.POST("/login", userLogin)
 	})
 
 }
 
 type UserQuery struct {
 	Database  string `json:"db_name"`
-	Statement string `json:"query_sql"` // 暂且是string类型
-	TaskID    string `json:"task_id"`   // 任务ID
+	Statement string `json:"query_sql"`
+	TaskID    string `json:"task_id"` // 任务ID
+}
+
+// 认证鉴权中间件
+func AuthMiddleware() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		reqToken := ctx.Request.Header.Get("Authorization")
+		tokenList := strings.Split(reqToken, " ")
+		if len(tokenList) != 2 {
+			// ErrorResp(ctx, "Jwt token not exist")
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token invalid"})
+			return
+		}
+		fmt.Println(tokenList)
+		_, err := ParseJWT(tokenList[1])
+		if err != nil {
+			// ErrorResp(ctx, err.Error())
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+
+		ctx.Next()
+	}
 }
 
 // /api/v1/query
@@ -64,13 +90,9 @@ func QueryForGin(ctx *gin.Context) {
 	// 后续提交任务进行执行
 	taskID := SubmitSQLTask(q.Statement, q.Database)
 	// 暂时取出结果看看（后续需要异步通知用户查看）
-	ctx.JSON(200, gin.H{
-		"status": 200,
-		"msg":    "test",
-		"data": map[string]string{
-			"task_id": taskID,
-		},
-	})
+	SuccessResp(ctx, map[string]string{
+		"task_id": taskID,
+	}, "sql query task enqueue")
 }
 
 func getQueryResult(ctx *gin.Context) {
@@ -78,29 +100,19 @@ func getQueryResult(ctx *gin.Context) {
 	ctx.BindJSON(&q)
 	userResult, err := ResultMap.Get(q.TaskID)
 	if err != nil {
-		ctx.JSON(200, gin.H{
-			"status": 500,
-			"msg":    err.Error(),
-			"data":   "",
-		})
+		ErrorResp(ctx, err.Error())
+		return
+	} else if userResult.Error != nil {
+		ErrorResp(ctx, userResult.Error.Error())
 		return
 	}
-	ctx.JSON(200, gin.H{
-		"status": 200,
-		"msg":    "get result ok ",
-		"data":   userResult.Results,
-		"error":  userResult.Error.Error(),
-	})
+	SuccessResp(ctx, userResult.Results, "Get query result success")
 }
 
 func getMapKeys(ctx *gin.Context) {
 	userResult := ResultMap.Keys()
 	fmt.Println(userResult)
-	ctx.JSON(200, gin.H{
-		"status": 200,
-		"msg":    "get result ok ",
-		"data":   userResult,
-	})
+	SuccessResp(ctx, userResult, "Get resultMap all keys success")
 }
 
 // User obj
@@ -115,11 +127,26 @@ func userCreate(ctx *gin.Context) {
 	ctx.ShouldBind(&userInfo)
 	err := CreateUser(userInfo.Name, userInfo.Password, userInfo.Email)
 	if err != nil {
-		panic(err)
+		ErrorResp(ctx, err.Error())
 	}
-	ctx.JSON(200, gin.H{
-		"code":   200,
-		"status": "Success",
-		"msg":    "create success",
-	})
+	// 返回创建信息
+	SuccessResp(ctx, "token=...", "Get resultMap all keys success")
+}
+
+// 用户登录（鉴权）
+func userLogin(ctx *gin.Context) {
+	var loginInfo UserInfo
+	ctx.ShouldBind(&loginInfo)
+	user, err := Login(loginInfo.Email, loginInfo.Password)
+	if err != nil {
+		ErrorResp(ctx, err.Error())
+		return
+	}
+	token, err := GenerateJWT(user.Name, user.Email)
+	if err != nil {
+		ErrorResp(ctx, err.Error())
+	}
+	SuccessResp(ctx, gin.H{
+		"user_token": token,
+	}, "user login success")
 }

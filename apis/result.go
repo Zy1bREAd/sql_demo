@@ -30,6 +30,7 @@ func (rc *ResultCaches) Set(taskId string, result *QueryResult) {
 // 获取Key对应的values
 func (rc *ResultCaches) Get(taskId string) (*QueryResult, error) {
 	val, exist := rc.cache.Load(taskId)
+	fmt.Println(val, exist)
 	if !exist {
 		return nil, GenerateError("GetResultError", "result key is not exist")
 	}
