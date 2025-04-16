@@ -111,3 +111,12 @@ func ValidateJWTToken(tokenStr string) (bool, error) {
 
 	return true, nil
 }
+
+// string转换uint的方法
+func StrToUint(data string) uint {
+	uintData, err := strconv.ParseUint(data, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint(uintData)
+}

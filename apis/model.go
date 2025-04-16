@@ -33,7 +33,7 @@ type UserResp struct {
 type QueryAuditLog struct {
 	ID           uint   `gorm:"primaryKey"`
 	TaskID       string `gorm:"type:varchar(255);not null;uniqueIndex"` // 为什么增加taskid 因为后期可能通过taskid检索日志找到一些执行的过程。
-	UserID       string
+	UserID       uint
 	SQLStatement string    `gorm:"not null"`
 	DBName       string    `gorm:"type:varchar(255)"`
 	TimeStamp    time.Time `gorm:"autoCreateTime"`

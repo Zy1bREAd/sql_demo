@@ -50,6 +50,7 @@ func InitBaseRoutes() {
 		rgAuth.GET("/keys", getMapKeys)
 		rgAuth.POST("/user_create", userCreate)
 		rgPublic.POST("/login", userLogin)
+		rgAuth.GET("/records", userLogin)
 	})
 
 }
@@ -58,6 +59,7 @@ type UserQuery struct {
 	Database  string `json:"db_name"`
 	Statement string `json:"query_sql"`
 	TaskID    string `json:"task_id"` // 任务ID
+	UserID    string `json:"user_id"`
 }
 
 // 认证鉴权中间件
@@ -71,25 +73,29 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 		fmt.Println(tokenList)
-		_, err := ParseJWT(tokenList[1])
+		userClaim, err := ParseJWT(tokenList[1])
 		if err != nil {
 			// ErrorResp(ctx, err.Error())
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
-
+		ctx.Set("user_id", userClaim.UserID)
+		ctx.Set("user_email", userClaim.Email)
 		ctx.Next()
 	}
 }
 
 // /api/v1/query
 func QueryForGin(ctx *gin.Context) {
+	userID, exist := ctx.Get("user_id")
+	if !exist {
+		ErrorResp(ctx, "User not exist")
+		return
+	}
 	var q UserQuery
 	ctx.BindJSON(&q)
-	fmt.Println("user query params:", q)
-	// 后续提交任务进行执行
-	taskID := SubmitSQLTask(q.Statement, q.Database)
-	// 暂时取出结果看看（后续需要异步通知用户查看）
+	// 提交异步任务入队
+	taskID := SubmitSQLTask(q.Statement, q.Database, userID.(string))
 	SuccessResp(ctx, map[string]string{
 		"task_id": taskID,
 	}, "sql query task enqueue")
@@ -149,4 +155,13 @@ func userLogin(ctx *gin.Context) {
 	SuccessResp(ctx, gin.H{
 		"user_token": token,
 	}, "user login success")
+}
+
+func getQueryRecords(ctx *gin.Context) {
+	err := AllAuditRecords()
+	if err != nil {
+		ErrorResp(ctx, err.Error())
+		return
+	}
+	SuccessResp(ctx, "test ok", "Get query result success")
 }

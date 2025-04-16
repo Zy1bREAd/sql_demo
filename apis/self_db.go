@@ -113,3 +113,36 @@ func Login(email, pass string) (*UserResp, error) {
 }
 
 // 查询操作的日志审计
+// 新增操作审计记录
+func NewAuditRecord(userId uint, taskID string, statement, dbName string) error {
+	tx := selfDB.conn.Begin()
+	record := &QueryAuditLog{
+		TaskID:       taskID,
+		UserID:       userId,
+		SQLStatement: statement,
+		DBName:       dbName,
+		// TimeStamp:    time.Now(),
+	}
+	result := selfDB.conn.Create(record)
+	if result.Error != nil {
+		tx.Rollback()
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		tx.Rollback()
+		return GenerateError("InsertAuditRecordError", "insert a query record failed")
+	}
+	tx.Commit()
+
+	return nil
+}
+
+func AllAuditRecords() error {
+	queryRecords := &QueryAuditLog{}
+	result := selfDB.conn.Find(queryRecords)
+	if result.Error != nil {
+		return result.Error
+	}
+	fmt.Println(queryRecords)
+	return nil
+}

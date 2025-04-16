@@ -18,16 +18,18 @@ type QueryTask struct {
 	DBName    string
 	Statement string
 	Deadline  int64 // 超时时间（单位为秒）,默认 30s
+	UserID    uint  // 关联执行用户id
 }
 
 // 提交SQL查询任务入队
-func SubmitSQLTask(statement string, database string) string {
+func SubmitSQLTask(statement string, database string, userId string) string {
 	//! context控制超时
 	task := &QueryTask{
 		ID:        GenerateUUIDKey(),
 		DBName:    database,
 		Statement: statement,
 		Deadline:  10,
+		UserID:    StrToUint(userId),
 	}
 	TaskQueue <- task
 	log.Printf("task id:%s is enqueue", task.ID)
@@ -35,11 +37,6 @@ func SubmitSQLTask(statement string, database string) string {
 }
 
 func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
-	defer func() {
-		if err := recover(); err != nil {
-			log.Println(err)
-		}
-	}()
 	//! 执行任务函数只当只关心任务处理逻辑本身
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 	defer cancel()
@@ -52,7 +49,6 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 			Error:   err,
 		}
 		return
-		// panic(err)
 	}
 	// 执行前健康检查DB
 	err = op.HealthCheck(ctx)
@@ -66,14 +62,12 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	}
 	log.Printf("<%s> DB Connection HealthCheck OK", op.name)
 	result := op.Query(ctx, task.Statement, task.ID)
-	// if result.Error != nil {
-	// 	ResultQueue <- &QueryResult{
-	// 		Results: nil,
-	// 		Error:   result.Error,
-	// 	}
-	// 	return
-	// 	// panic(result.Error)
-	// }
+	// 插入审计记录
+	err = NewAuditRecord(task.UserID, task.ID, task.Statement, task.DBName)
+	if err != nil {
+		// 类似这种错误不应该影响当前application的运行，可以push到error list，然后在log中打印出来方便有需要的时候进行追踪。
+		log.Println(err)
+	}
 	//! 有必要管理sqltask的状态吗？
 	ResultQueue <- result
 	// defer op.Close()			引入多数据库实例连接查询，因此移除执行完SQL查询后断开连接
