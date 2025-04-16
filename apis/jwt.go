@@ -45,7 +45,9 @@ func (uc UserClaim) GetSubject() (string, error) {
 // 	return GenerateSalt()
 // }
 
-func GenerateJWT(name, email string) (string, error) {
+func GenerateJWT(id uint, name, email string) (string, error) {
+	// 转换id类型
+	idStr := strconv.FormatUint(uint64(id), 10)
 	userclaim := &UserClaim{
 		OrignalClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(3 * time.Hour)), // default=3h
@@ -53,7 +55,8 @@ func GenerateJWT(name, email string) (string, error) {
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    name,
 		},
-		Email: email,
+		Email:  email,
+		UserID: idStr,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, userclaim)
 	// 使用随机uuid来签名jwt

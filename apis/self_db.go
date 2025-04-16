@@ -102,14 +102,14 @@ func Login(email, pass string) (*UserResp, error) {
 		return nil, result.Error
 	}
 	// 校验用户密码
-	if ok := ValidateValueWithMd5(pass, user.Password); ok {
-		// 登录成功
-		// 过滤隐私关键字段（将结构体映射成专用响应结构体）
-		userResp := user.ToUserResp()
-		return &userResp, nil
+	if ok := ValidateValueWithMd5(pass, user.Password); !ok {
+		return nil, GenerateError("LoginFailed", "the user account or password is incorrect")
 	}
+	// 登录成功
+	// 过滤隐私关键字段（将结构体映射成专用响应结构体）
+	userResp := user.ToUserResp()
+	return &userResp, nil
 
-	return nil, GenerateError("LoginFailed", "the user account or password is incorrect")
 }
 
 // 查询操作的日志审计

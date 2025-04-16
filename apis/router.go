@@ -142,7 +142,7 @@ func userLogin(ctx *gin.Context) {
 		ErrorResp(ctx, err.Error())
 		return
 	}
-	token, err := GenerateJWT(user.Name, user.Email)
+	token, err := GenerateJWT(user.ID, user.Name, user.Email)
 	if err != nil {
 		ErrorResp(ctx, err.Error())
 	}
