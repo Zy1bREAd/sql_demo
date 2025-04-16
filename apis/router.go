@@ -28,14 +28,14 @@ func RegisterRoute(fn FnRegisterRoute) {
 // 封装路由组件
 func InitRouter() {
 	r := gin.New()
-	r.Use(AuthMiddleware())
+
 	rgPublic := r.Group("/api/v1/public")
 	rgAuth := r.Group("/api/v1/")
-	// rgPublic.GET("xxx", func(ctx *gin.Context) {})
+	// 使用认证鉴权中间件
+	rgAuth.Use(AuthMiddleware())
 	InitBaseRoutes()
 
 	// 加载路由注册函数
-	fmt.Println(fnRoutes)
 	for _, fn := range fnRoutes {
 		fn(rgPublic, rgAuth)
 	}

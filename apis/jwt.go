@@ -8,7 +8,7 @@ import (
 )
 
 // 先用全局唯一secretKey
-var secretKey string = "oceanwang"
+var secretKey string = "oceanwang-256-secret"
 
 // 定义用户的声明,并且实现JWT接口
 type UserClaim struct {
@@ -61,7 +61,7 @@ func GenerateJWT(id uint, name, email string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, userclaim)
 	// 使用随机uuid来签名jwt
 	// secretKey := generateSecret()
-	tokenStr, err := token.SignedString([]byte("secretKey"))
+	tokenStr, err := token.SignedString([]byte(secretKey))
 	if err != nil {
 		return "", GenerateError("GenerateJWTFailed", err.Error())
 	}
