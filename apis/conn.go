@@ -250,5 +250,5 @@ func GetDBInstance(name string) (*DBInstance, error) {
 	if instance, ok := globalDBPool.Pool[name]; ok {
 		return instance, nil
 	}
-	return nil, GenerateError("Instance Error", fmt.Sprintf("%s db instance not found", name))
+	return nil, GenerateError("Instance Error", fmt.Sprintf("(%s) db instance not found", name))
 }

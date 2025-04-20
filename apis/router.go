@@ -28,7 +28,7 @@ func RegisterRoute(fn FnRegisterRoute) {
 // 封装路由组件
 func InitRouter() {
 	r := gin.New()
-
+	r.Use(corsMiddleware())
 	rgPublic := r.Group("/api/v1/public")
 	rgAuth := r.Group("/api/v1/")
 	// 使用认证鉴权中间件
@@ -39,7 +39,7 @@ func InitRouter() {
 	for _, fn := range fnRoutes {
 		fn(rgPublic, rgAuth)
 	}
-	r.Run(":8099")
+	r.Run("localhost:21899")
 }
 
 // 初始化基础路由
@@ -48,7 +48,7 @@ func InitBaseRoutes() {
 		rgAuth.POST("/query", QueryForGin)
 		rgAuth.POST("/result", getQueryResult)
 		rgAuth.GET("/keys", getMapKeys)
-		rgAuth.POST("/user_create", userCreate)
+		rgPublic.POST("/register", userCreate)
 		rgPublic.POST("/login", userLogin)
 		rgAuth.GET("/records", userLogin)
 	})
@@ -62,14 +62,32 @@ type UserQuery struct {
 	UserID    string `json:"user_id"`
 }
 
+// 跨域问题
+func corsMiddleware() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")                                          //允许跨域请求的来源，这里指示前端地址。可以使用通配符*来放行全部
+		ctx.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE,OPTIONS")            //允许请求的方法，指明实际请求所允许使用的 HTTP 方法
+		ctx.Writer.Header().Set("Access-Control-Allow-Headers", "Origin,Accept,Content-Type, Authorization") // 允许的请求头字段，指明实际请求中允许携带的首部字段
+		ctx.Writer.Header().Set("Access-Control-Max-Age", "3600")                                            // OPTION请求的缓存时间，单位为秒
+
+		// 预处理OPTIONS
+		if ctx.Request.Method == "OPTIONS" {
+			ctx.AbortWithStatus(200)
+			return
+		}
+
+		ctx.Next()
+	}
+}
+
 // 认证鉴权中间件
 func AuthMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		reqToken := ctx.Request.Header.Get("Authorization")
 		tokenList := strings.Split(reqToken, " ")
-		if len(tokenList) != 2 {
+		if len(tokenList) != 2 || tokenList[0] != "Bearer:" {
 			// ErrorResp(ctx, "Jwt token not exist")
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token invalid"})
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token is invalid,please check"})
 			return
 		}
 		fmt.Println(tokenList)
@@ -87,13 +105,15 @@ func AuthMiddleware() gin.HandlerFunc {
 
 // /api/v1/query
 func QueryForGin(ctx *gin.Context) {
+	// 防止伪造jwt请求
 	userID, exist := ctx.Get("user_id")
 	if !exist {
 		ErrorResp(ctx, "User not exist")
 		return
 	}
 	var q UserQuery
-	ctx.BindJSON(&q)
+	ctx.ShouldBind(&q)
+	fmt.Println(q)
 	// 提交异步任务入队
 	taskID := SubmitSQLTask(q.Statement, q.Database, userID.(string))
 	SuccessResp(ctx, map[string]string{
