@@ -2,7 +2,7 @@ package apis
 
 import "github.com/gin-gonic/gin"
 
-//! 封装响应数据
+// ! 封装响应数据
 const (
 	successCode = 200
 	errorCode   = 500
@@ -27,6 +27,14 @@ func SuccessResp(ctx *gin.Context, data any, msg string) {
 func ErrorResp(ctx *gin.Context, msg string) {
 	ctx.JSON(errorCode, JSONResponse{
 		Code:    errorCode,
+		Message: msg,
+	})
+}
+
+func DefaultResp(ctx *gin.Context, code int, data any, msg string) {
+	ctx.JSON(successCode, JSONResponse{
+		Code:    code,
+		Data:    data,
 		Message: msg,
 	})
 }

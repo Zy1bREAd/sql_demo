@@ -50,6 +50,7 @@ func InitBaseRoutes() {
 		rgPublic.POST("/login", userLogin)
 
 		rgAuth.POST("/sql/query", QueryForGin)
+
 		rgAuth.GET("/:taskId/result", getQueryResult)
 		rgAuth.GET("/sql/result/keys", getMapKeys)
 		rgAuth.GET("/db/list", DBList)
@@ -143,13 +144,23 @@ func QueryForGin(ctx *gin.Context) {
 	}, "sql query task enqueue")
 }
 
+// 通过SSE返回结果数据 ？?
 func getQueryResult(ctx *gin.Context) {
 	taskID := ctx.Param("taskId")
 	if taskID == "" {
 		ErrorResp(ctx, "taskID is null")
 		return
 	}
-	userResult, err := ResultMap.Get(taskID)
+	userResult, err, exist := ResultMap.Get(taskID)
+	// 仅获取不到key的时候重新获取
+	if !exist {
+		// ErrorResp(ctx, err.Error())
+		fmt.Println("记录不在（可能仍在select）")
+		DefaultResp(ctx, -1, nil, "记录不在（可能仍在select）")
+		return
+		// time.Sleep(1 * time.Second)
+		// continue
+	}
 	if err != nil {
 		ErrorResp(ctx, err.Error())
 		return

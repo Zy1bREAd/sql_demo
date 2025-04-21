@@ -37,16 +37,15 @@ func (rc *ResultCaches) Set(taskId string, result *QueryResult) {
 }
 
 // 获取Key对应的values
-func (rc *ResultCaches) Get(taskId string) (*QueryResult, error) {
+func (rc *ResultCaches) Get(taskId string) (*QueryResult, error, bool) {
 	val, exist := rc.cache.Load(taskId)
-	fmt.Println(val, exist)
 	if !exist {
-		return nil, GenerateError("GetResultError", "result key is not exist")
+		return nil, GenerateError("GetResultError", "result key is not exist"), exist
 	}
 	if val, ok := val.(*QueryResult); ok {
-		return val, nil
+		return val, nil, exist
 	}
-	return nil, GenerateError("GetResultError", "result is not `QueryResult` type")
+	return nil, GenerateError("GetResultError", "result is not `QueryResult` type"), exist
 }
 
 // 删除Key
