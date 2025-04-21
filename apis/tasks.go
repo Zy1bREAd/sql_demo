@@ -46,6 +46,7 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	op, err := GetDBInstance(task.DBName)
 	if err != nil {
 		queryResult := &QueryResult{
+			ID:      task.ID,
 			Results: nil,
 			Error:   err,
 			// ExpireTime: <-time.After(180 * time.Second),
@@ -59,6 +60,7 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	if err != nil {
 		errMsg := fmt.Sprintf("excute sql task is failed : %s", err.Error())
 		queryResult := &QueryResult{
+			ID:      task.ID,
 			Results: nil,
 			Error:   GenerateError("HealthCheck Failed", errMsg),
 			// ExpireTime: <-time.After(180 * time.Second),

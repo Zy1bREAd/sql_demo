@@ -20,7 +20,6 @@ type QueryResult struct {
 }
 
 func (qr *QueryResult) SetExpireTime(s int) {
-	fmt.Println("开始倒计时")
 	time.AfterFunc(time.Duration(s)*time.Second, func() {
 		CleanQueue <- qr.ID
 	})

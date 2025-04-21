@@ -92,7 +92,6 @@ func AuthMiddleware() gin.HandlerFunc {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token is invalid,please check"})
 			return
 		}
-		fmt.Println(tokenList)
 		userClaim, err := ParseJWT(tokenList[1])
 		if err != nil {
 			// ErrorResp(ctx, err.Error())
