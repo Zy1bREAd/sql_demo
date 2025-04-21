@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -45,12 +46,13 @@ func InitRouter() {
 // 初始化基础路由
 func InitBaseRoutes() {
 	RegisterRoute(func(rgPublic, rgAuth *gin.RouterGroup) {
-		rgAuth.POST("/query", QueryForGin)
-		rgAuth.POST("/result", getQueryResult)
-		rgAuth.GET("/keys", getMapKeys)
 		rgPublic.POST("/register", userCreate)
 		rgPublic.POST("/login", userLogin)
-		rgAuth.GET("/records", userLogin)
+
+		rgAuth.POST("/sql/query", QueryForGin)
+		rgAuth.GET("/:taskId/result", getQueryResult)
+		rgAuth.GET("/sql/result/keys", getMapKeys)
+		rgAuth.GET("/db/list", DBList)
 	})
 
 }
@@ -103,6 +105,22 @@ func AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
+func DBList(ctx *gin.Context) {
+	pool := newDBPoolManager()
+	list := pool.getDBList()
+	SuccessResp(ctx, list, "get DB List Success")
+}
+
+func tempFormatStatement(data string) (string, error) {
+	re, err := regexp.Compile(`([a-zA-Z0-9])(\s+)([a-zA-Z0-9])`)
+	if err != nil {
+		return "", GenerateError("SQLFormatError", err.Error())
+	}
+	result := re.ReplaceAllString(data, "$1 $3")
+	fmt.Println("替换后的结果：", result)
+	return result, nil
+}
+
 // /api/v1/query
 func QueryForGin(ctx *gin.Context) {
 	// 防止伪造jwt请求
@@ -114,17 +132,25 @@ func QueryForGin(ctx *gin.Context) {
 	var q UserQuery
 	ctx.ShouldBind(&q)
 	fmt.Println(q)
+	// 格式化SQL查询语句（确保规范化）
+	formatSQL, err := tempFormatStatement(q.Statement)
+	if err != nil {
+		ErrorResp(ctx, err.Error())
+	}
 	// 提交异步任务入队
-	taskID := SubmitSQLTask(q.Statement, q.Database, userID.(string))
+	taskID := SubmitSQLTask(formatSQL, q.Database, userID.(string))
 	SuccessResp(ctx, map[string]string{
 		"task_id": taskID,
 	}, "sql query task enqueue")
 }
 
 func getQueryResult(ctx *gin.Context) {
-	var q UserQuery
-	ctx.BindJSON(&q)
-	userResult, err := ResultMap.Get(q.TaskID)
+	taskID := ctx.Param("taskId")
+	if taskID == "" {
+		ErrorResp(ctx, "taskID is null")
+		return
+	}
+	userResult, err := ResultMap.Get(taskID)
 	if err != nil {
 		ErrorResp(ctx, err.Error())
 		return

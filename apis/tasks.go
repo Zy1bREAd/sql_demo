@@ -10,6 +10,7 @@ import (
 // 维护全局变量
 var TaskQueue chan *QueryTask = make(chan *QueryTask, 30) // 预分配空间
 var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
+var CleanQueue chan string = make(chan string, 30)
 
 // var HouseKeepingQueue chan string = make(chan string, 30) // 针对结果集读取后的housekeeping
 
@@ -44,20 +45,26 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	// 获取对应数据库实例进行SQL查询
 	op, err := GetDBInstance(task.DBName)
 	if err != nil {
-		ResultQueue <- &QueryResult{
+		queryResult := &QueryResult{
 			Results: nil,
 			Error:   err,
+			// ExpireTime: <-time.After(180 * time.Second),
 		}
+		go queryResult.SetExpireTime(180)
+		ResultQueue <- queryResult
 		return
 	}
 	// 执行前健康检查DB
 	err = op.HealthCheck(ctx)
 	if err != nil {
 		errMsg := fmt.Sprintf("excute sql task is failed : %s", err.Error())
-		ResultQueue <- &QueryResult{
+		queryResult := &QueryResult{
 			Results: nil,
 			Error:   GenerateError("HealthCheck Failed", errMsg),
+			// ExpireTime: <-time.After(180 * time.Second),
 		}
+		go queryResult.SetExpireTime(180)
+		ResultQueue <- queryResult
 		return
 	}
 	log.Printf("<%s> DB Connection HealthCheck OK", op.name)

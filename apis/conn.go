@@ -136,6 +136,7 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 		queryResult.Error = GenerateError("Task TimeOut", "sql task is failed ,timeout 10s")
 		return queryResult
 	}
+	go queryResult.SetExpireTime(30)
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
 	return queryResult
 }
@@ -222,6 +223,14 @@ func (manager *DBPoolManager) register(configData *DataBaseConfig) error {
 		log.Printf("<%s> DataBase Register Success", dbName)
 	}
 	return nil
+}
+
+func (manager *DBPoolManager) getDBList() []string {
+	dbKeys := []string{}
+	for name, _ := range manager.Pool {
+		dbKeys = append(dbKeys, name)
+	}
+	return dbKeys
 }
 
 // 打开数据库实例连接

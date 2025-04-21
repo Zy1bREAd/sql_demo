@@ -4,20 +4,23 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 )
 
 // 清理已读结果集队列
 func StartCleanWorker(ctx context.Context) {
 	fmt.Println("HouseKeeping Worker Starting ...")
-	ticker := time.NewTicker(180 * time.Second)
+	// ticker := time.NewTicker(180 * time.Second)
 	// defer ticker.Stop()
 	go func() {
 		for {
 			select {
-			// 定时执行清理清理动作
-			case <-ticker.C:
-				ResultMap.Clean()
+			// 单独控制结果集的清理动作(v2.0)
+			case taskId := <-CleanQueue:
+				ResultMap.Del(taskId)
+				log.Printf("taskID=%s 已清理", taskId)
+			// 定时执行清理清理动作(v1.0)
+			// case <-ticker.C:
+			// 	ResultMap.Clean()
 			case <-ctx.Done():
 				log.Println("因错误退出，关闭Clean Worker. Error:", ctx.Err().Error())
 				return

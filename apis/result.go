@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 )
 
 var ResultMap *ResultCaches = &ResultCaches{cache: &sync.Map{}}
@@ -15,6 +16,15 @@ type QueryResult struct {
 	RowCount  int              // 返回结果条数
 	QueryTime float64          // 查询花费的时间
 	Error     error
+	// ExpireTime time.Time // 结果集过期时间（用于自动清理）
+}
+
+func (qr *QueryResult) SetExpireTime(s int) {
+	fmt.Println("开始倒计时")
+	time.AfterFunc(time.Duration(s)*time.Second, func() {
+		CleanQueue <- qr.ID
+	})
+
 }
 
 // 仅针对QueryResult结果集的并发安全哈希表
