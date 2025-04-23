@@ -112,7 +112,7 @@ func DBList(ctx *gin.Context) {
 }
 
 func tempFormatStatement(data string) (string, error) {
-	re, err := regexp.Compile(`([a-zA-Z0-9])(\s+)([a-zA-Z0-9])`)
+	re, err := regexp.Compile(`([a-zA-Z0-9,*])(\s+)([a-zA-Z0-9,*]+)`)
 	if err != nil {
 		return "", GenerateError("SQLFormatError", err.Error())
 	}
@@ -154,9 +154,7 @@ func getQueryResult(ctx *gin.Context) {
 	userResult, err, exist := ResultMap.Get(taskID)
 	// 仅获取不到key的时候重新获取
 	if !exist {
-		// ErrorResp(ctx, err.Error())
-		fmt.Println("记录不在（可能仍在select）")
-		DefaultResp(ctx, -1, nil, "记录不在（可能仍在select）")
+		DefaultResp(ctx, -1, nil, "SQL查询中.......")
 		return
 		// time.Sleep(1 * time.Second)
 		// continue
@@ -165,10 +163,14 @@ func getQueryResult(ctx *gin.Context) {
 		ErrorResp(ctx, err.Error())
 		return
 	} else if userResult.Error != nil {
-		ErrorResp(ctx, userResult.Error.Error())
+		DefaultResp(ctx, 1, "", userResult.Error.Error())
 		return
 	}
-	SuccessResp(ctx, userResult.Results, "Get query result success")
+	SuccessResp(ctx, gin.H{
+		"result":     userResult.Results,
+		"rows_count": userResult.RowCount,
+		"query_time": userResult.QueryTime,
+	}, "SUCCESS")
 }
 
 func getMapKeys(ctx *gin.Context) {
@@ -189,7 +191,7 @@ func userCreate(ctx *gin.Context) {
 	ctx.ShouldBind(&userInfo)
 	err := CreateUser(userInfo.Name, userInfo.Password, userInfo.Email)
 	if err != nil {
-		ErrorResp(ctx, err.Error())
+		DefaultResp(ctx, 1, nil, err.Error())
 	}
 	// 返回创建信息
 	SuccessResp(ctx, "token=...", "Get resultMap all keys success")
@@ -199,24 +201,26 @@ func userCreate(ctx *gin.Context) {
 func userLogin(ctx *gin.Context) {
 	var loginInfo UserInfo
 	ctx.ShouldBind(&loginInfo)
+	fmt.Println("debug:::", loginInfo, ctx.Request.Header)
 	user, err := Login(loginInfo.Email, loginInfo.Password)
 	if err != nil {
-		ErrorResp(ctx, err.Error())
+		DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
 	token, err := GenerateJWT(user.ID, user.Name, user.Email)
 	if err != nil {
-		ErrorResp(ctx, err.Error())
+		DefaultResp(ctx, 1, nil, err.Error())
 	}
 	SuccessResp(ctx, gin.H{
 		"user_token": token,
+		"user":       user.Name,
 	}, "user login success")
 }
 
 func getQueryRecords(ctx *gin.Context) {
 	err := AllAuditRecords()
 	if err != nil {
-		ErrorResp(ctx, err.Error())
+		DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
 	SuccessResp(ctx, "test ok", "Get query result success")

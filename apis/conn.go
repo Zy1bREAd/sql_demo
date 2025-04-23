@@ -138,7 +138,6 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 	}
 	go queryResult.SetExpireTime(180)
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
-	time.Sleep(5 * time.Second)
 	return queryResult
 }
 

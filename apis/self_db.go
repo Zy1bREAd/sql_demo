@@ -67,6 +67,12 @@ func (db *SelfDatabase) autoMigrator() error {
 // 创建用户逻辑
 func CreateUser(name, pass, email string) error {
 	// 事务开启
+	var isExistUser User
+	result := selfDB.conn.Where("email = ?", email).First(&isExistUser)
+	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		// 注册用户：用户是否被注册
+		return GenerateError("UserExist", "user has been registerd")
+	}
 	tx := selfDB.conn.Begin()
 	// 创建User(避免明文传入)
 	salt := GenerateSalt()
@@ -76,7 +82,6 @@ func CreateUser(name, pass, email string) error {
 		Password: EncryptWithSaltMd5(salt, pass),
 		CreateAt: time.Now(),
 	}
-	fmt.Println(user)
 	if err := tx.Create(user).Error; err != nil {
 		tx.Rollback()
 		errMsg := fmt.Sprintln("create user is failed, ", err.Error())
@@ -101,6 +106,7 @@ func Login(email, pass string) (*UserResp, error) {
 		}
 		return nil, result.Error
 	}
+	fmt.Println("debug::::", user)
 	// 校验用户密码
 	if ok := ValidateValueWithMd5(pass, user.Password); !ok {
 		return nil, GenerateError("LoginFailed", "the user account or password is incorrect")
