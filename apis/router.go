@@ -88,7 +88,7 @@ func AuthMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		reqToken := ctx.Request.Header.Get("Authorization")
 		tokenList := strings.Split(reqToken, " ")
-		if len(tokenList) != 2 || tokenList[0] != "Bearer:" {
+		if len(tokenList) != 2 || !strings.HasPrefix(tokenList[0], "Bearer") {
 			// ErrorResp(ctx, "Jwt token not exist")
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token is invalid,please check"})
 			return
@@ -201,7 +201,6 @@ func userCreate(ctx *gin.Context) {
 func userLogin(ctx *gin.Context) {
 	var loginInfo UserInfo
 	ctx.ShouldBind(&loginInfo)
-	fmt.Println("debug:::", loginInfo, ctx.Request.Header)
 	user, err := Login(loginInfo.Email, loginInfo.Password)
 	if err != nil {
 		DefaultResp(ctx, 1, nil, err.Error())

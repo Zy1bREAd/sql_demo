@@ -8,11 +8,12 @@ import (
 func main() {
 	defer apis.ErrorRecover()
 	// 连接本地应用的DB存储数据
-	demoDsn := "oceanwang:uxje67pbQQUP@tcp(localhost:23366)/sql_demo?charset=utf8mb4&parseTime=True&loc=Local"
-	self := apis.InitSelfDB(demoDsn)
+	// demoDsn := "oceanwang:uxje67pbQQUP@tcp(localhost:23366)/sql_demo?charset=utf8mb4&parseTime=True&loc=Local"
+	self := apis.InitSelfDB()
 	defer self.Close()
 	// 初始化多数据库池子的实例
 	apis.LoadInDB()
+	// defer apis.CloseDBPool()
 
 	// 针对请求-工作-处理结果的context
 	ctx, cancel := context.WithCancel(context.Background())

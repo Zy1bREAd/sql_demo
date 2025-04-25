@@ -5,11 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
+
+// 读取配置文件
+type appEnvConfig struct {
+	DBEnv map[string]MySQLConfig `yaml:"db"`
+}
 
 var selfDB *SelfDatabase
 
@@ -17,14 +25,20 @@ type SelfDatabase struct {
 	conn *gorm.DB
 }
 
-func connect(dsn string) error {
+func connect(dsn string, maxIdle, maxConn int) error {
 	if selfDB == nil {
-		db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+		gdb, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 		if err != nil {
 			return GenerateError("DB Connect Failed", "sql demo self db unable to connect")
 		}
+		dbPool, err := gdb.DB()
+		if err != nil {
+			return GenerateError("DB Connect Failed", "db conn pool init failed")
+		}
+		dbPool.SetConnMaxIdleTime(time.Duration(maxIdle))
+		dbPool.SetMaxOpenConns(maxConn)
 		selfDB = &SelfDatabase{
-			conn: db,
+			conn: gdb,
 		}
 		return nil
 	}
@@ -32,12 +46,32 @@ func connect(dsn string) error {
 	return selfDB.healthCheck()
 }
 
-func InitSelfDB(dsn string) *SelfDatabase {
-	err := connect(dsn)
+func InitSelfDB() *SelfDatabase {
+	var config appEnvConfig
+	f, err := os.ReadFile("config/env.yaml")
 	if err != nil {
-		panic(err)
+		panic(GenerateError("Init Error", err.Error()))
 	}
-	// 迁移表
+	err = yaml.Unmarshal(f, &config)
+	if err != nil {
+		panic(GenerateError("Init Error", err.Error()))
+	}
+	// 需要检查yaml环境变量能否解析到config(DEBUG)
+
+	for driver, conf := range config.DBEnv {
+		// 判断不同数据库驱动选择不同的连接方式
+		switch {
+		case strings.ToLower(driver) == "mysql":
+			err = connect(conf.DSN, conf.IdleTime, conf.MaxConn)
+			if err != nil {
+				panic(GenerateError("????", err.Error()))
+			}
+		default:
+			panic(GenerateError("DB Driver Not Found", "driver not found"))
+		}
+	}
+
+	// auto迁移表
 	selfDB.autoMigrator()
 	log.Println("DB migrator完成")
 	return selfDB
@@ -58,7 +92,7 @@ func (db *SelfDatabase) healthCheck() error {
 
 func (db *SelfDatabase) autoMigrator() error {
 	if db == nil {
-		return GenerateError("Migrator Failed", "db is not init")
+		return GenerateError("Migrator Failed", "self db is not init")
 	}
 	// 表多的话要以注册的方式注册进来，避免手动一个个输入
 	return db.conn.AutoMigrate(&User{}, &QueryAuditLog{})
@@ -106,7 +140,6 @@ func Login(email, pass string) (*UserResp, error) {
 		}
 		return nil, result.Error
 	}
-	fmt.Println("debug::::", user)
 	// 校验用户密码
 	if ok := ValidateValueWithMd5(pass, user.Password); !ok {
 		return nil, GenerateError("LoginFailed", "the user account or password is incorrect")

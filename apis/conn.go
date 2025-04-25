@@ -35,8 +35,8 @@ type DataBaseConfig struct {
 	DBConfig map[string]MySQLConfig `yaml:"database"`
 }
 type MySQLConfig struct {
-	MaxConn  int    `yaml:"max_conn"`
 	DSN      string `yaml:"dsn"`
+	MaxConn  int    `yaml:"max_conn"`
 	IdleTime int    `yaml:"idle_time"`
 }
 
@@ -84,7 +84,7 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 	start := time.Now()
 	rows, err := instance.QueryForRaw(ctx, sqlRaw)
 	if err != nil {
-		queryResult.Error = GenerateError("SQLTask Query Error", err.Error())
+		queryResult.Error = err
 		return queryResult
 	}
 	defer rows.Close()
@@ -137,6 +137,7 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 		return queryResult
 	}
 	go queryResult.SetExpireTime(180)
+	// time.Sleep(5 * time.Second)
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
 	return queryResult
 }
@@ -182,7 +183,7 @@ func newDBPoolManager() *DBPoolManager {
 		globalDBPool = &DBPoolManager{
 			Pool: make(map[string]*DBInstance),
 		}
-		log.Println("Once.Do Init Pool Success, ", globalDBPool)
+		// log.Println("Once.Do Init Pool Success, ", globalDBPool)
 	})
 	return globalDBPool
 }
@@ -223,6 +224,20 @@ func (manager *DBPoolManager) register(configData *DataBaseConfig) error {
 		log.Printf("<%s> DataBase Register Success", dbName)
 	}
 	return nil
+}
+
+func (manager *DBPoolManager) close(instance *DBInstance) error {
+	return instance.Close()
+}
+
+func CloseDBPool() {
+	manager := newDBPoolManager()
+	for _, instance := range manager.Pool {
+		err := manager.close(instance)
+		if err != nil {
+			log.Println("close db pool", err.Error())
+		}
+	}
 }
 
 func (manager *DBPoolManager) getDBList() []string {
