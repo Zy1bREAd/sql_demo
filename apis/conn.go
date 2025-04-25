@@ -235,7 +235,7 @@ func CloseDBPool() {
 	for _, instance := range manager.Pool {
 		err := manager.close(instance)
 		if err != nil {
-			log.Println("close db pool", err.Error())
+			log.Println(fmt.Sprintf("close db instance=%s is failed!!!", instance.name), err.Error())
 		}
 	}
 }

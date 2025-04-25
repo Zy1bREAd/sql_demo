@@ -1,11 +1,16 @@
 package apis
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"regexp"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,7 +32,7 @@ func RegisterRoute(fn FnRegisterRoute) {
 }
 
 // 封装路由组件
-func InitRouter() {
+func InitRouter(address string) {
 	r := gin.New()
 	r.Use(corsMiddleware())
 	rgPublic := r.Group("/api/v1/public")
@@ -40,7 +45,27 @@ func InitRouter() {
 	for _, fn := range fnRoutes {
 		fn(rgPublic, rgAuth)
 	}
-	r.Run("localhost:21899")
+
+	// r.Run("localhost:21899")
+	// 优雅关闭：监听信号量的context，等待信号量出现进行cancel()；传入gin server进行关闭。
+	srv := &http.Server{
+		Addr:    address,
+		Handler: r,
+	}
+	go func() {
+		fmt.Printf("Listening and serving HTTP on %s\n", address)
+		srv.ListenAndServe()
+	}()
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+	<-signalChan // 正因为需要这个阻塞情况（当读取到信号量即不阻塞代表要触发优雅关闭）
+
+	// 等待连接处理完（等待超时）关闭即可shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		GenerateError("ShutDown Server Failed", err.Error())
+	}
 }
 
 // 初始化基础路由
