@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// 涉及隐私的字段
 var illegalKeys = []string{
 	"privatekey", "itemid",
 }
@@ -94,9 +95,15 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 	//! 结果集处理
 	// 获取SQL要查询的列名
 	cols, _ := rows.Columns()
+
 	// 遍历结果集，逐行处理结果
 	for rows.Next() {
+		if rows.Err() != nil {
+			log.Println("该行有问题，直接跳过")
+			break
+		}
 		values := make([]any, len(cols)) // 每一行都创建结果集容器的切片,按照列的顺序进行存储
+
 		// 初始化结果集容器；将该切片中的元素都初始化为sql.RawBytes容器，用于存放列值
 		for i := range values {
 			values[i] = new(sql.RawBytes) // 原始SQL语句最终以字节切片的方式进行存储；type RawBytes []byte
@@ -111,20 +118,8 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 		for i, colName := range cols {
 			// 列名切片顺序和values顺序一致，断言结果类型，然后进行存储
 			if value, ok := values[i].(*sql.RawBytes); ok {
-				if value != nil {
-					//! 数据处理（数据脱敏，过滤等）
-					for _, key := range illegalKeys {
-						if key == colName {
-							rowResultMap[colName] = "******"
-						} else {
-							// 输出的类型待优化... 目前只支持string
-							rowResultMap[colName] = string(*value)
-						}
-
-					}
-				} else {
-					rowResultMap[colName] = nil
-				}
+				//! 数据处理（数据脱敏，过滤等）
+				rowResultMap[colName] = DataMaskHandle(colName, value)
 			}
 		}
 		queryResult.Results = append(queryResult.Results, rowResultMap)
@@ -164,7 +159,6 @@ func (instance *DBInstance) validateCheck(statement string) (string, error) {
 		}
 	}
 	statement = sqls[0] + ";"
-	fmt.Println(statement)
 
 	// 除SELECT外语句都不支持
 	illegalSQL := []string{"UPDATE", "DELETE", "DROP", "INSERT", "CREATE", "ALTER"}
@@ -192,18 +186,18 @@ func newDBPoolManager() *DBPoolManager {
 func LoadInDB() {
 	var config DataBaseConfig
 	// 从YAML方式读取
-	fileData, err := os.ReadFile("config/db.yaml")
+	Fieldata, err := os.ReadFile("config/db.yaml")
 	if err != nil {
 		panic(err)
 	}
-	err = yaml.Unmarshal(fileData, &config)
+	err = yaml.Unmarshal(Fieldata, &config)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("yaml config: ", config)
 
 	// 将读取到DB配置注册进数据库池子中进行管理
 	pool := newDBPoolManager()
+	fmt.Println("yaml config: ", config, pool)
 	err = pool.register(&config)
 	if err != nil {
 		panic(err)

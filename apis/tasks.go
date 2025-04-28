@@ -33,11 +33,12 @@ func SubmitSQLTask(statement string, database string, userId string) string {
 		UserID:    StrToUint(userId),
 	}
 	TaskQueue <- task
-	log.Printf("task id:%s is enqueue", task.ID)
+	log.Printf("task id=%s is enqueue", task.ID)
 	return task.ID
 }
 
 func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
+	log.Printf("task id=%s is working", task.ID)
 	//! 执行任务函数只当只关心任务处理逻辑本身
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 	defer cancel()
@@ -80,4 +81,5 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	//! 有必要管理sqltask的状态吗？
 	ResultQueue <- result
 	// defer op.Close()			引入多数据库实例连接查询，因此移除执行完SQL查询后断开连接
+	log.Printf("task id=%s is completed", task.ID)
 }

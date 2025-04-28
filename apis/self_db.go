@@ -5,19 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
-
-// 读取配置文件
-type appEnvConfig struct {
-	DBEnv map[string]MySQLConfig `yaml:"db"`
-}
 
 var selfDB *SelfDatabase
 
@@ -47,22 +40,12 @@ func connect(dsn string, maxIdle, maxConn int) error {
 }
 
 func InitSelfDB() *SelfDatabase {
-	var config appEnvConfig
-	f, err := os.ReadFile("config/env.yaml")
-	if err != nil {
-		panic(GenerateError("Init Error", err.Error()))
-	}
-	err = yaml.Unmarshal(f, &config)
-	if err != nil {
-		panic(GenerateError("Init Error", err.Error()))
-	}
-	// 需要检查yaml环境变量能否解析到config(DEBUG)
-
+	config := getAppConfig()
 	for driver, conf := range config.DBEnv {
 		// 判断不同数据库驱动选择不同的连接方式
 		switch {
 		case strings.ToLower(driver) == "mysql":
-			err = connect(conf.DSN, conf.IdleTime, conf.MaxConn)
+			err := connect(conf.DSN, conf.IdleTime, conf.MaxConn)
 			if err != nil {
 				panic(GenerateError("????", err.Error()))
 			}

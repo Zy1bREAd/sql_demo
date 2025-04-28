@@ -18,7 +18,17 @@ func ErrorRecover() {
 	if err := recover(); err != nil {
 		now := time.Now()
 		log.Printf("[%s][ERRRO] - %s", now.Format("2006-01-02T15:04:05"), err)
-		// panic(err)
+		// 打印goroutine堆栈信息
+		// buf := make([]byte, 1024)
+		// for {
+		// 	n := runtime.Stack(buf, false)
+		// 	if n < len(buf) {
+		// 		buf = buf[:n]
+		// 		runtime.Breakpoint()
+		// 	}
+		// 	buf = make([]byte, 2*len(buf))
+		// }
+		panic(err)
 	}
 }
 
