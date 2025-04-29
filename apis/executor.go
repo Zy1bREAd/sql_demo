@@ -65,8 +65,8 @@ func (instance *DBInstance) Close() error {
 }
 
 func (instance *DBInstance) QueryForRaw(ctx context.Context, statement string) (*sql.Rows, error) {
-	// 语法校验
-	sqlRaw, err := instance.validateCheck(statement)
+	// 语法解析并校验（v2.0)
+	sqlRaw, err := ParseSQL(statement)
 	if err != nil {
 		return nil, err
 	}

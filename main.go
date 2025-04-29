@@ -23,4 +23,7 @@ func main() {
 	apis.StartCleanWorker(ctx)
 	// 初始化Gin以及路由
 	apis.InitRouter("localhost:21899")
+	// q := `SELECT * FROM users WHERE username like ' OR 1=1 --';; DROP TABLE users;
+	// `
+	// apis.ParseSQL(q)
 }

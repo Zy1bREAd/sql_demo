@@ -74,7 +74,7 @@ func InitBaseRoutes() {
 		rgPublic.POST("/register", userCreate)
 		rgPublic.POST("/login", userLogin)
 
-		rgAuth.POST("/sql/query", QueryForGin)
+		rgAuth.POST("/sql/query", UserSQLQuery)
 
 		rgAuth.GET("/:taskId/result", getQueryResult)
 		rgAuth.GET("/sql/result/keys", getMapKeys)
@@ -147,7 +147,7 @@ func tempFormatStatement(data string) (string, error) {
 }
 
 // /api/v1/query
-func QueryForGin(ctx *gin.Context) {
+func UserSQLQuery(ctx *gin.Context) {
 	// 防止伪造jwt请求
 	userID, exist := ctx.Get("user_id")
 	if !exist {
@@ -158,6 +158,7 @@ func QueryForGin(ctx *gin.Context) {
 	ctx.ShouldBind(&q)
 	fmt.Println(q)
 	// 格式化SQL查询语句（确保规范化）
+	// 解析验证SQL
 	formatSQL, err := tempFormatStatement(q.Statement)
 	if err != nil {
 		ErrorResp(ctx, err.Error())
