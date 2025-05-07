@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -32,7 +31,7 @@ func RegisterRoute(fn FnRegisterRoute) {
 }
 
 // 封装路由组件
-func InitRouter(address string) {
+func InitRouter() {
 	r := gin.New()
 	r.Use(corsMiddleware())
 	rgPublic := r.Group("/api/v1/public")
@@ -48,14 +47,36 @@ func InitRouter(address string) {
 
 	// r.Run("localhost:21899")
 	// 优雅关闭：监听信号量的context，等待信号量出现进行cancel()；传入gin server进行关闭。
+	conf := getAppConfig()
 	srv := &http.Server{
-		Addr:    address,
+		// Addr:    address,
 		Handler: r,
 	}
-	go func() {
-		fmt.Printf("Listening and serving HTTP on %s\n", address)
-		srv.ListenAndServe()
-	}()
+	// 判断是否同时启动HTTP + HTTPS
+	if conf.WebSrvEnv.TLSEnv.Enabled {
+		srv.Addr = conf.WebSrvEnv.Addr + ":" + conf.WebSrvEnv.TLSEnv.Port
+		go func() {
+			fmt.Printf("Listening and serving HTTPS on %s\n", conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.TLSEnv.Port)
+			srv.ListenAndServeTLS(conf.WebSrvEnv.TLSEnv.Cert, conf.WebSrvEnv.TLSEnv.Key)
+			// if err != nil {
+			// 	panic(err)
+			// }
+		}()
+		// 将HTTP重定向到HTTPS
+		go func() {
+			fmt.Printf("Listening and serving HTTP on %s\n", conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.Port)
+			http.ListenAndServe(conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.Port, http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
+				}))
+		}()
+	} else {
+		go func() {
+			fmt.Printf("Listening and serving HTTP on %s\n", conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.Port)
+			srv.ListenAndServe()
+		}()
+	}
+
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	<-signalChan // 正因为需要这个阻塞情况（当读取到信号量即不阻塞代表要触发优雅关闭）
@@ -136,16 +157,6 @@ func DBList(ctx *gin.Context) {
 	SuccessResp(ctx, list, "get DB List Success")
 }
 
-func tempFormatStatement(data string) (string, error) {
-	re, err := regexp.Compile(`([a-zA-Z0-9,*])(\s+)([a-zA-Z0-9,*]+)`)
-	if err != nil {
-		return "", GenerateError("SQLFormatError", err.Error())
-	}
-	result := re.ReplaceAllString(data, "$1 $3")
-	fmt.Println("替换后的结果：", result)
-	return result, nil
-}
-
 // /api/v1/query
 func UserSQLQuery(ctx *gin.Context) {
 	// 防止伪造jwt请求
@@ -157,14 +168,15 @@ func UserSQLQuery(ctx *gin.Context) {
 	var q UserQuery
 	ctx.ShouldBind(&q)
 	fmt.Println(q)
-	// 格式化SQL查询语句（确保规范化）
-	// 解析验证SQL
-	formatSQL, err := tempFormatStatement(q.Statement)
+
+	// SQL语法解析并校验（v2.0)  - 格式化SQL查询语句（确保规范化）
+	sqlRaw, err := ParseSQL(q.Statement)
 	if err != nil {
-		ErrorResp(ctx, err.Error())
+		DefaultResp(ctx, 1, nil, err.Error())
+		return
 	}
 	// 提交异步任务入队
-	taskID := SubmitSQLTask(formatSQL, q.Database, userID.(string))
+	taskID := SubmitSQLTask(sqlRaw, q.Database, userID.(string))
 	SuccessResp(ctx, map[string]string{
 		"task_id": taskID,
 	}, "sql query task enqueue")

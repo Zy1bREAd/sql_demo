@@ -14,6 +14,20 @@ var initOnce sync.Once
 type appEnvConfig struct {
 	DBEnv        map[string]MySQLConfig `yaml:"db"`
 	DataMaskMode string                 `yaml:"data_mask"`
+	WebSrvEnv    WebServerConfig        `yaml:"web"`
+}
+
+type WebServerConfig struct {
+	Addr   string       `yaml:"addr"`
+	Port   string       `yaml:"port"`
+	TLSEnv WebTLSConfig `yaml:"tls"`
+}
+
+type WebTLSConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Port    string `yaml:"port"`
+	Key     string `yaml:"key"`
+	Cert    string `yaml:"cert"`
 }
 
 var appConfig *appEnvConfig
@@ -30,7 +44,9 @@ func InitEnv() {
 			panic(GenerateError("Init Error", err.Error()))
 		}
 		fmt.Println("appConfig=", appConfig)
-		// 需要检查yaml环境变量能否解析到config(DEBUG)
+		// 加载数据遮罩规则
+		InitDataMaskConfig()
+
 	})
 }
 

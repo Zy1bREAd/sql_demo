@@ -32,14 +32,13 @@ type RangeConfig struct {
 	End   int `yaml:"end"`
 }
 
-func GetDataMaskConfig() (*DataMaskConfig, error) {
+func InitDataMaskConfig() {
 	if dataMaskConfig == nil {
 		err := loadInRule()
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 	}
-	return dataMaskConfig, nil
 }
 
 func loadInRule() error {
@@ -82,14 +81,15 @@ func (p *PartialDesensitizer) Mask(col string, fieldVal []byte) (string, error) 
 	if !slices.Contains(p.Rule.IllegalFields, col) {
 		return string(fieldVal), nil
 	}
-	if len(fieldVal) >= p.Rule.MatchRange.End {
+	if len(fieldVal) > p.Rule.MatchRange.End {
 		for i := p.Rule.MatchRange.Start; i <= p.Rule.MatchRange.End; i++ {
 			fieldVal[i] = 42
 		}
 		return string(fieldVal), nil
 	}
-	log.Println("数据脱敏失败，超过字节长度")
-	return string(fieldVal), GenerateError("MaskFailed", "range is not match bytes length")
+	return "****", nil
+	// log.Println("数据脱敏失败，超过字节长度")
+	// return string(fieldVal), GenerateError("MaskFailed", "range is not match bytes length")
 }
 
 // 数据遮罩处理

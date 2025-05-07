@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"runtime"
 	"sql_demo/apis"
 )
 
@@ -17,13 +19,16 @@ func main() {
 
 	// 针对请求-工作-处理结果的context
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// defer cancel()
+	defer func() {
+		fmt.Println("<debug> worker goroutine 退出前", runtime.NumGoroutine())
+		cancel()
+		// time.Sleep(1 * time.Second)
+		// fmt.Println("<debug> worker goroutine 退出后", runtime.NumGoroutine())
+	}()
 	apis.StartTaskWorkerPool(ctx)
 	apis.StartResultReader(ctx)
 	apis.StartCleanWorker(ctx)
-	// 初始化Gin以及路由
-	apis.InitRouter("localhost:21899")
-	// q := `SELECT * FROM users WHERE username like ' OR 1=1 --';; DROP TABLE users;
-	// `
-	// apis.ParseSQL(q)
+	// 初始化Gin以及路由( 从yaml file env中读取配置加载Server )
+	apis.InitRouter()
 }

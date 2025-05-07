@@ -65,13 +65,8 @@ func (instance *DBInstance) Close() error {
 }
 
 func (instance *DBInstance) QueryForRaw(ctx context.Context, statement string) (*sql.Rows, error) {
-	// 语法解析并校验（v2.0)
-	sqlRaw, err := ParseSQL(statement)
-	if err != nil {
-		return nil, err
-	}
 	// 执行SQL查询的Core Code
-	return instance.conn.QueryContext(ctx, sqlRaw)
+	return instance.conn.QueryContext(ctx, statement)
 }
 
 // 对内暴露的查询SQL接口
@@ -95,7 +90,6 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 	//! 结果集处理
 	// 获取SQL要查询的列名
 	cols, _ := rows.Columns()
-
 	// 遍历结果集，逐行处理结果
 	for rows.Next() {
 		if rows.Err() != nil {
@@ -113,7 +107,6 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 			queryResult.Error = GenerateError("TaskResult Handle Error", err.Error())
 			return queryResult
 		}
-
 		rowResultMap := make(map[string]any, 0) // 创建存储每行数据结果的容器（Map）
 		for i, colName := range cols {
 			// 列名切片顺序和values顺序一致，断言结果类型，然后进行存储

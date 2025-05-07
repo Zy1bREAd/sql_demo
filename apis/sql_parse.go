@@ -33,7 +33,7 @@ func ParseSQL(statement string) (string, error) {
 	var parse SQLParser
 	stmt, err := parseWithVitess(statement)
 	if err != nil {
-		return "", GenerateError("ParseWithVitess Failed", err.Error())
+		return "", GenerateError("Parse Failed", err.Error())
 	}
 	parse.Stmt = stmt + ";"
 	err = parse.validate()
