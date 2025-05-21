@@ -52,7 +52,6 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 			Error:   err,
 			// ExpireTime: <-time.After(180 * time.Second),
 		}
-		go queryResult.SetExpireTime(180)
 		ResultQueue <- queryResult
 		return
 	}
@@ -66,7 +65,6 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 			Error:   GenerateError("HealthCheck Failed", errMsg),
 			// ExpireTime: <-time.After(180 * time.Second),
 		}
-		go queryResult.SetExpireTime(180)
 		ResultQueue <- queryResult
 		return
 	}

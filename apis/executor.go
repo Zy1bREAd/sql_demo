@@ -14,11 +14,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 涉及隐私的字段
-var illegalKeys = []string{
-	"privatekey", "itemid",
-}
-
 // 数据库SQL执行器（抽象层）
 type SQLExecutor interface {
 	// Query(string) (*sql.Rows, error)
@@ -124,7 +119,6 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 		queryResult.Error = GenerateError("Task TimeOut", "sql task is failed ,timeout 10s")
 		return queryResult
 	}
-	go queryResult.SetExpireTime(180)
 	// time.Sleep(5 * time.Second)
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
 	return queryResult
@@ -190,7 +184,7 @@ func LoadInDB() {
 
 	// 将读取到DB配置注册进数据库池子中进行管理
 	pool := newDBPoolManager()
-	fmt.Println("yaml config: ", config, pool)
+	// fmt.Println("yaml config: ", config, pool)
 	err = pool.register(&config)
 	if err != nil {
 		panic(err)

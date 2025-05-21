@@ -40,7 +40,7 @@ func connect(dsn string, maxIdle, maxConn int) error {
 }
 
 func InitSelfDB() *SelfDatabase {
-	config := getAppConfig()
+	config := GetAppConfig()
 	for driver, conf := range config.DBEnv {
 		// 判断不同数据库驱动选择不同的连接方式
 		switch {
@@ -110,11 +110,11 @@ func CreateUser(name, pass, email string) error {
 	return nil
 }
 
-// 登录
-func Login(email, pass string) (*UserResp, error) {
+// 登录(Basic)
+func BasicLogin(email, pass string) (*UserResp, error) {
 	// 使用该用户相同的salt，对用户密码进行加密验证，与数据库的加密密码进行对比
 	var user User
-	result := selfDB.conn.Where("email = ?", email).First(&user)
+	result := selfDB.conn.Where("email = ?", email).Where("user_type = ?", 0).First(&user)
 	if result.Error != nil {
 		// 判断记录是否不存在
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -131,7 +131,34 @@ func Login(email, pass string) (*UserResp, error) {
 	// 过滤隐私关键字段（将结构体映射成专用响应结构体）
 	userResp := user.ToUserResp()
 	return &userResp, nil
+}
 
+// 登录（SSO gitlab）
+func SSOLogin(username, email string) error {
+	var ssoUser User
+	result := selfDB.conn.Where("name = ?", username).Where("email = ?", email).Where("user_type = ?", 2).First(&ssoUser)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			// 首次注册进入DB
+			newSSOUser := &User{
+				Name:     username,
+				Email:    email,
+				UserType: 2,
+				CreateAt: time.Now(),
+			}
+			tx := selfDB.conn.Begin()
+			if err := tx.Create(newSSOUser).Error; err != nil {
+				tx.Rollback()
+				errMsg := fmt.Sprintln("create sso user is failed, ", err.Error())
+				return GenerateError("SSOUserError", errMsg)
+			}
+			//提交事务
+			tx.Commit()
+		}
+		return result.Error
+	}
+	// 用户登录日志插槽
+	return nil
 }
 
 // 查询操作的日志审计

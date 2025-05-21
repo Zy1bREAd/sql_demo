@@ -1,7 +1,6 @@
 package apis
 
 import (
-	"fmt"
 	"os"
 	"sync"
 
@@ -15,6 +14,7 @@ type appEnvConfig struct {
 	DBEnv        map[string]MySQLConfig `yaml:"db"`
 	DataMaskMode string                 `yaml:"data_mask"`
 	WebSrvEnv    WebServerConfig        `yaml:"web"`
+	SSOEnv       SSOConfig              `yaml:"sso"`
 }
 
 type WebServerConfig struct {
@@ -30,6 +30,21 @@ type WebTLSConfig struct {
 	Cert    string `yaml:"cert"`
 }
 
+type SSOClientConfig struct {
+	ID     string `yaml:"id"`
+	Secret string `yaml:"secret"`
+}
+
+type SSOConfig struct {
+	ClientEnv   SSOClientConfig `yaml:"client"`
+	RedirectURL string          `yaml:"redirect_url"`
+	EndpointEnv EndpointConfig  `yaml:"endpoint"`
+}
+type EndpointConfig struct {
+	AuthURL  string `yaml:"auth_url"`
+	TokenURL string `yaml:"token_url"`
+}
+
 var appConfig *appEnvConfig
 
 // 初始化环境变量配置
@@ -43,14 +58,14 @@ func InitEnv() {
 		if err != nil {
 			panic(GenerateError("Init Error", err.Error()))
 		}
-		fmt.Println("appConfig=", appConfig)
+		// fmt.Println("appConfig=", appConfig)
 		// 加载数据遮罩规则
 		InitDataMaskConfig()
 
 	})
 }
 
-func getAppConfig() *appEnvConfig {
+func GetAppConfig() *appEnvConfig {
 	if appConfig == nil {
 		InitEnv()
 	}

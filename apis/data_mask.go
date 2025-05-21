@@ -94,7 +94,7 @@ func (p *PartialDesensitizer) Mask(col string, fieldVal []byte) (string, error) 
 
 // 数据遮罩处理
 func DataMaskHandle(col string, fieldVal *sql.RawBytes) string {
-	mode := getAppConfig().DataMaskMode
+	mode := GetAppConfig().DataMaskMode
 	// 根据你选择的mask模式返回接口实例，使用接口方法区执行dataMask操作。
 	er := getDesensitizer(mode)
 	maskVal, err := er.Mask(col, *fieldVal)

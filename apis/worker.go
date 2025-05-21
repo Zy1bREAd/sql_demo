@@ -9,8 +9,6 @@ import (
 // 清理已读结果集队列
 func StartCleanWorker(ctx context.Context) {
 	fmt.Println("HouseKeeping Worker Starting ...")
-	// ticker := time.NewTicker(180 * time.Second)
-	// defer ticker.Stop()
 	go func() {
 		for {
 			select {
@@ -18,8 +16,7 @@ func StartCleanWorker(ctx context.Context) {
 			case taskId := <-CleanQueue:
 				ResultMap.Del(taskId)
 				log.Printf("taskID=%s 已清理", taskId)
-			// 定时执行清理清理动作(v1.0)
-			// case <-ticker.C:
+			// case <-ticker.C:		定时执行清理清理动作(v1.0)
 			// 	ResultMap.Clean()
 			case <-ctx.Done():
 				log.Println("因错误退出，关闭Clean Worker. Error:", ctx.Err().Error())
@@ -60,7 +57,7 @@ func StartResultReader(ctx context.Context) {
 						log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
 					}
 					//! 后期核心处理结果集的代码逻辑块
-					ResultMap.Set(res.ID, res)
+					ResultMap.Set(res.ID, res, 30)
 				case <-ctx.Done():
 					log.Println("因错误退出，关闭当前Reader, Error:", ctx.Err().Error())
 					return

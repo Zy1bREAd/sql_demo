@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var ResultMap *ResultCaches = &ResultCaches{cache: &sync.Map{}}
+var ResultMap *CachesMap = &CachesMap{cache: &sync.Map{}}
 
 type QueryResult struct {
 	ID        string           // task id
@@ -19,41 +19,35 @@ type QueryResult struct {
 	// ExpireTime time.Time // 结果集过期时间（用于自动清理）
 }
 
-func (qr *QueryResult) SetExpireTime(s int) {
-	time.AfterFunc(time.Duration(s)*time.Second, func() {
-		CleanQueue <- qr.ID
-	})
-
-}
-
 // 仅针对QueryResult结果集的并发安全哈希表
-type ResultCaches struct {
+type CachesMap struct {
 	cache *sync.Map
 }
 
 // 添加kv
-func (rc *ResultCaches) Set(taskId string, result *QueryResult) {
-	rc.cache.Store(taskId, result) // 应该存储结果集结构体
+func (rc *CachesMap) Set(key string, values any, expireTime int) {
+	rc.cache.Store(key, values) // 应该存储结果集结构体
+	if expireTime > 0 {
+		go func() {
+			time.AfterFunc(time.Duration(expireTime)*time.Second, func() {
+				CleanQueue <- key
+			})
+		}()
+	}
+
 }
 
 // 获取Key对应的values
-func (rc *ResultCaches) Get(taskId string) (*QueryResult, error, bool) {
-	val, exist := rc.cache.Load(taskId)
-	if !exist {
-		return nil, GenerateError("GetResultError", "result key is not exist"), exist
-	}
-	if val, ok := val.(*QueryResult); ok {
-		return val, nil, exist
-	}
-	return nil, GenerateError("GetResultError", "result is not `QueryResult` type"), exist
+func (rc *CachesMap) Get(key string) (any, bool) {
+	return rc.cache.Load(key)
 }
 
 // 删除Key
-func (rc *ResultCaches) Del(taskId string) {
+func (rc *CachesMap) Del(taskId string) {
 	rc.cache.Delete(taskId)
 }
 
-func (rc *ResultCaches) Keys() []string {
+func (rc *CachesMap) Keys() []string {
 	allKey := []string{}
 	rc.cache.Range(func(key, value any) bool {
 		if val, ok := key.(string); ok {
@@ -65,7 +59,7 @@ func (rc *ResultCaches) Keys() []string {
 }
 
 // 清理所有Keys
-func (rc *ResultCaches) Clean() {
+func (rc *CachesMap) Clean() {
 	keys := rc.Keys()
 	for _, k := range keys {
 		rc.Del(k)
@@ -74,9 +68,14 @@ func (rc *ResultCaches) Clean() {
 }
 
 // 遍历sync.Map中的kv（DEBUG）
-func (rc *ResultCaches) Range() {
+func (rc *CachesMap) Range() {
 	rc.cache.Range(func(key, value any) bool {
 		fmt.Printf("sync.Map key=%v , values=%v", key, value)
 		return true
 	})
 }
+
+// // 转换CSV文件
+// func ConvertMapToCSV(data []map[string]any, fileName string) error {
+
+// }

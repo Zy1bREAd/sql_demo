@@ -2,11 +2,14 @@ package apis
 
 import "time"
 
+// UserType： 0=Default User; 2=SSO User
+
 type User struct {
 	ID       uint   `gorm:"primaryKey"`
 	Name     string `gorm:"type:varchar(255);not null"`
 	Password string `gorm:"type:varchar(255);not null"`
 	Email    string `gorm:"type:varchar(255);not null;uniqueIndex"`
+	UserType int    `gorm:"type:smallint;not null"`
 	CreateAt time.Time
 
 	// 权限？
