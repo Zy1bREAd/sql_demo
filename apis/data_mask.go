@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 
 	"slices"
@@ -62,12 +63,24 @@ type FullDesensitizer struct {
 	Rule RuleConfig
 }
 
-// 全加密模式
+// 全加密模式（顺序：精准匹配 -> 正则匹配）
 func (f *FullDesensitizer) Mask(col string, fieldVal []byte) (string, error) {
-	// 后续判断是否启用正则
-	fmt.Println("debug>>>", f.Rule.IllegalFields, col, f.Rule)
 	if slices.Contains(f.Rule.IllegalFields, col) {
 		return f.Rule.MaskValue, nil
+	}
+	if f.Rule.Regex {
+		for _, illegalRegex := range f.Rule.IllegalFields {
+			re, err := regexp.Compile(illegalRegex)
+			fmt.Println("debug>>", re, illegalRegex)
+			if err != nil {
+				log.Println("Regex Pattern is invalid")
+				return "", err
+			}
+			if re.MatchString(col) {
+				return f.Rule.MaskValue, nil
+			}
+			continue
+		}
 	}
 	return string(fieldVal), nil
 }
@@ -97,6 +110,9 @@ func DataMaskHandle(col string, fieldVal *sql.RawBytes) string {
 	mode := GetAppConfig().DataMaskMode
 	// 根据你选择的mask模式返回接口实例，使用接口方法区执行dataMask操作。
 	er := getDesensitizer(mode)
+	if er == nil {
+		return string(*fieldVal)
+	}
 	maskVal, err := er.Mask(col, *fieldVal)
 	if err != nil {
 		log.Println("数据脱敏操作有问题", err.Error())
@@ -122,7 +138,7 @@ func getDesensitizer(mode string) Desensitizer {
 	case lowerStr == "partial":
 		return &PartialDesensitizer{Rule: rule}
 	default:
-		log.Println("没有匹配到数据遮罩模式")
+		log.Println("数据遮罩模式为 none")
 		return nil
 	}
 }

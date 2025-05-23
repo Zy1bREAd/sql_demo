@@ -8,7 +8,6 @@ import (
 )
 
 func main() {
-	//! TODO：后期引入配置形式（如YAML、ENV等）来加载变量
 	// defer func() {
 	// 	fmt.Println("xxxx")
 	// 	time.Sleep(1 * time.Second)

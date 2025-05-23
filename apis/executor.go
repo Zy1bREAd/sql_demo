@@ -66,12 +66,10 @@ func (instance *DBInstance) QueryForRaw(ctx context.Context, statement string) (
 
 // 对内暴露的查询SQL接口
 func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) *QueryResult {
-	// 校验SQL合法性...
 	queryResult := &QueryResult{
 		QueryRaw: sqlRaw,
 		ID:       taskId,
 	}
-	// 通过传入原生SQL语句进行查询（后期抽出来）
 	start := time.Now()
 	rows, err := instance.QueryForRaw(ctx, sqlRaw)
 	if err != nil {
@@ -81,7 +79,6 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 	defer rows.Close()
 	end := time.Since(start)
 	queryResult.QueryTime = end.Seconds()
-
 	//! 结果集处理
 	// 获取SQL要查询的列名
 	cols, _ := rows.Columns()

@@ -334,13 +334,13 @@ func SSOCallBack(ctx *gin.Context) {
 		return
 	}
 	// 完成数据库相关的逻辑
-	err = SSOLogin(gitlabUserInfo.Name, gitlabUserInfo.Email)
+	userId, err := SSOLogin(gitlabUserInfo.Name, gitlabUserInfo.Email)
 	if err != nil {
 		ErrorResp(ctx, "sso login failed, "+err.Error())
 		return
 	}
 	// fmt.Println(gitlabUserInfo)
-	appToken, err := GenerateJWT(gitlabUserInfo.ID, gitlabUserInfo.Name, gitlabUserInfo.Email)
+	appToken, err := GenerateJWT(userId, gitlabUserInfo.Name, gitlabUserInfo.Email)
 	if err != nil {
 		DefaultResp(ctx, 1, nil, err.Error())
 	}

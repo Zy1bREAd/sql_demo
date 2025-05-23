@@ -18,7 +18,7 @@ type QueryTask struct {
 	ID        string
 	DBName    string
 	Statement string
-	Deadline  int64 // 超时时间（单位为秒）,默认 30s
+	deadline  int64 // 超时时间（单位为秒）,默认 30s
 	UserID    uint  // 关联执行用户id
 }
 
@@ -29,10 +29,11 @@ func SubmitSQLTask(statement string, database string, userId string) string {
 		ID:        GenerateUUIDKey(),
 		DBName:    database,
 		Statement: statement,
-		Deadline:  10,
+		deadline:  10,
 		UserID:    StrToUint(userId),
 	}
 	TaskQueue <- task
+	fmt.Println("debug>> ", task)
 	log.Printf("task id=%s is enqueue", task.ID)
 	return task.ID
 }
@@ -40,7 +41,7 @@ func SubmitSQLTask(statement string, database string, userId string) string {
 func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	log.Printf("task id=%s is working", task.ID)
 	//! 执行任务函数只当只关心任务处理逻辑本身
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 	defer cancel()
 
 	// 获取对应数据库实例进行SQL查询
@@ -50,7 +51,6 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 			ID:      task.ID,
 			Results: nil,
 			Error:   err,
-			// ExpireTime: <-time.After(180 * time.Second),
 		}
 		ResultQueue <- queryResult
 		return
@@ -63,12 +63,11 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 			ID:      task.ID,
 			Results: nil,
 			Error:   GenerateError("HealthCheck Failed", errMsg),
-			// ExpireTime: <-time.After(180 * time.Second),
 		}
 		ResultQueue <- queryResult
 		return
 	}
-	log.Printf("<%s> DB Connection HealthCheck OK", op.name)
+	// log.Printf("<%s> DB Connection HealthCheck OK", op.name)
 	result := op.Query(ctx, task.Statement, task.ID)
 	// 插入审计记录
 	err = NewAuditRecord(task.UserID, task.ID, task.Statement, task.DBName)
@@ -76,8 +75,8 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 		// 类似这种错误不应该影响当前application的运行，可以push到error list，然后在log中打印出来方便有需要的时候进行追踪。
 		log.Println(err)
 	}
+	log.Printf("task id=%s is completed", task.ID)
 	//! 有必要管理sqltask的状态吗？
 	ResultQueue <- result
-	// defer op.Close()			引入多数据库实例连接查询，因此移除执行完SQL查询后断开连接
-	log.Printf("task id=%s is completed", task.ID)
+
 }

@@ -133,8 +133,8 @@ func BasicLogin(email, pass string) (*UserResp, error) {
 	return &userResp, nil
 }
 
-// 登录（SSO gitlab）
-func SSOLogin(username, email string) error {
+// 登录（SSO gitlab）,最终返回用户id
+func SSOLogin(username, email string) (uint, error) {
 	var ssoUser User
 	result := selfDB.conn.Where("name = ?", username).Where("email = ?", email).Where("user_type = ?", 2).First(&ssoUser)
 	if result.Error != nil {
@@ -150,15 +150,15 @@ func SSOLogin(username, email string) error {
 			if err := tx.Create(newSSOUser).Error; err != nil {
 				tx.Rollback()
 				errMsg := fmt.Sprintln("create sso user is failed, ", err.Error())
-				return GenerateError("SSOUserError", errMsg)
+				return 0, GenerateError("SSOUserError", errMsg)
 			}
 			//提交事务
 			tx.Commit()
 		}
-		return result.Error
+		return 0, result.Error
 	}
 	// 用户登录日志插槽
-	return nil
+	return ssoUser.ID, nil
 }
 
 // 查询操作的日志审计
