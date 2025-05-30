@@ -32,6 +32,7 @@ func main() {
 	apis.StartTaskWorkerPool(ctx)
 	apis.StartResultReader(ctx)
 	apis.StartCleanWorker(ctx)
+	apis.StartResultExportor(ctx)
 	// 初始化Gin以及路由( 从yaml file env中读取配置加载Server )
 	apis.InitRouter()
 }

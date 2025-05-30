@@ -10,12 +10,13 @@ import (
 var ResultMap *CachesMap = &CachesMap{cache: &sync.Map{}}
 
 type QueryResult struct {
-	ID        string           // task id
-	Results   []map[string]any // 结果集列表
-	QueryRaw  string           // 查询的原生SQL
-	RowCount  int              // 返回结果条数
-	QueryTime float64          // 查询花费的时间
-	Error     error
+	RowCount   int     // 返回结果条数
+	QueryTime  float64 // 查询花费的时间
+	HandleTime float64 // 处理结果集的时间
+	ID         string  // task id
+	QueryRaw   string  // 查询的原生SQL
+	Error      error
+	Results    []map[string]any // 结果集列表
 	// ExpireTime time.Time // 结果集过期时间（用于自动清理）
 }
 
@@ -25,12 +26,16 @@ type CachesMap struct {
 }
 
 // 添加kv
-func (rc *CachesMap) Set(key string, values any, expireTime int) {
+func (rc *CachesMap) Set(key string, values any, expireTime int, taskType int) {
 	rc.cache.Store(key, values) // 应该存储结果集结构体
 	if expireTime > 0 {
 		go func() {
+			task := cleanTask{
+				ID:   key,
+				Type: taskType,
+			}
 			time.AfterFunc(time.Duration(expireTime)*time.Second, func() {
-				CleanQueue <- key
+				CleanQueue <- task
 			})
 		}()
 	}

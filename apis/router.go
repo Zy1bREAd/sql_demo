@@ -102,6 +102,7 @@ func InitBaseRoutes() {
 		rgPublic.GET("/sso/callback", SSOCallBack)
 
 		rgAuth.POST("/sql/query", UserSQLQuery)
+		rgAuth.POST("/result/export", ResultExport)
 
 		rgAuth.GET("/:taskId/result", getQueryResult)
 		rgAuth.GET("/sql/result/keys", getMapKeys)
@@ -348,4 +349,17 @@ func SSOCallBack(ctx *gin.Context) {
 		"user_token": appToken,
 		"user":       gitlabUserInfo.Name,
 	}, "sso login success")
+}
+
+func ResultExport(ctx *gin.Context) {
+	var reqBody ExportTask
+	ctx.ShouldBindJSON(&reqBody)
+	export := SubmitExportTask(reqBody.ID, reqBody.Type)
+	// if err != nil {
+	// 	DefaultResp(ctx, 1, nil, err.Error())
+	// }
+	SuccessResp(ctx, gin.H{
+		"task_id":  export.ID,
+		"filename": export.FileName,
+	}, "export file task start...")
 }

@@ -52,6 +52,6 @@ func SetState() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	SessionMap.Set(state, struct{}{}, 300)
+	SessionMap.Set(state, struct{}{}, 300, 2)
 	return state, nil
 }

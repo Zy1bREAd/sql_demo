@@ -2,17 +2,28 @@ package apis
 
 import (
 	"context"
+	"encoding/csv"
+	"errors"
 	"fmt"
 	"log"
+	"os"
+	"sync"
 	"time"
 )
 
 // 维护全局变量
 var TaskQueue chan *QueryTask = make(chan *QueryTask, 30) // 预分配空间
 var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
-var CleanQueue chan string = make(chan string, 30)
+var CleanQueue chan cleanTask = make(chan cleanTask, 30)
+var ExportQueue chan *ExportTask = make(chan *ExportTask, 30)
+var TaskInfoMap *CachesMap = &CachesMap{cache: &sync.Map{}} // taskMap存储任务相关信息
 
 // var HouseKeepingQueue chan string = make(chan string, 30) // 针对结果集读取后的housekeeping
+
+type cleanTask struct {
+	ID   string
+	Type int // 清理类型(0 and 1)
+}
 
 type QueryTask struct {
 	ID        string
@@ -29,7 +40,7 @@ func SubmitSQLTask(statement string, database string, userId string) string {
 		ID:        GenerateUUIDKey(),
 		DBName:    database,
 		Statement: statement,
-		deadline:  10,
+		deadline:  12,
 		UserID:    StrToUint(userId),
 	}
 	TaskQueue <- task
@@ -67,7 +78,7 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 		ResultQueue <- queryResult
 		return
 	}
-	// log.Printf("<%s> DB Connection HealthCheck OK", op.name)
+	// 拥有细粒度超时控制的核心查询函数
 	result := op.Query(ctx, task.Statement, task.ID)
 	// 插入审计记录
 	err = NewAuditRecord(task.UserID, task.ID, task.Statement, task.DBName)
@@ -79,4 +90,126 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	//! 有必要管理sqltask的状态吗？
 	ResultQueue <- result
 
+}
+
+type ExportTask struct {
+	ID       string `json:"task_id"`
+	Type     string `json:"export_type"`
+	FileName string
+	deadline int64 // task timeout
+}
+
+func SubmitExportTask(id, exportType string) *ExportTask {
+	today := time.Now().Format("20060102")
+	filename := fmt.Sprintf("%s_%s.csv", id, today)
+	task := &ExportTask{
+		ID:       id,
+		Type:     exportType,
+		deadline: 300,
+		FileName: filename,
+	}
+
+	ExportQueue <- task
+	return task
+}
+
+func ExportSQLTask(ctx context.Context, task *ExportTask) error {
+	fmt.Println("export start ......", task)
+	if task.ID == "" {
+		return GenerateError("TaskNotExist", "task id is not found")
+	}
+	task.deadline = 60
+	// 检查结果集resultMap还是否存在当前task的result
+	mapVal, resultExist := ResultMap.Get(task.ID)
+	fmt.Println("debug###", mapVal, resultExist)
+	if !resultExist {
+		// 从TaskInfoMap中找对应task id的任务信息，重新查询获取结果
+		taskMap, taskExist := TaskInfoMap.Get(task.ID)
+		if !taskExist {
+			return errors.New("task ID state is ??? wtf")
+		}
+		task, ok := taskMap.(*QueryTask)
+		if !ok {
+			return errors.New("task type is invaild")
+		}
+		ExcuteSQLTask(ctx, task)
+		// 如何获取新的结果集呢？
+	}
+	assertVal, ok := mapVal.(*QueryResult)
+	fmt.Println("debug>>>", assertVal)
+	if !ok {
+		return errors.New("resultData is incorrect type")
+	}
+	resultData := assertVal.Results
+	// convert File
+	// timeoutCtx, canel := context.WithTimeout(ctx, time.Duration(task.deadline)*time.Second)
+	// defer canel()
+
+	switch {
+	case task.Type == "csv":
+		today := time.Now().Format("20250529")
+		filename := fmt.Sprintf("csv_%s_%s.csv", task.ID, today)
+		err := convertCSVFile(filename, resultData)
+		if err != nil {
+			return err
+		}
+	default:
+		fmt.Println("暂不支持其他方式导出")
+		return errors.New("暂不支持其他方式导出")
+	}
+	fmt.Println("export Done!!!!!")
+	return nil
+
+	// select {
+	// case <-timeoutCtx.Done():
+
+	// }
+}
+
+// 转换成CSV文件并存储在本地
+func convertCSVFile(filename string, data []map[string]any) error {
+	if len(data) <= 0 {
+		return errors.New("convert failed, data length is zero")
+	}
+	// create csv file
+	f, err := os.Create(filename)
+	if err != nil {
+		log.Println("convert to CSV file is Failed", err.Error())
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	defer w.Flush()
+
+	var headers = make([]string, 0, len(data[0]))
+	for key := range data[0] {
+		headers = append(headers, key)
+	}
+
+	// 写入表头
+	if err := w.Write(headers); err != nil {
+		log.Println("write headers csv file is error,", err.Error())
+		return err
+	}
+
+	// 写入结果集数据
+	for _, row := range data {
+		rowData := toCSVRow(row, headers)
+		err := w.Write(rowData)
+		if err != nil {
+			log.Println("write row data csv file is error,", err.Error())
+			return err
+		}
+	}
+	return nil
+}
+
+// 提取行数据成切片
+func toCSVRow(record map[string]any, headers []string) []string {
+	row := make([]string, 0, len(headers))
+	for _, val := range record {
+		row = append(row, fmt.Sprintf("%v", val))
+	}
+	return row
 }

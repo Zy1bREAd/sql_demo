@@ -9,15 +9,19 @@ import (
 // 清理已读结果集队列
 func StartCleanWorker(ctx context.Context) {
 	fmt.Println("HouseKeeping Worker Starting ...")
+	cleanTypeMap := map[int]*CachesMap{
+		0: ResultMap,
+		1: TaskInfoMap,
+		2: SessionMap,
+	}
 	go func() {
 		for {
 			select {
-			// 单独控制结果集的清理动作(v2.0)
-			case taskId := <-CleanQueue:
-				ResultMap.Del(taskId)
-				log.Printf("taskID=%s 已清理", taskId)
-			// case <-ticker.C:		定时执行清理清理动作(v1.0)
-			// 	ResultMap.Clean()
+			// 根据类型选择不同的清理方式(v3.0)
+			case t := <-CleanQueue:
+				mapOperator := cleanTypeMap[t.Type]
+				mapOperator.Del(t.ID)
+				log.Printf("type=%v taskID=%s 已清理", t.Type, t.ID)
 			case <-ctx.Done():
 				log.Println("因错误退出，关闭Clean Worker. Error:", ctx.Err().Error())
 				return
@@ -34,6 +38,7 @@ func StartTaskWorkerPool(ctx context.Context) {
 			for {
 				select {
 				case t := <-TaskQueue:
+					TaskInfoMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
 					ExcuteSQLTask(ctx, t)
 				case <-ctx.Done():
 					log.Println("因错误退出，关闭当前Task Worker, Error:", ctx.Err().Error())
@@ -57,7 +62,26 @@ func StartResultReader(ctx context.Context) {
 						log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
 					}
 					//! 后期核心处理结果集的代码逻辑块
-					ResultMap.Set(res.ID, res, 30)
+					ResultMap.Set(res.ID, res, 180, 0)
+				case <-ctx.Done():
+					log.Println("因错误退出，关闭当前Reader, Error:", ctx.Err().Error())
+					return
+				}
+			}
+		}()
+	}
+}
+
+// 数据导出者和下载者
+func StartResultExportor(ctx context.Context) {
+	for i := 0; i < 3; i++ {
+		go func() {
+			for {
+				select {
+				case t := <-ExportQueue:
+					//导出下载逻辑
+					ExportSQLTask(ctx, t)
+					fmt.Println("start download task", t.ID)
 				case <-ctx.Done():
 					log.Println("因错误退出，关闭当前Reader, Error:", ctx.Err().Error())
 					return

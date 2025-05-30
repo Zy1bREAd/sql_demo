@@ -66,65 +66,79 @@ func (instance *DBInstance) QueryForRaw(ctx context.Context, statement string) (
 
 // 对内暴露的查询SQL接口
 func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) *QueryResult {
+	errCh := make(chan error, 1)
+
 	queryResult := &QueryResult{
 		QueryRaw: sqlRaw,
 		ID:       taskId,
 	}
-	start := time.Now()
-	rows, err := instance.QueryForRaw(ctx, sqlRaw)
-	if err != nil {
-		queryResult.Error = err
-		return queryResult
-	}
-	defer rows.Close()
-	end := time.Since(start)
-	queryResult.QueryTime = end.Seconds()
-	//! 结果集处理
-	// 获取SQL要查询的列名
-	cols, _ := rows.Columns()
-	// 遍历结果集，逐行处理结果
-	for rows.Next() {
-		if rows.Err() != nil {
-			log.Println("该行有问题，直接跳过")
-			break
-		}
-		values := make([]any, len(cols)) // 每一行都创建结果集容器的切片,按照列的顺序进行存储
 
-		// 初始化结果集容器；将该切片中的元素都初始化为sql.RawBytes容器，用于存放列值
-		for i := range values {
-			values[i] = new(sql.RawBytes) // 原始SQL语句最终以字节切片的方式进行存储；type RawBytes []byte
+	go func() {
+		start := time.Now()
+		rows, err := instance.QueryForRaw(ctx, sqlRaw)
+		if err != nil {
+			errCh <- err
+			return
 		}
-		// 获取结果集，填充进来
-		if err := rows.Scan(values...); err != nil {
-			queryResult.Error = GenerateError("TaskResult Handle Error", err.Error())
-			return queryResult
-		}
-		rowResultMap := make(map[string]any, 0) // 创建存储每行数据结果的容器（Map）
-		for i, colName := range cols {
-			// 列名切片顺序和values顺序一致，断言结果类型，然后进行存储
-			if value, ok := values[i].(*sql.RawBytes); ok {
-				//! 数据处理（数据脱敏，过滤等）
-				rowResultMap[colName] = DataMaskHandle(colName, value)
+		defer rows.Close()
+		end := time.Since(start)
+		queryResult.QueryTime = end.Seconds()
+
+		start = time.Now()
+		//! 结果集处理
+		// 获取SQL要查询的列名
+		cols, _ := rows.Columns()
+		// 遍历结果集，逐行处理结果
+		for rows.Next() {
+			if rows.Err() != nil {
+				log.Println("该行有问题，直接跳过")
+				break
 			}
+			values := make([]any, len(cols)) // 每一行都创建结果集容器的切片,按照列的顺序进行存储
+
+			// 初始化结果集容器；将该切片中的元素都初始化为sql.RawBytes容器，用于存放列值
+			for i := range values {
+				values[i] = new(sql.RawBytes) // 原始SQL语句最终以字节切片的方式进行存储；type RawBytes []byte
+			}
+			// 获取结果集，填充进来
+			if err := rows.Scan(values...); err != nil {
+				errCh <- GenerateError("TaskResult Handle Error", err.Error())
+				return
+			}
+			rowResultMap := make(map[string]any, 0) // 创建存储每行数据结果的容器（Map）
+			for i, colName := range cols {
+				// 列名切片顺序和values顺序一致，断言结果类型，然后进行存储
+				if value, ok := values[i].(*sql.RawBytes); ok {
+					//! 数据处理（数据脱敏，过滤等）
+					rowResultMap[colName] = DataMaskHandle(colName, value)
+				}
+			}
+			queryResult.Results = append(queryResult.Results, rowResultMap)
+			queryResult.RowCount = len(queryResult.Results)
 		}
-		queryResult.Results = append(queryResult.Results, rowResultMap)
-		queryResult.RowCount = len(queryResult.Results)
-	}
+		end = time.Since(start)
+		queryResult.HandleTime = end.Seconds()
+		errCh <- nil
+	}()
+
 	select {
-	default:
 	case <-ctx.Done():
-		queryResult.Error = GenerateError("Task TimeOut", "sql task is failed ,timeout 10s")
+		queryResult.Error = GenerateError("Task TimeOut", "sql task is failed ,timeout")
+		return queryResult
+	case err := <-errCh:
+		if err != nil {
+			queryResult.Error = err
+		}
 		return queryResult
 	}
-	// time.Sleep(5 * time.Second)
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
-	return queryResult
 }
 
 func (instance *DBInstance) Healthz(ctx context.Context) error {
 	return instance.conn.PingContext(ctx)
 }
 
+// the validate func is discard（1.0）
 func (instance *DBInstance) validateCheck(statement string) (string, error) {
 	// 目前只支持一条SQL的查询，多余的直接丢弃
 	sqls := strings.Split(statement, ";")
