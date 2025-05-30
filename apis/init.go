@@ -36,8 +36,9 @@ type SSOClientConfig struct {
 }
 
 type SSOConfig struct {
-	ClientEnv   SSOClientConfig `yaml:"client"`
 	RedirectURL string          `yaml:"redirect_url"`
+	ClientAPI   string          `yaml:"client_api"`
+	ClientEnv   SSOClientConfig `yaml:"client"`
 	EndpointEnv EndpointConfig  `yaml:"endpoint"`
 }
 type EndpointConfig struct {

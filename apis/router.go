@@ -316,7 +316,8 @@ func SSOCallBack(ctx *gin.Context) {
 
 	// 通过获取身份提供商的token中的用户信息，构造我们application的token
 	client := oauthConf.Client(context.Background(), token)
-	resp, err := client.Get("http://159.75.119.146:28660/api/v4/user")
+	appConf := GetAppConfig()
+	resp, err := client.Get(appConf.SSOEnv.ClientAPI)
 	if err != nil {
 		ErrorResp(ctx, "Failed to get user info:"+err.Error())
 		return

@@ -100,8 +100,8 @@ type ExportTask struct {
 }
 
 func SubmitExportTask(id, exportType string) *ExportTask {
-	today := time.Now().Format("20060102")
-	filename := fmt.Sprintf("%s_%s.csv", id, today)
+	today := time.Now().Format("200601021504")
+	filename := fmt.Sprintf("/tmp/%s_%s.csv", id, today)
 	task := &ExportTask{
 		ID:       id,
 		Type:     exportType,
@@ -147,9 +147,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 
 	switch {
 	case task.Type == "csv":
-		today := time.Now().Format("20250529")
-		filename := fmt.Sprintf("csv_%s_%s.csv", task.ID, today)
-		err := convertCSVFile(filename, resultData)
+		err := convertCSVFile(task.FileName, resultData)
 		if err != nil {
 			return err
 		}
@@ -208,8 +206,8 @@ func convertCSVFile(filename string, data []map[string]any) error {
 // 提取行数据成切片
 func toCSVRow(record map[string]any, headers []string) []string {
 	row := make([]string, 0, len(headers))
-	for _, val := range record {
-		row = append(row, fmt.Sprintf("%v", val))
+	for _, col := range headers {
+		row = append(row, fmt.Sprintf("%v", record[col]))
 	}
 	return row
 }
