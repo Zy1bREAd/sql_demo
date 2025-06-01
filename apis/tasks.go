@@ -84,7 +84,7 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	err = NewAuditRecord(task.UserID, task.ID, task.Statement, task.DBName)
 	if err != nil {
 		// 类似这种错误不应该影响当前application的运行，可以push到error list，然后在log中打印出来方便有需要的时候进行追踪。
-		log.Println(err)
+		log.Println("[RecordFailed]", err)
 	}
 	log.Printf("task id=%s is completed", task.ID)
 	//! 有必要管理sqltask的状态吗？
@@ -113,8 +113,10 @@ func SubmitExportTask(id, exportType string) *ExportTask {
 	return task
 }
 
+// 导出SQL查询结果
 func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 	fmt.Println("export start ......", task)
+	var cachesMapResult *QueryResult
 	if task.ID == "" {
 		return GenerateError("TaskNotExist", "task id is not found")
 	}
@@ -126,28 +128,42 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 		// 从TaskInfoMap中找对应task id的任务信息，重新查询获取结果
 		taskMap, taskExist := TaskInfoMap.Get(task.ID)
 		if !taskExist {
-			return errors.New("task ID state is ??? wtf")
+			return errors.New("task ID state is ??? wtf not exist")
 		}
 		task, ok := taskMap.(*QueryTask)
 		if !ok {
 			return errors.New("task type is invaild")
 		}
 		ExcuteSQLTask(ctx, task)
-		// 如何获取新的结果集呢？
+		// 同步方式每秒获取新的结果集(60s内)
+		for i := 0; i <= int(task.deadline); i++ {
+			time.Sleep(1 * time.Second)
+			mapVal, ok := ResultMap.Get(task.ID)
+			if ok {
+				assertVal, ok := mapVal.(*QueryResult)
+				if !ok {
+					return errors.New("resultData is incorrect type")
+				}
+				cachesMapResult = assertVal
+				break
+			}
+
+		}
+	} else {
+		assertVal, ok := mapVal.(*QueryResult)
+		if !ok {
+			return errors.New("resultData is incorrect type")
+		}
+		cachesMapResult = assertVal
 	}
-	assertVal, ok := mapVal.(*QueryResult)
-	fmt.Println("debug>>>", assertVal)
-	if !ok {
-		return errors.New("resultData is incorrect type")
-	}
-	resultData := assertVal.Results
+
 	// convert File
 	// timeoutCtx, canel := context.WithTimeout(ctx, time.Duration(task.deadline)*time.Second)
 	// defer canel()
 
 	switch {
 	case task.Type == "csv":
-		err := convertCSVFile(task.FileName, resultData)
+		err := convertCSVFile(task.FileName, cachesMapResult.Results)
 		if err != nil {
 			return err
 		}
