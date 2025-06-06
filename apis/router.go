@@ -171,7 +171,7 @@ func AuthMiddleware() gin.HandlerFunc {
 func DBList(ctx *gin.Context) {
 	pool := newDBPoolManager()
 	list := pool.getDBList()
-	SuccessResp(ctx, list, "get DB List Success")
+	SuccessResp(ctx, list, "get db list success")
 }
 
 // /api/v1/query

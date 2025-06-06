@@ -8,6 +8,12 @@ const (
 	errorCode   = 500
 )
 
+// ! 封装App业务性的响应状态码
+const (
+	APP_SUCCESS = 0
+	APP_FAILED  = 1
+)
+
 type JSONResponse struct {
 	Code    int    `json:"status_code"`
 	Message string `json:"message"`

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -237,6 +238,8 @@ func (manager *DBPoolManager) getDBList() []string {
 	for name, _ := range manager.Pool {
 		dbKeys = append(dbKeys, name)
 	}
+	// 新增排序功能
+	slices.Sort(dbKeys)
 	return dbKeys
 }
 

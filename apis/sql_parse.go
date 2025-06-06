@@ -1,6 +1,8 @@
 package apis
 
 import (
+	"errors"
+	"io"
 	"log"
 	"slices"
 	"strings"
@@ -21,6 +23,9 @@ func parseWithVitess(statement string) (string, error) {
 	// 解析单条SQL语句（如果有多条SQL需要逐个解析处理）
 	stmt, err := sqlparser.ParseNext(token)
 	if err != nil {
+		if err == io.EOF {
+			return "", errors.New("SQL Statement is Null")
+		}
 		log.Println("使用Vitess解析器解析出错: ", err)
 		return "", err
 	}
