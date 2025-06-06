@@ -19,7 +19,8 @@ type appEnvConfig struct {
 }
 
 type ExportConfig struct {
-	FilePath string `yaml:"file_path"`
+	FilePath     string `yaml:"file_path"`
+	HouseKeeping int    `yaml:"housekeeping"`
 }
 
 type WebServerConfig struct {

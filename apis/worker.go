@@ -8,7 +8,7 @@ import (
 
 // 清理已读结果集队列
 func StartCleanWorker(ctx context.Context) {
-	fmt.Println("HouseKeeping Worker Starting ...")
+	fmt.Println("Map Clean Worker Starting ...")
 	cleanTypeMap := map[int]*CachesMap{
 		0: ResultMap,
 		1: QueryTaskMap,
@@ -28,7 +28,24 @@ func StartCleanWorker(ctx context.Context) {
 			case t := <-CleanQueue:
 				mapOperator := cleanTypeMap[t.Type]
 				mapOperator.Del(t.ID)
-				log.Printf("type=%v taskID=%s 已清理", cleanTypeInfoMap[t.Type], t.ID)
+				log.Printf("type=%v taskID=%s Cleaned Up", cleanTypeInfoMap[t.Type], t.ID)
+			case <-ctx.Done():
+				log.Println("因错误退出，关闭Clean Worker. Error:", ctx.Err().Error())
+				return
+			}
+		}
+	}()
+}
+
+// File CLeaner
+func StartHousekeeper(ctx context.Context) {
+	fmt.Println("HouseKeeper Starting ...")
+	go func() {
+		for {
+			select {
+			case t := <-HouseKeepQueue:
+				// 细粒度控制删除文件
+				FileClean(t.Result.FilePath)
 			case <-ctx.Done():
 				log.Println("因错误退出，关闭Clean Worker. Error:", ctx.Err().Error())
 				return

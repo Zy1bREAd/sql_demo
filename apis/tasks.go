@@ -15,6 +15,7 @@ import (
 var TaskQueue chan *QueryTask = make(chan *QueryTask, 30) // 预分配空间
 var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
 var CleanQueue chan cleanTask = make(chan cleanTask, 30)
+var HouseKeepQueue chan *ExportTask = make(chan *ExportTask, 30)
 var ExportQueue chan *ExportTask = make(chan *ExportTask, 30)
 var QueryTaskMap *CachesMap = &CachesMap{cache: &sync.Map{}}  // 存储查询任务相关信息的集合（QueryTask)
 var ExportWorkMap *CachesMap = &CachesMap{cache: &sync.Map{}} //导出工作的映射表(任务 -> 结果)
@@ -178,6 +179,9 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 		if err != nil {
 			return err
 		}
+		time.AfterFunc(time.Second*time.Duration(conf.ExportEnv.HouseKeeping), func() {
+			HouseKeepQueue <- task
+		})
 	default:
 		fmt.Println("[WARN] 暂不支持其他方式导出")
 		return GenerateError("TypeError", "export type is unknown")
@@ -250,4 +254,26 @@ func toCSVRow(record map[string]any, headers []string) []string {
 		row = append(row, fmt.Sprintf("%v", record[col]))
 	}
 	return row
+}
+
+// 清理临时文件（如导出文件）
+func FileClean(filepath string) {
+	fileInfo, err := os.Stat(filepath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("[FileNotExist]", fileInfo.Name(), "is not exist")
+			return
+		}
+		fmt.Println("[FileError]", err.Error())
+		return
+	}
+	if fileInfo.IsDir() {
+		fmt.Println("[Error]", fileInfo.Name(), "is not a file")
+		return
+	}
+	err = os.Remove(filepath)
+	if err != nil {
+		fmt.Println("[RemoveFailed]", fileInfo.Name(), "remove occur a error", err.Error())
+	}
+	fmt.Println("[Completed]", fileInfo.Name(), "is cleaned up")
 }
