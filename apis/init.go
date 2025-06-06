@@ -15,6 +15,11 @@ type appEnvConfig struct {
 	DataMaskMode string                 `yaml:"data_mask"`
 	WebSrvEnv    WebServerConfig        `yaml:"web"`
 	SSOEnv       SSOConfig              `yaml:"sso"`
+	ExportEnv    ExportConfig           `yaml:"export"`
+}
+
+type ExportConfig struct {
+	FilePath string `yaml:"file_path"`
 }
 
 type WebServerConfig struct {

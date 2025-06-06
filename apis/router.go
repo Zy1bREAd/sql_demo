@@ -15,6 +15,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// 定义一个SSE消息内容对象
+type sseEvent struct {
+	ID    int    `json:"event_id"` // 0=download ready; 1=frist connected; 2=failed; 4=close connected;
+	Event string `json:"event"`
+	Data  string `json:"data"`
+}
+
 // 定义路由注册函数
 type FnRegisterRoute func(rgPublic *gin.RouterGroup, rgAuth *gin.RouterGroup)
 
@@ -103,6 +110,8 @@ func InitBaseRoutes() {
 
 		rgAuth.POST("/sql/query", UserSQLQuery)
 		rgAuth.POST("/result/export", ResultExport)
+		rgAuth.GET("/result/download-link/sse", SSEHandle)
+		rgAuth.GET("/result/download", DownloadFile)
 
 		rgAuth.GET("/:taskId/result", getQueryResult)
 		rgAuth.GET("/sql/result/keys", getMapKeys)
@@ -352,15 +361,145 @@ func SSOCallBack(ctx *gin.Context) {
 	}, "sso login success")
 }
 
+// 结果集导出路由逻辑
 func ResultExport(ctx *gin.Context) {
 	var reqBody ExportTask
 	ctx.ShouldBindJSON(&reqBody)
 	export := SubmitExportTask(reqBody.ID, reqBody.Type)
-	// if err != nil {
-	// 	DefaultResp(ctx, 1, nil, err.Error())
-	// }
+
 	SuccessResp(ctx, gin.H{
 		"task_id":  export.ID,
 		"filename": export.FileName,
 	}, "export file task start...")
+}
+
+func DownloadFile(ctx *gin.Context) {
+	taskId := ctx.Query("task_id")
+	if taskId == "" {
+		fmt.Println("debug: >> task id is null, invaild")
+		DefaultResp(ctx, 1, nil, "param taskid is invalid")
+		return
+	}
+	// 应该去指定地方查找filename
+	mapVal, exist := ExportWorkMap.Get(taskId)
+	if !exist {
+		DefaultResp(ctx, 4, nil, "result file is not exist,may be cleaned")
+		return
+	}
+	exportResult, ok := mapVal.(*ExportResult)
+	if !ok {
+		DefaultResp(ctx, 4, nil, "result file type not match")
+		return
+	}
+
+	fmt.Println("[Download] download start...", exportResult.FilePath)
+	// 判断要下载的文件
+	if _, err := os.Stat(exportResult.FilePath); err != nil {
+		// pwd, _ := os.Getwd()
+		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "文件不存在"})
+		return
+	}
+	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", exportResult.FilePath))
+	ctx.File(exportResult.FilePath)
+	fmt.Println("[Download] download completed")
+	// SuccessResp(ctx, nil, "download success!!")
+}
+
+// SSE处理
+func SSEHandle(ctx *gin.Context) {
+	ctx.Header("Content-Type", "text/event-stream")
+	ctx.Header("Cache-Control", "no-cache")
+	ctx.Header("Connection", "keep-alive")
+
+	_, exist := ctx.Get("user_id")
+	if !exist {
+		ErrorResp(ctx, "User not exist")
+		return
+	}
+	// 从Parmas山获取taskId
+	taskId := ctx.Query("task_id")
+	if taskId == "" {
+		fmt.Println("[TaskError] taskId is null,Abort!!!")
+		return
+	}
+
+	// SSE处理逻辑超时控制
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+	// 获取对应taskId的<导出对象>信息
+	mapVal, exist := ExportWorkMap.Get(taskId)
+	if !exist {
+		fmt.Println("[NotExist] export result not exist,exit(1)")
+		return
+	}
+	exportJob, ok := mapVal.(*ExportResult)
+	if !ok {
+		fmt.Println("[TypeNotMatch] export result type is not match,exit(1)")
+		return
+	}
+	for {
+		select {
+		// 等待通知export结束
+		case <-exportJob.Done:
+			// 判断是否有错误
+			if exportJob.Error != nil {
+				fmt.Println("[ExportFailed] export task is failed ==>", exportJob.Error.Error())
+				// 此时SSE连接已开，必须返回错误消息和关闭sse
+				sseContent := sseEvent{
+					ID:    2,
+					Event: "error",
+					Data:  exportJob.Error.Error(),
+				}
+				SSEMsgOnSend(ctx, &sseContent)
+				// 发送完毕关闭连接
+				sseContent = sseEvent{
+					ID:    4,
+					Event: "closed",
+					Data:  "",
+				}
+				SSEMsgOnSend(ctx, &sseContent)
+				return
+			}
+			fmt.Println("[Completed] export task done")
+			// 发送初始化连接确认(discard)
+
+			// 生成签名的URL下载链接
+			// uri := GenerateSignedURI(taskId)
+			downloadURL := fmt.Sprintf("/result/download?task_id=%s", taskId)
+			sseContent := sseEvent{
+				ID:    0,
+				Event: "download_ready",
+				Data:  downloadURL,
+			}
+			SSEMsgOnSend(ctx, &sseContent)
+
+			// 发送完毕关闭连接
+			sseContent = sseEvent{
+				ID:    4,
+				Event: "closed",
+				Data:  "",
+			}
+			SSEMsgOnSend(ctx, &sseContent)
+			return
+		case <-timeoutCtx.Done():
+			fmt.Println("[TimeOut] sse handle timeout,exit 1")
+			return
+		default:
+			fmt.Println("[Wait] waiting export task done")
+			time.Sleep(time.Second * 2)
+		}
+	}
+
+}
+
+// 失败的SSE Msg
+func SSEMsgOnSend(ctx *gin.Context, event *sseEvent) {
+	sseMsgJSON, err := json.Marshal(event)
+	if err != nil {
+		fmt.Println("[JSONMarshalError] json data masrshal error")
+		return
+	}
+	sendMsg := fmt.Sprintf("data: %s\n\n", sseMsgJSON)
+	ctx.Writer.Write([]byte(sendMsg))
+	ctx.Writer.Flush()
 }

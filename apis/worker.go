@@ -11,8 +11,15 @@ func StartCleanWorker(ctx context.Context) {
 	fmt.Println("HouseKeeping Worker Starting ...")
 	cleanTypeMap := map[int]*CachesMap{
 		0: ResultMap,
-		1: TaskInfoMap,
+		1: QueryTaskMap,
 		2: SessionMap,
+		3: ExportWorkMap,
+	}
+	cleanTypeInfoMap := map[int]string{
+		0: "ResultMap",
+		1: "QueryTaskMap",
+		2: "SessionMap",
+		3: "ExportWorkMap",
 	}
 	go func() {
 		for {
@@ -21,7 +28,7 @@ func StartCleanWorker(ctx context.Context) {
 			case t := <-CleanQueue:
 				mapOperator := cleanTypeMap[t.Type]
 				mapOperator.Del(t.ID)
-				log.Printf("type=%v taskID=%s 已清理", t.Type, t.ID)
+				log.Printf("type=%v taskID=%s 已清理", cleanTypeInfoMap[t.Type], t.ID)
 			case <-ctx.Done():
 				log.Println("因错误退出，关闭Clean Worker. Error:", ctx.Err().Error())
 				return
@@ -38,7 +45,7 @@ func StartTaskWorkerPool(ctx context.Context) {
 			for {
 				select {
 				case t := <-TaskQueue:
-					TaskInfoMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
+					QueryTaskMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
 					ExcuteSQLTask(ctx, t)
 				case <-ctx.Done():
 					log.Println("因错误退出，关闭当前Task Worker, Error:", ctx.Err().Error())
@@ -72,7 +79,7 @@ func StartResultReader(ctx context.Context) {
 	}
 }
 
-// 数据导出者和下载者
+// 结果集导出Worker
 func StartResultExportor(ctx context.Context) {
 	for i := 0; i < 3; i++ {
 		go func() {
@@ -80,8 +87,17 @@ func StartResultExportor(ctx context.Context) {
 				select {
 				case t := <-ExportQueue:
 					//导出下载逻辑
-					ExportSQLTask(ctx, t)
-					fmt.Println("start download task", t.ID)
+					fmt.Println("start export task", t.ID)
+					err := ExportSQLTask(ctx, t)
+					if err != nil {
+						// 添加错误信息
+						t.Result.Error = err
+						t.Result.FilePath += "_failed"
+						t.Result.Done <- struct{}{}
+						fmt.Println("export task is error", t.ID)
+						continue
+					}
+					fmt.Println("completed export task", t.ID)
 				case <-ctx.Done():
 					log.Println("因错误退出，关闭当前Reader, Error:", ctx.Err().Error())
 					return

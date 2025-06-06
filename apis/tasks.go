@@ -16,13 +16,20 @@ var TaskQueue chan *QueryTask = make(chan *QueryTask, 30) // 预分配空间
 var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
 var CleanQueue chan cleanTask = make(chan cleanTask, 30)
 var ExportQueue chan *ExportTask = make(chan *ExportTask, 30)
-var TaskInfoMap *CachesMap = &CachesMap{cache: &sync.Map{}} // taskMap存储任务相关信息
+var QueryTaskMap *CachesMap = &CachesMap{cache: &sync.Map{}}  // 存储查询任务相关信息的集合（QueryTask)
+var ExportWorkMap *CachesMap = &CachesMap{cache: &sync.Map{}} //导出工作的映射表(任务 -> 结果)
+
+type ExportResult struct {
+	Done     chan struct{}
+	FilePath string
+	Error    error
+}
 
 // var HouseKeepingQueue chan string = make(chan string, 30) // 针对结果集读取后的housekeeping
 
 type cleanTask struct {
-	ID   string
 	Type int // 清理类型(0 and 1)
+	ID   string
 }
 
 type QueryTask struct {
@@ -97,57 +104,65 @@ type ExportTask struct {
 	Type     string `json:"export_type"`
 	FileName string
 	deadline int64 // task timeout
+	Result   *ExportResult
 }
 
+// 导出任务入队
 func SubmitExportTask(id, exportType string) *ExportTask {
-	today := time.Now().Format("200601021504")
-	filename := fmt.Sprintf("/tmp/%s_%s.csv", id, today)
+	today := time.Now().Format("20060102150405")
+	conf := GetAppConfig()
+	filename := fmt.Sprintf("%s_%s.csv", id, today)
+	filePath := conf.ExportEnv.FilePath + "/" + filename
+
+	taskResult := &ExportResult{
+		Error:    nil,
+		FilePath: filePath,
+		Done:     make(chan struct{}),
+	}
 	task := &ExportTask{
 		ID:       id,
 		Type:     exportType,
 		deadline: 300,
 		FileName: filename,
+		Result:   taskResult,
 	}
-
+	ExportWorkMap.Set(task.ID, task.Result, 300, 3)
 	ExportQueue <- task
 	return task
 }
 
 // 导出SQL查询结果
 func ExportSQLTask(ctx context.Context, task *ExportTask) error {
-	fmt.Println("export start ......", task)
 	var cachesMapResult *QueryResult
 	if task.ID == "" {
 		return GenerateError("TaskNotExist", "task id is not found")
 	}
-	task.deadline = 60
 	// 检查结果集resultMap还是否存在当前task的result
 	mapVal, resultExist := ResultMap.Get(task.ID)
-	fmt.Println("debug###", mapVal, resultExist)
 	if !resultExist {
-		// 从TaskInfoMap中找对应task id的任务信息，重新查询获取结果
-		taskMap, taskExist := TaskInfoMap.Get(task.ID)
+		// 从QueryTaskMap中找对应task id的任务信息，重新执行查询任务来获取结果
+		taskMap, taskExist := QueryTaskMap.Get(task.ID)
 		if !taskExist {
-			return errors.New("task ID state is ??? wtf not exist")
+			return GenerateError("QueryTaskError", "query task id is not exist,please re-excute sql query")
 		}
 		task, ok := taskMap.(*QueryTask)
 		if !ok {
-			return errors.New("task type is invaild")
+			return GenerateError("QueryTaskError", "query task object type not match")
 		}
 		ExcuteSQLTask(ctx, task)
-		// 同步方式每秒获取新的结果集(60s内)
+		// 同步方式每秒检测是否查询任务完成，来获取结果集
 		for i := 0; i <= int(task.deadline); i++ {
 			time.Sleep(1 * time.Second)
 			mapVal, ok := ResultMap.Get(task.ID)
 			if ok {
 				assertVal, ok := mapVal.(*QueryResult)
 				if !ok {
-					return errors.New("resultData is incorrect type")
+					return GenerateError("QueryResultError", "query result data type is incorrect")
 				}
+				fmt.Println("[Re-Excute] re-excute sql task completed")
 				cachesMapResult = assertVal
 				break
 			}
-
 		}
 	} else {
 		assertVal, ok := mapVal.(*QueryResult)
@@ -156,39 +171,47 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 		}
 		cachesMapResult = assertVal
 	}
-
-	// convert File
-	// timeoutCtx, canel := context.WithTimeout(ctx, time.Duration(task.deadline)*time.Second)
-	// defer canel()
-
+	conf := GetAppConfig()
 	switch {
 	case task.Type == "csv":
-		err := convertCSVFile(task.FileName, cachesMapResult.Results)
+		err := convertCSVFile(conf.ExportEnv.FilePath, task.FileName, cachesMapResult.Results)
 		if err != nil {
 			return err
 		}
 	default:
-		fmt.Println("暂不支持其他方式导出")
-		return errors.New("暂不支持其他方式导出")
+		fmt.Println("[WARN] 暂不支持其他方式导出")
+		return GenerateError("TypeError", "export type is unknown")
 	}
-	fmt.Println("export Done!!!!!")
+	// 假装导出要耗时10s
+	// time.Sleep(2 * time.Second)
+	// 完成后传递<导出结果>对象信息，并通过channel传递完成消息
+	task.Result.Done <- struct{}{}
 	return nil
-
-	// select {
-	// case <-timeoutCtx.Done():
-
-	// }
 }
 
 // 转换成CSV文件并存储在本地
-func convertCSVFile(filename string, data []map[string]any) error {
+func convertCSVFile(base, filename string, data []map[string]any) error {
 	if len(data) <= 0 {
-		return errors.New("convert failed, data length is zero")
+		return GenerateError("ConvertError", "data length is zero")
 	}
-	// create csv file
-	f, err := os.Create(filename)
+	// 创建文件，不存在目录则创建
+	_, err := os.Stat(base)
 	if err != nil {
-		log.Println("convert to CSV file is Failed", err.Error())
+		if os.IsNotExist(err) {
+			err := os.MkdirAll(base, 0755)
+			if err != nil {
+				log.Println("create a file path is failed ->", err.Error())
+				return err
+			}
+		} else {
+			log.Println("create a temp CSV file is failed ->", err.Error())
+			return err
+		}
+	}
+	filePath := base + "/" + filename
+	f, err := os.Create(filePath)
+	if err != nil {
+		log.Println("create a temp CSV file is failed ->", err.Error())
 		return err
 	}
 	defer f.Close()
@@ -196,6 +219,7 @@ func convertCSVFile(filename string, data []map[string]any) error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 
+	// 制造表头
 	var headers = make([]string, 0, len(data[0]))
 	for key := range data[0] {
 		headers = append(headers, key)

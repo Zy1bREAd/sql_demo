@@ -35,3 +35,18 @@ func ValidateValueWithMd5(inputVal, encryptVal string) bool {
 	encryptInputVal := EncryptWithSaltMd5(salt, inputVal)
 	return encryptInputVal == encryptVal
 }
+
+// func GenerateSignedURI(taskId string) string {
+// 	secret := "sekorm"
+// 	expireTime := time.Now().Add(10 * time.Minute).Unix()
+// 	sign := hmac.New(sha256.New, []byte(secret))
+// 	sign.Write([]byte(fmt.Sprintf("%s:%d", taskId, expireTime)))
+// 	signStr := base64.URLEncoding.EncodeToString(sign.Sum(nil))
+// 	signURI := fmt.Sprintf("%s?token=%s&expire=%d", taskId, signStr, expireTime)
+// 	fmt.Println("debug>>>> signStr", signURI)
+// 	return signURI
+// }
+
+// func ValidateSignedURI() {
+
+// }
