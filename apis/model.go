@@ -39,7 +39,7 @@ type QueryAuditLog struct {
 	UserID       uint
 	SQLStatement string     `gorm:"not null"`
 	DBName       string     `gorm:"type:varchar(255)"`
-	TimeStamp    *time.Time `gorm:"autoCreateTime"`
+	TimeStamp    *time.Time `gorm:"type:datetime(0);autoCreateTime"`
 	IsExported   uint8      `gorm:"default:0;type:smallint"`
 	ExportTime   *time.Time `gorm:"type:datetime(0)"`
 	// 查询的环境

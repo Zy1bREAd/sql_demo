@@ -28,9 +28,14 @@ var once sync.Once
 var globalDBPool *DBPoolManager
 
 // 数据库配置（从特定源读取）
-type DataBaseConfig struct {
-	DBConfig map[string]MySQLConfig `yaml:"database"`
+type AllDBConfig struct {
+	Databases map[string]MySQLConfig `yaml:"databases"`
 }
+
+//	type EnvDBConfig struct {
+//		Env          string                 `yaml:"-"`
+//		InstanceList map[string]MySQLConfig `yaml:""`
+//	}
 type MySQLConfig struct {
 	DSN      string `yaml:"dsn"`
 	MaxConn  int    `yaml:"max_conn"`
@@ -183,7 +188,7 @@ func newDBPoolManager() *DBPoolManager {
 
 // 读取配置，加载数据库池
 func LoadInDB() {
-	var config DataBaseConfig
+	var config AllDBConfig
 	// 从YAML方式读取
 	Fieldata, err := os.ReadFile("config/db.yaml")
 	if err != nil {
@@ -193,6 +198,7 @@ func LoadInDB() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("[DEBUG] >>> ", config)
 
 	// 将读取到DB配置注册进数据库池子中进行管理
 	pool := newDBPoolManager()
@@ -203,10 +209,10 @@ func LoadInDB() {
 	}
 }
 
-func (manager *DBPoolManager) register(configData *DataBaseConfig) error {
+func (manager *DBPoolManager) register(configData *AllDBConfig) error {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	for dbName, conf := range configData.DBConfig {
+	for dbName, conf := range configData.Databases {
 		db, err := newDBInstance(dbName, conf.DSN, conf.MaxConn, conf.IdleTime)
 		if err != nil {
 			log.Printf("<%s> Database Register Failed,error: %s\n", dbName, err.Error())
@@ -250,7 +256,7 @@ func newDBInstance(name, dsn string, maxConn, idleTime int) (*DBInstance, error)
 	if err != nil {
 		return nil, err
 	}
-	db.SetConnMaxIdleTime(time.Minute * 3)
+	db.SetConnMaxIdleTime(time.Duration(idleTime) * time.Second)
 	db.SetMaxOpenConns(maxConn)
 	db.SetMaxIdleConns(maxConn)
 	err = db.Ping()
