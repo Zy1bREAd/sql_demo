@@ -89,7 +89,13 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	// 拥有细粒度超时控制的核心查询函数
 	result := op.Query(ctx, task.Statement, task.ID)
 	// 插入审计记录
-	err = NewAuditRecord(task.UserID, task.ID, task.Statement, task.DBName)
+	record := &QueryAuditLog{
+		TaskID:       task.ID,
+		UserID:       task.UserID,
+		SQLStatement: task.Statement,
+		DBName:       task.DBName,
+	}
+	err = NewAuditRecord(record)
 	if err != nil {
 		// 类似这种错误不应该影响当前application的运行，可以push到error list，然后在log中打印出来方便有需要的时候进行追踪。
 		log.Println("[RecordFailed]", err)
@@ -104,12 +110,13 @@ type ExportTask struct {
 	ID       string `json:"task_id"`
 	Type     string `json:"export_type"`
 	FileName string
+	UserID   uint
 	deadline int64 // task timeout
 	Result   *ExportResult
 }
 
 // 导出任务入队
-func SubmitExportTask(id, exportType string) *ExportTask {
+func SubmitExportTask(id, exportType string, userId uint) *ExportTask {
 	today := time.Now().Format("20060102150405")
 	conf := GetAppConfig()
 	filename := fmt.Sprintf("%s_%s.csv", id, today)
@@ -125,6 +132,7 @@ func SubmitExportTask(id, exportType string) *ExportTask {
 		Type:     exportType,
 		deadline: 300,
 		FileName: filename,
+		UserID:   userId,
 		Result:   taskResult,
 	}
 	ExportWorkMap.Set(task.ID, task.Result, 300, 3)
@@ -190,6 +198,14 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 	// time.Sleep(2 * time.Second)
 	// 完成后传递<导出结果>对象信息，并通过channel传递完成消息
 	task.Result.Done <- struct{}{}
+	now := time.Now()
+	record := &QueryAuditLog{
+		TaskID:     task.ID,     // 用于查询
+		UserID:     task.UserID, // 用于查询
+		IsExported: 1,
+		ExportTime: &now,
+	}
+	UpdateExportAuditRecord(record)
 	return nil
 }
 

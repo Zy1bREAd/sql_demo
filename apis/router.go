@@ -363,9 +363,14 @@ func SSOCallBack(ctx *gin.Context) {
 
 // 结果集导出路由逻辑
 func ResultExport(ctx *gin.Context) {
+	userId, exist := ctx.Get("user_id")
+	if !exist {
+		ErrorResp(ctx, "User not exist")
+		return
+	}
 	var reqBody ExportTask
 	ctx.ShouldBindJSON(&reqBody)
-	export := SubmitExportTask(reqBody.ID, reqBody.Type)
+	export := SubmitExportTask(reqBody.ID, reqBody.Type, StrToUint(userId.(string)))
 
 	SuccessResp(ctx, gin.H{
 		"task_id":  export.ID,

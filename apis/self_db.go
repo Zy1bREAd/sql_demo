@@ -163,16 +163,9 @@ func SSOLogin(username, email string) (uint, error) {
 
 // 查询操作的日志审计
 // 新增操作审计记录
-func NewAuditRecord(userId uint, taskID string, statement, dbName string) error {
+func NewAuditRecord(record *QueryAuditLog) error {
 	tx := selfDB.conn.Begin()
-	record := &QueryAuditLog{
-		TaskID:       taskID,
-		UserID:       userId,
-		SQLStatement: statement,
-		DBName:       dbName,
-		// TimeStamp:    time.Now(),
-	}
-	result := selfDB.conn.Create(record)
+	result := selfDB.conn.Create(&record)
 	if result.Error != nil {
 		tx.Rollback()
 		return result.Error
@@ -183,6 +176,22 @@ func NewAuditRecord(userId uint, taskID string, statement, dbName string) error 
 	}
 	tx.Commit()
 
+	return nil
+}
+
+func UpdateExportAuditRecord(record *QueryAuditLog) error {
+	tx := selfDB.conn.Begin()
+	result := selfDB.conn.Where("task_id = ?", record.TaskID).Updates(&record)
+	if result.Error != nil {
+		tx.Rollback()
+		return result.Error
+	}
+	fmt.Println(">>>", result, &record)
+	if result.RowsAffected != 1 {
+		tx.Rollback()
+		return GenerateError("RecordError", "update a query record failed")
+	}
+	tx.Commit()
 	return nil
 }
 
