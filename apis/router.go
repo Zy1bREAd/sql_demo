@@ -113,6 +113,8 @@ func InitBaseRoutes() {
 		rgAuth.GET("/result/download-link/sse", SSEHandle)
 		rgAuth.GET("/result/download", DownloadFile)
 
+		rgAuth.GET("/record/list", getUserAuditRecordHandler)
+
 		rgAuth.GET("/:taskId/result", getQueryResult)
 		rgAuth.GET("/sql/result/keys", getMapKeys)
 		rgAuth.GET("/db/list", DBList)
@@ -507,4 +509,24 @@ func SSEMsgOnSend(ctx *gin.Context, event *sseEvent) {
 	sendMsg := fmt.Sprintf("data: %s\n\n", sseMsgJSON)
 	ctx.Writer.Write([]byte(sendMsg))
 	ctx.Writer.Flush()
+}
+
+// 获取指定用户的日志审计
+func getUserAuditRecordHandler(ctx *gin.Context) {
+	val, exist := ctx.Get("user_id")
+	if !exist {
+		ErrorResp(ctx, "server parse user is failed")
+		return
+	}
+	userId, ok := val.(string)
+	if !ok {
+		ErrorResp(ctx, "convert type is failed")
+		return
+	}
+	recordData, err := GetAuditRecordByUserID(userId)
+	if err != nil {
+		ErrorResp(ctx, err.Error())
+		return
+	}
+	SuccessResp(ctx, recordData, "get audit records by userid")
 }

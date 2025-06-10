@@ -47,12 +47,13 @@ func GenerateError(errorTitle string, msg string) error {
 	return newErr
 }
 
-func DebugLogging(errorTitle string, msg any) {
+func DebugLogging(title string, msg any) {
 	if assertVal, ok := msg.(string); ok {
-		fmt.Println(generateLog(3, errorTitle, assertVal))
+		fmt.Println(generateLog(3, title, assertVal))
+		return
 	} else if assertVal, ok := msg.(int); ok {
-		fmt.Println(generateLog(3, errorTitle, string(assertVal)))
-	} else {
-		fmt.Println(generateLog(3, "LogMsgType", "msg type is invaild"))
+		fmt.Println(generateLog(3, title, string(rune(assertVal))))
+		return
 	}
+	fmt.Println(msg)
 }

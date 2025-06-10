@@ -9,6 +9,7 @@ import (
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var selfDB *SelfDatabase
@@ -56,7 +57,8 @@ func InitSelfDB() *SelfDatabase {
 	// auto迁移表
 	err := selfDB.autoMigrator()
 	if err != nil {
-		GenerateError("AutoMigratorFailed", err.Error())
+		newErr := GenerateError("AutoMigratorFailed", err.Error())
+		panic(newErr)
 	}
 	return selfDB
 }
@@ -79,7 +81,7 @@ func (db *SelfDatabase) autoMigrator() error {
 		return GenerateError("Migrator Failed", "self db is not init")
 	}
 	// 表多的话要以注册的方式注册进来，避免手动一个个输入
-	return db.conn.AutoMigrate(&User{}, &QueryAuditLog{})
+	return db.conn.AutoMigrate(&User{}, &AuditRecord{})
 }
 
 // 创建用户逻辑
@@ -164,7 +166,7 @@ func SSOLogin(username, email string) (uint, error) {
 
 // 查询操作的日志审计
 // 新增操作审计记录
-func NewAuditRecord(record *QueryAuditLog) error {
+func NewAuditRecord(record *AuditRecord) error {
 	tx := selfDB.conn.Begin()
 	result := selfDB.conn.Create(&record)
 	if result.Error != nil {
@@ -180,7 +182,7 @@ func NewAuditRecord(record *QueryAuditLog) error {
 	return nil
 }
 
-func UpdateExportAuditRecord(record *QueryAuditLog) error {
+func UpdateExportAuditRecord(record *AuditRecord) error {
 	tx := selfDB.conn.Begin()
 	result := selfDB.conn.Where("task_id = ?", record.TaskID).Where("user_id = ?", record.UserID).Updates(&record)
 	if result.Error != nil {
@@ -196,11 +198,50 @@ func UpdateExportAuditRecord(record *QueryAuditLog) error {
 }
 
 func AllAuditRecords() error {
-	queryRecords := &QueryAuditLog{}
-	result := selfDB.conn.Find(queryRecords)
+	auditRecords := AuditRecord{}
+	result := selfDB.conn.Find(&auditRecords)
 	if result.Error != nil {
 		return result.Error
 	}
-	fmt.Println(queryRecords)
 	return nil
+}
+
+// User DTO
+type UserAuditRecord struct {
+	// 查询的环境
+	Env          string     `json:"env"`
+	SQLStatement string     `json:"statement"`
+	DBName       string     `json:"db_name"`
+	ExcuteTime   *time.Time `json:"excute_time"`
+}
+
+func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
+	auditRecords := []AuditRecord{}
+	res := selfDB.conn.Where("user_id = ?", userId).Order(
+		clause.OrderByColumn{
+			Column: clause.Column{
+				Name: "time_stamp", // 按照时间戳排序获取前10条
+			},
+			Desc: true,
+		}).Limit(10).Find(&auditRecords)
+	if res.Error != nil {
+		DebugLogging("AuditRecordError", res.Error.Error())
+		return nil, errors.New("<DBQueryFailed>" + res.Error.Error())
+	}
+	if res.RowsAffected == 0 {
+		DebugLogging("AuditRecordError", "audit records is null")
+		return []UserAuditRecord{}, nil
+	}
+	// Convert DTO Object
+	userRecords := make([]UserAuditRecord, 0, 10)
+	for _, record := range auditRecords {
+		userRecords = append(userRecords, UserAuditRecord{
+			Env:          record.Env,
+			DBName:       record.DBName,
+			SQLStatement: record.SQLStatement,
+			ExcuteTime:   record.TimeStamp,
+		})
+	}
+	// DebugLogging("resultRows", auditRecords)
+	return userRecords, nil
 }

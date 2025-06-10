@@ -15,7 +15,7 @@ type User struct {
 	// 权限？
 
 	// 关联
-	QueryAuditLogs []QueryAuditLog `gorm:"foreignKey:UserID"`
+	QueryAuditLogs []AuditRecord `gorm:"foreignKey:UserID"`
 }
 
 func (u *User) ToUserResp() UserResp {
@@ -33,9 +33,9 @@ type UserResp struct {
 	Email string `json:"email"`
 }
 
-type QueryAuditLog struct {
+type AuditRecord struct {
 	ID           uint   `gorm:"primaryKey"`
-	TaskID       string `gorm:"type:varchar(255);not null;uniqueIndex"` // 为什么增加taskid 因为后期可能通过taskid检索日志找到一些执行的过程。
+	TaskID       string `gorm:"type:varchar(255);not null;uniqueIndex"`
 	UserID       uint
 	SQLStatement string     `gorm:"not null"`
 	DBName       string     `gorm:"type:varchar(255)"`
@@ -45,5 +45,9 @@ type QueryAuditLog struct {
 	// 查询的环境
 	Env string `gorm:"type:char(64)"`
 	// 关联表
-	User User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID"`
+	User User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
+}
+
+func (audit *AuditRecord) TableName() string {
+	return "query_audit_logs"
 }

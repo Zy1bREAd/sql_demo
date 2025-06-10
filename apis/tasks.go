@@ -88,7 +88,7 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	// 拥有细粒度超时控制的核心查询函数
 	result := op.Query(ctx, task.Statement, task.ID)
 	// 插入审计记录
-	record := &QueryAuditLog{
+	record := &AuditRecord{
 		TaskID:       task.ID,
 		UserID:       task.UserID,
 		SQLStatement: task.Statement,
@@ -198,7 +198,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 	// 完成后传递<导出结果>对象信息，并通过channel传递完成消息
 	task.Result.Done <- struct{}{}
 	now := time.Now()
-	record := &QueryAuditLog{
+	record := &AuditRecord{
 		TaskID:     task.ID,     // 用于查询
 		UserID:     task.UserID, // 用于查询
 		IsExported: 1,
