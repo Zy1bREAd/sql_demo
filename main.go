@@ -2,16 +2,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"runtime"
 	"sql_demo/apis"
 )
 
 func main() {
-	// defer func() {
-	// 	fmt.Println("xxxx")
-	// 	time.Sleep(1 * time.Second)
-	// }()
 	defer apis.ErrorRecover()
 	// 连接本地应用的DB存储数据
 	self := apis.InitSelfDB()
@@ -24,10 +19,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	// defer cancel()
 	defer func() {
-		fmt.Println("<debug> worker goroutine 退出前", runtime.NumGoroutine())
+		apis.DebugLogging("worker goroutine 退出前", runtime.NumGoroutine())
 		cancel()
-		// time.Sleep(1 * time.Second)
-		// fmt.Println("<debug> worker goroutine 退出后", runtime.NumGoroutine())
 	}()
 	apis.StartTaskWorkerPool(ctx)
 	apis.StartResultReader(ctx)

@@ -2,7 +2,6 @@ package apis
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"os"
 	"regexp"
@@ -48,7 +47,7 @@ func loadInRule() error {
 		return GenerateError("LoadIn Failed", err.Error())
 	}
 	err = yaml.Unmarshal(f, &dataMaskConfig)
-	fmt.Println("datamasking=", dataMaskConfig.RuleConfig)
+	DebugLogging("DataMaskRule", dataMaskConfig.RuleConfig)
 	if err != nil {
 		return GenerateError("LoadIn Failed", err.Error())
 	}

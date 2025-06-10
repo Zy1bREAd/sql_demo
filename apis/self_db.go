@@ -4,7 +4,6 @@ package apis
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -55,8 +54,10 @@ func InitSelfDB() *SelfDatabase {
 	}
 
 	// auto迁移表
-	selfDB.autoMigrator()
-	log.Println("DB migrator完成")
+	err := selfDB.autoMigrator()
+	if err != nil {
+		GenerateError("AutoMigratorFailed", err.Error())
+	}
 	return selfDB
 }
 
@@ -181,12 +182,11 @@ func NewAuditRecord(record *QueryAuditLog) error {
 
 func UpdateExportAuditRecord(record *QueryAuditLog) error {
 	tx := selfDB.conn.Begin()
-	result := selfDB.conn.Where("task_id = ?", record.TaskID).Updates(&record)
+	result := selfDB.conn.Where("task_id = ?", record.TaskID).Where("user_id = ?", record.UserID).Updates(&record)
 	if result.Error != nil {
 		tx.Rollback()
 		return result.Error
 	}
-	fmt.Println(">>>", result, &record)
 	if result.RowsAffected != 1 {
 		tx.Rollback()
 		return GenerateError("RecordError", "update a query record failed")

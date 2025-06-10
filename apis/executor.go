@@ -198,11 +198,9 @@ func LoadInDB() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("[DEBUG] >>> ", config)
 
 	// 将读取到DB配置注册进数据库池子中进行管理
 	pool := newDBPoolManager()
-	// fmt.Println("yaml config: ", config, pool)
 	err = pool.register(&config)
 	if err != nil {
 		panic(err)

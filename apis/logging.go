@@ -32,28 +32,27 @@ func ErrorRecover() {
 	}
 }
 
-func generateLog(level int, errorTitle string, msg string) error {
+func generateLog(level int, errorTitle string, msg string) string {
 	levelStr, ok := levelMap[level]
 	if !ok {
-		return errors.New("log level is not found")
+		return "log level is not found"
 	}
-	formatErrorMsg := fmt.Sprintf("[%s] <%s> %s", levelStr, errorTitle, msg)
-	log.Println(formatErrorMsg)
-	return errors.New(formatErrorMsg)
+	formatMsg := fmt.Sprintf("[%s] <%s> %s", levelStr, errorTitle, msg)
+	log.Println(formatMsg)
+	return formatMsg
 }
 
 func GenerateError(errorTitle string, msg string) error {
-	return generateLog(0, errorTitle, msg)
+	newErr := errors.New(generateLog(0, errorTitle, msg))
+	return newErr
 }
 
-func GenerateWarn(errorTitle string, msg string) error {
-	return generateLog(1, errorTitle, msg)
-}
-
-func GenerateInfo(errorTitle string, msg string) error {
-	return generateLog(2, errorTitle, msg)
-}
-
-func GenerateDebug(errorTitle string, msg string) error {
-	return generateLog(3, errorTitle, msg)
+func DebugLogging(errorTitle string, msg any) {
+	if assertVal, ok := msg.(string); ok {
+		fmt.Println(generateLog(3, errorTitle, assertVal))
+	} else if assertVal, ok := msg.(int); ok {
+		fmt.Println(generateLog(3, errorTitle, string(assertVal)))
+	} else {
+		fmt.Println(generateLog(3, "LogMsgType", "msg type is invaild"))
+	}
 }

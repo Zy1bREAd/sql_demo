@@ -52,7 +52,6 @@ func SubmitSQLTask(statement string, database string, userId string) string {
 		UserID:    StrToUint(userId),
 	}
 	TaskQueue <- task
-	fmt.Println("debug>> ", task)
 	log.Printf("task id=%s is enqueue", task.ID)
 	return task.ID
 }
