@@ -8,6 +8,9 @@ import (
 
 func main() {
 	defer apis.ErrorRecover()
+	// 开启文件日志记录
+	file := apis.StartFileLogging()
+	defer file.Close()
 	// 连接本地应用的DB存储数据
 	self := apis.InitSelfDB()
 	defer self.Close()
@@ -19,7 +22,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	// defer cancel()
 	defer func() {
-		apis.DebugLogging("worker goroutine 退出前", runtime.NumGoroutine())
+		apis.DebugPrint("worker goroutine 退出前", runtime.NumGoroutine())
 		cancel()
 	}()
 	apis.StartTaskWorkerPool(ctx)

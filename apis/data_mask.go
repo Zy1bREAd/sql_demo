@@ -47,7 +47,7 @@ func loadInRule() error {
 		return GenerateError("LoadIn Failed", err.Error())
 	}
 	err = yaml.Unmarshal(f, &dataMaskConfig)
-	DebugLogging("DataMaskRule", dataMaskConfig.RuleConfig)
+	DebugPrint("DataMaskRule", dataMaskConfig.RuleConfig)
 	if err != nil {
 		return GenerateError("LoadIn Failed", err.Error())
 	}

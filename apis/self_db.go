@@ -225,11 +225,11 @@ func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
 			Desc: true,
 		}).Limit(10).Find(&auditRecords)
 	if res.Error != nil {
-		DebugLogging("AuditRecordError", res.Error.Error())
+		DebugPrint("AuditRecordError", res.Error.Error())
 		return nil, errors.New("<DBQueryFailed>" + res.Error.Error())
 	}
 	if res.RowsAffected == 0 {
-		DebugLogging("AuditRecordError", "audit records is null")
+		DebugPrint("AuditRecordError", "audit records is null")
 		return []UserAuditRecord{}, nil
 	}
 	// Convert DTO Object
@@ -242,6 +242,6 @@ func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
 			ExcuteTime:   record.TimeStamp,
 		})
 	}
-	// DebugLogging("resultRows", auditRecords)
+	// DebugPrint("resultRows", auditRecords)
 	return userRecords, nil
 }

@@ -104,17 +104,17 @@ func StartResultExportor(ctx context.Context) {
 				select {
 				case t := <-ExportQueue:
 					//导出下载逻辑
-					DebugLogging("ExportTask", "export task "+t.ID+" is starting...")
+					DebugPrint("ExportTask", "export task "+t.ID+" is starting...")
 					err := ExportSQLTask(ctx, t)
 					if err != nil {
 						// 添加错误信息
 						t.Result.Error = err
 						t.Result.FilePath += "_failed"
 						t.Result.Done <- struct{}{}
-						DebugLogging("ExportTask", "export task "+t.ID+" is failed,error: "+err.Error())
+						DebugPrint("ExportTask", "export task "+t.ID+" is failed,error: "+err.Error())
 						continue
 					}
-					DebugLogging("ExportTask", "export task "+t.ID+" is completed")
+					DebugPrint("ExportTask", "export task "+t.ID+" is completed")
 				case <-ctx.Done():
 					log.Println("因错误退出，关闭当前Reader, Error:", ctx.Err().Error())
 					return

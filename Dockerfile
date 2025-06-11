@@ -1,9 +1,19 @@
-FROM golang:1.24-alpine
+## 多阶段构建：编译环境
+FROM golang:1.24-alpine AS builder
+ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /app
 COPY go.mod go.sum ./
-## 设置国内加速源下载依赖
-RUN go env -w GOPROXY=https://goproxy.cn,direct && go mod download
+RUN go mod download
 COPY . .
 RUN go build -o sql_demo .
+
+
+## 多阶段构建：运行环境
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates
+WORKDIR /app
+# 从第一阶段复制构建好的二进制文件（仅 10-20MB）
+# COPY --from=builder /app/config .
+COPY --from=builder /app/config /app/sql_demo .
 EXPOSE 22899
-ENTRYPOINT ["/app/sql_demo"]
+CMD ["/app/sql_demo"]

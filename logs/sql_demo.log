@@ -1,0 +1,40 @@
+2025/06/11 10:13:56 <shower> DataBase Register Success
+2025/06/11 10:13:56 <zabbix> DataBase Register Success
+2025/06/11 10:13:56 <sql_demo> DataBase Register Success
+2025/06/11 10:13:56 Task Worker Starting ....
+2025/06/11 10:14:00 [DEBUG] <worker goroutine 退出前> 
+2025/06/11 11:49:29 <sql_demo> DataBase Register Success
+2025/06/11 11:49:29 <shower> DataBase Register Success
+2025/06/11 11:49:29 <zabbix> DataBase Register Success
+2025/06/11 11:49:29 Task Worker Starting ....
+2025/06/11 11:49:42 [ERROR] <ParseJWTError> token has invalid claims: token is expired
+2025/06/11 11:50:07 task id=984077c1-82b2-4c90-8aca-2b1b63c580ac is enqueue
+2025/06/11 11:50:07 task id=984077c1-82b2-4c90-8aca-2b1b63c580ac is working
+2025/06/11 11:50:07 task id=984077c1-82b2-4c90-8aca-2b1b63c580ac is completed
+2025/06/11 11:50:30 [DEBUG] <worker goroutine 退出前> 
+2025/06/11 11:51:32 <shower> DataBase Register Success
+2025/06/11 11:51:32 <zabbix> DataBase Register Success
+2025/06/11 11:51:32 <sql_demo> DataBase Register Success
+2025/06/11 11:51:32 Task Worker Starting ....
+2025/06/11 11:51:47 task id=ee3fc006-69c5-4a8a-b5d1-8a6598cbda4c is enqueue
+2025/06/11 11:51:47 task id=ee3fc006-69c5-4a8a-b5d1-8a6598cbda4c is working
+2025/06/11 11:51:47 task id=ee3fc006-69c5-4a8a-b5d1-8a6598cbda4c is completed
+2025/06/11 11:52:54 task id=4599783c-fa82-487b-a953-78eb1bde54f4 is enqueue
+2025/06/11 11:52:54 task id=4599783c-fa82-487b-a953-78eb1bde54f4 is working
+2025/06/11 11:52:54 task id=4599783c-fa82-487b-a953-78eb1bde54f4 is completed
+2025/06/11 11:54:47 type=ResultMap taskID=ee3fc006-69c5-4a8a-b5d1-8a6598cbda4c Cleaned Up
+2025/06/11 11:55:54 type=ResultMap taskID=4599783c-fa82-487b-a953-78eb1bde54f4 Cleaned Up
+2025/06/11 11:56:47 type=QueryTaskMap taskID=ee3fc006-69c5-4a8a-b5d1-8a6598cbda4c Cleaned Up
+2025/06/11 11:57:54 type=QueryTaskMap taskID=4599783c-fa82-487b-a953-78eb1bde54f4 Cleaned Up
+2025/06/11 18:53:49 [DEBUG] <worker goroutine 退出前> 
+2025/06/11 18:53:49 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/11 18:53:49 因错误退出，关闭当前Task Worker, Error: context canceled

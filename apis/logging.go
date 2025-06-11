@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"time"
 )
 
@@ -47,7 +48,7 @@ func GenerateError(errorTitle string, msg string) error {
 	return newErr
 }
 
-func DebugLogging(title string, msg any) {
+func DebugPrint(title string, msg any) {
 	if assertVal, ok := msg.(string); ok {
 		fmt.Println(generateLog(3, title, assertVal))
 		return
@@ -56,4 +57,32 @@ func DebugLogging(title string, msg any) {
 		return
 	}
 	fmt.Println(msg)
+}
+
+func StartFileLogging() *os.File {
+	filePath := "logs"
+	fileName := "sql_demo.log"
+	// 检查是否有路径
+	_, err := os.Stat(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err := os.Mkdir(filePath, 0644)
+			if err != nil {
+				log.Println(err)
+				panic(err)
+			}
+		} else {
+			log.Println(err)
+			panic(err)
+		}
+	}
+
+	logFile, err := os.OpenFile(filePath+"/"+fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Println(err)
+		panic(err)
+	}
+
+	log.SetOutput(logFile)
+	return logFile
 }
