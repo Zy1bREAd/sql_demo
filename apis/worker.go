@@ -2,13 +2,12 @@ package apis
 
 import (
 	"context"
-	"fmt"
 	"log"
 )
 
 // 清理已读结果集队列
 func StartCleanWorker(ctx context.Context) {
-	fmt.Println("Map Clean Worker Starting ...")
+	log.Println("Map Clean Worker Starting ...")
 	cleanTypeMap := map[int]*CachesMap{
 		0: ResultMap,
 		1: QueryTaskMap,
@@ -39,7 +38,7 @@ func StartCleanWorker(ctx context.Context) {
 
 // File CLeaner
 func StartHousekeeper(ctx context.Context) {
-	fmt.Println("HouseKeeper Starting ...")
+	log.Println("HouseKeeper Starting ...")
 	go func() {
 		for {
 			select {
@@ -75,7 +74,7 @@ func StartTaskWorkerPool(ctx context.Context) {
 
 // Resulter Inform
 func StartResultReader(ctx context.Context) {
-	fmt.Println("Result Reader Starting ...")
+	log.Println("Result Reader Starting ...")
 	for i := 0; i < 3; i++ {
 		go func() {
 			for {

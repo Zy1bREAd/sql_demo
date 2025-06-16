@@ -95,7 +95,7 @@ func InitRouter() {
 	if err := srv.Shutdown(ctx); err != nil {
 		GenerateError("ShutDown Server Failed", err.Error())
 	} else {
-		fmt.Println("closed server!!")
+		log.Println("closed server!!")
 	}
 
 }
@@ -186,7 +186,7 @@ func UserSQLQuery(ctx *gin.Context) {
 	}
 	var q UserQuery
 	ctx.ShouldBind(&q)
-	fmt.Println(q)
+	log.Println(q)
 
 	// SQL语法解析并校验（v2.0)  - 格式化SQL查询语句（确保规范化）
 	sqlRaw, err := ParseSQL(q.Statement)
@@ -230,7 +230,7 @@ func getQueryResult(ctx *gin.Context) {
 
 func getMapKeys(ctx *gin.Context) {
 	userResult := ResultMap.Keys()
-	fmt.Println(userResult)
+	log.Println(userResult)
 	SuccessResp(ctx, userResult, "Get resultMap all keys success")
 }
 
@@ -290,7 +290,7 @@ func userSSOLogin(ctx *gin.Context) {
 		return
 	}
 	authURL := oa2.AuthCodeURL(state)
-	fmt.Println("构造后的auth url:", authURL)
+	log.Println("构造后的auth url:", authURL)
 	// ctx.Redirect(http.StatusFound, authURL)
 	// 构造authURL，由前端去跳转。
 	SuccessResp(ctx, map[string]any{
@@ -323,7 +323,7 @@ func SSOCallBack(ctx *gin.Context) {
 		ErrorResp(ctx, "Failed to exchange token:"+err.Error())
 		return
 	}
-	// fmt.Println("DEBUG>>>", token)
+	// log.Println("DEBUG>>>", token)
 
 	// 通过获取身份提供商的token中的用户信息，构造我们application的token
 	client := oauthConf.Client(context.Background(), token)
@@ -334,7 +334,7 @@ func SSOCallBack(ctx *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	// fmt.Println("resp body>>>", resp.Body)
+	// log.Println("resp body>>>", resp.Body)
 	// 定义gitlab user info结构体用于获取数据
 	var gitlabUserInfo struct {
 		ID    uint   `json:"id"`
@@ -352,7 +352,7 @@ func SSOCallBack(ctx *gin.Context) {
 		ErrorResp(ctx, "sso login failed, "+err.Error())
 		return
 	}
-	// fmt.Println(gitlabUserInfo)
+	// log.Println(gitlabUserInfo)
 	appToken, err := GenerateJWT(userId, gitlabUserInfo.Name, gitlabUserInfo.Email)
 	if err != nil {
 		DefaultResp(ctx, 1, nil, err.Error())
@@ -383,7 +383,7 @@ func ResultExport(ctx *gin.Context) {
 func DownloadFile(ctx *gin.Context) {
 	taskId := ctx.Query("task_id")
 	if taskId == "" {
-		fmt.Println("debug: >> task id is null, invaild")
+		log.Println("debug: >> task id is null, invaild")
 		DefaultResp(ctx, 1, nil, "param taskid is invalid")
 		return
 	}
@@ -399,7 +399,7 @@ func DownloadFile(ctx *gin.Context) {
 		return
 	}
 
-	fmt.Println("[Download] download start...", exportResult.FilePath)
+	log.Println("[Download] download start...", exportResult.FilePath)
 	// 判断要下载的文件
 	if _, err := os.Stat(exportResult.FilePath); err != nil {
 		// pwd, _ := os.Getwd()
@@ -408,7 +408,7 @@ func DownloadFile(ctx *gin.Context) {
 	}
 	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", exportResult.FilePath))
 	ctx.File(exportResult.FilePath)
-	fmt.Println("[Download] download completed")
+	log.Println("[Download] download completed")
 	// SuccessResp(ctx, nil, "download success!!")
 }
 
@@ -426,7 +426,7 @@ func SSEHandle(ctx *gin.Context) {
 	// 从Parmas山获取taskId
 	taskId := ctx.Query("task_id")
 	if taskId == "" {
-		fmt.Println("[TaskError] taskId is null,Abort!!!")
+		log.Println("[TaskError] taskId is null,Abort!!!")
 		return
 	}
 
@@ -436,12 +436,12 @@ func SSEHandle(ctx *gin.Context) {
 	// 获取对应taskId的<导出对象>信息
 	mapVal, exist := ExportWorkMap.Get(taskId)
 	if !exist {
-		fmt.Println("[NotExist] export result not exist,exit(1)")
+		log.Println("[NotExist] export result not exist,exit(1)")
 		return
 	}
 	exportJob, ok := mapVal.(*ExportResult)
 	if !ok {
-		fmt.Println("[TypeNotMatch] export result type is not match,exit(1)")
+		log.Println("[TypeNotMatch] export result type is not match,exit(1)")
 		return
 	}
 	for {
@@ -450,7 +450,7 @@ func SSEHandle(ctx *gin.Context) {
 		case <-exportJob.Done:
 			// 判断是否有错误
 			if exportJob.Error != nil {
-				fmt.Println("[ExportFailed] export task is failed ==>", exportJob.Error.Error())
+				log.Println("[ExportFailed] export task is failed ==>", exportJob.Error.Error())
 				// 此时SSE连接已开，必须返回错误消息和关闭sse
 				sseContent := sseEvent{
 					ID:    2,
@@ -467,7 +467,7 @@ func SSEHandle(ctx *gin.Context) {
 				SSEMsgOnSend(ctx, &sseContent)
 				return
 			}
-			fmt.Println("[Completed] export task done")
+			log.Println("[Completed] export task done")
 			// 发送初始化连接确认(discard)
 
 			// 生成签名的URL下载链接
@@ -489,10 +489,10 @@ func SSEHandle(ctx *gin.Context) {
 			SSEMsgOnSend(ctx, &sseContent)
 			return
 		case <-timeoutCtx.Done():
-			fmt.Println("[TimeOut] sse handle timeout,exit 1")
+			log.Println("[TimeOut] sse handle timeout,exit 1")
 			return
 		default:
-			fmt.Println("[Wait] waiting export task done")
+			log.Println("[Wait] waiting export task done")
 			time.Sleep(time.Second * 2)
 		}
 	}
@@ -503,7 +503,7 @@ func SSEHandle(ctx *gin.Context) {
 func SSEMsgOnSend(ctx *gin.Context, event *sseEvent) {
 	sseMsgJSON, err := json.Marshal(event)
 	if err != nil {
-		fmt.Println("[JSONMarshalError] json data masrshal error")
+		log.Println("[JSONMarshalError] json data masrshal error")
 		return
 	}
 	sendMsg := fmt.Sprintf("data: %s\n\n", sseMsgJSON)

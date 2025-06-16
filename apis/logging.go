@@ -50,13 +50,13 @@ func GenerateError(errorTitle string, msg string) error {
 
 func DebugPrint(title string, msg any) {
 	if assertVal, ok := msg.(string); ok {
-		fmt.Println(generateLog(3, title, assertVal))
+		log.Println(generateLog(3, title, assertVal))
 		return
 	} else if assertVal, ok := msg.(int); ok {
-		fmt.Println(generateLog(3, title, string(rune(assertVal))))
+		log.Println(generateLog(3, title, string(rune(assertVal))))
 		return
 	}
-	fmt.Println(msg)
+	log.Println(msg)
 }
 
 func StartFileLogging() *os.File {

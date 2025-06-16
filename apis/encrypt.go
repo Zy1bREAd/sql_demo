@@ -43,7 +43,7 @@ func ValidateValueWithMd5(inputVal, encryptVal string) bool {
 // 	sign.Write([]byte(fmt.Sprintf("%s:%d", taskId, expireTime)))
 // 	signStr := base64.URLEncoding.EncodeToString(sign.Sum(nil))
 // 	signURI := fmt.Sprintf("%s?token=%s&expire=%d", taskId, signStr, expireTime)
-// 	fmt.Println("debug>>>> signStr", signURI)
+// 	log.Println("debug>>>> signStr", signURI)
 // 	return signURI
 // }
 

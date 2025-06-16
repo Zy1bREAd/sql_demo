@@ -65,7 +65,7 @@ func InitEnv() {
 		if err != nil {
 			panic(GenerateError("Init Error", err.Error()))
 		}
-		// fmt.Println("appConfig=", appConfig)
+		// log.Println("appConfig=", appConfig)
 		// 加载数据遮罩规则
 		InitDataMaskConfig()
 

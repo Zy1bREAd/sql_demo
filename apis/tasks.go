@@ -167,7 +167,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 				if !ok {
 					return GenerateError("QueryResultError", "query result data type is incorrect")
 				}
-				fmt.Println("[Re-Excute] re-excute sql task completed")
+				log.Println("[Re-Excute] re-excute sql task completed")
 				cachesMapResult = assertVal
 				break
 			}
@@ -190,7 +190,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 			HouseKeepQueue <- task
 		})
 	default:
-		fmt.Println("[WARN] 暂不支持其他方式导出")
+		log.Println("[WARN] 暂不支持其他方式导出")
 		return GenerateError("TypeError", "export type is unknown")
 	}
 	// 假装导出要耗时10s
@@ -276,19 +276,19 @@ func FileClean(filepath string) {
 	fileInfo, err := os.Stat(filepath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Println("[FileNotExist]", fileInfo.Name(), "is not exist")
+			log.Println("[FileNotExist]", fileInfo.Name(), "is not exist")
 			return
 		}
-		fmt.Println("[FileError]", err.Error())
+		log.Println("[FileError]", err.Error())
 		return
 	}
 	if fileInfo.IsDir() {
-		fmt.Println("[Error]", fileInfo.Name(), "is not a file")
+		log.Println("[Error]", fileInfo.Name(), "is not a file")
 		return
 	}
 	err = os.Remove(filepath)
 	if err != nil {
-		fmt.Println("[RemoveFailed]", fileInfo.Name(), "remove occur a error", err.Error())
+		log.Println("[RemoveFailed]", fileInfo.Name(), "remove occur a error", err.Error())
 	}
-	fmt.Println("[Completed]", fileInfo.Name(), "is cleaned up")
+	log.Println("[Completed]", fileInfo.Name(), "is cleaned up")
 }
