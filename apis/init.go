@@ -57,7 +57,7 @@ var appConfig *appEnvConfig
 // 初始化环境变量配置
 func InitEnv() {
 	initOnce.Do(func() {
-		f, err := os.ReadFile("config/env.yaml")
+		f, err := os.ReadFile("./config/env.yaml")
 		if err != nil {
 			panic(GenerateError("Init Error", err.Error()))
 		}
