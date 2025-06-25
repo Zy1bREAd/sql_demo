@@ -56,6 +56,20 @@ func SubmitSQLTask(statement string, database string, userId string) string {
 	return task.ID
 }
 
+// 事件驱动(v2.0)
+func CreateSQLQueryTask(statement string, database string, userId string) QueryTask {
+	//! context控制超时
+	task := QueryTask{
+		ID:        GenerateUUIDKey(),
+		DBName:    database,
+		Statement: statement,
+		deadline:  12,
+		UserID:    StrToUint(userId),
+	}
+	log.Printf("task id=%s is enqueue", task.ID)
+	return task
+}
+
 func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	log.Printf("task id=%s is working", task.ID)
 	//! 执行任务函数只当只关心任务处理逻辑本身
@@ -70,7 +84,12 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 			Results: nil,
 			Error:   err,
 		}
-		ResultQueue <- queryResult
+		// ResultQueue <- queryResult
+		ep := GetEventProducer()
+		ep.Produce(Event{
+			Type:    "get_result",
+			Payload: queryResult,
+		})
 		return
 	}
 	// 执行前健康检查DB
@@ -82,7 +101,12 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 			Results: nil,
 			Error:   GenerateError("HealthCheck Failed", errMsg),
 		}
-		ResultQueue <- queryResult
+		// ResultQueue <- queryResult
+		ep := GetEventProducer()
+		ep.Produce(Event{
+			Type:    "get_result",
+			Payload: queryResult,
+		})
 		return
 	}
 	// 拥有细粒度超时控制的核心查询函数
@@ -101,7 +125,12 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	}
 	log.Printf("task id=%s is completed", task.ID)
 	//! 有必要管理sqltask的状态吗？
-	ResultQueue <- result
+	// ResultQueue <- result
+	ep := GetEventProducer()
+	ep.Produce(Event{
+		Type:    "get_result",
+		Payload: result,
+	})
 
 }
 
@@ -135,7 +164,12 @@ func SubmitExportTask(id, exportType string, userId uint) *ExportTask {
 		Result:   taskResult,
 	}
 	ExportWorkMap.Set(task.ID, task.Result, 300, 3)
-	ExportQueue <- task
+	// ExportQueue <- task
+	ep := GetEventProducer()
+	ep.Produce(Event{
+		Type:    "export_result",
+		Payload: task,
+	})
 	return task
 }
 
@@ -187,7 +221,12 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 			return err
 		}
 		time.AfterFunc(time.Second*time.Duration(conf.ExportEnv.HouseKeeping), func() {
-			HouseKeepQueue <- task
+			// HouseKeepQueue <- task
+			ep := GetEventProducer()
+			ep.Produce(Event{
+				Type:    "file_housekeeping",
+				Payload: task,
+			})
 		})
 	default:
 		log.Println("[WARN] 暂不支持其他方式导出")

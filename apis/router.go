@@ -81,6 +81,7 @@ func InitRouter() {
 	} else {
 		go func() {
 			fmt.Printf("Listening and serving HTTP on %s\n", conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.Port)
+			srv.Addr = conf.WebSrvEnv.Addr + ":" + conf.WebSrvEnv.Port
 			srv.ListenAndServe()
 		}()
 	}
@@ -194,11 +195,19 @@ func UserSQLQuery(ctx *gin.Context) {
 		DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
-	// 提交异步任务入队
-	taskID := SubmitSQLTask(sqlRaw, q.Database, userID.(string))
+	// 提交异步任务入队(v1.0)
+	// taskID := SubmitSQLTask(sqlRaw, q.Database, userID.(string))
+
+	// 事件驱动：封装成Event推送到事件通道(v2.0)
+	task := CreateSQLQueryTask(sqlRaw, q.Database, userID.(string))
+	ep := GetEventProducer()
+	ep.Produce(Event{
+		Type:    "sql_query",
+		Payload: task,
+	})
 	SuccessResp(ctx, map[string]string{
-		"task_id": taskID,
-	}, "sql query task enqueue")
+		"task_id": task.ID,
+	}, "submit sql_query event success")
 }
 
 // 通过SSE返回结果数据 ？?

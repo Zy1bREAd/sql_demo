@@ -35,7 +35,12 @@ func (rc *CachesMap) Set(key string, values any, expireTime int, taskType int) {
 				Type: taskType,
 			}
 			time.AfterFunc(time.Duration(expireTime)*time.Second, func() {
-				CleanQueue <- task
+				// CleanQueue <- task
+				ep := GetEventProducer()
+				ep.Produce(Event{
+					Type:    "clean_task",
+					Payload: task,
+				})
 			})
 		}()
 	}

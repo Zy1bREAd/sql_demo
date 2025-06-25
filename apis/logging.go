@@ -3,6 +3,7 @@ package apis
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"time"
@@ -39,7 +40,6 @@ func generateLog(level int, errorTitle string, msg string) string {
 		return "log level is not found"
 	}
 	formatMsg := fmt.Sprintf("[%s] <%s> %s", levelStr, errorTitle, msg)
-	log.Println(formatMsg)
 	return formatMsg
 }
 
@@ -82,7 +82,8 @@ func StartFileLogging() *os.File {
 		log.Println(err)
 		panic(err)
 	}
-
-	log.SetOutput(logFile)
+	// 同时写入日志文件和屏幕
+	multiWriter := io.MultiWriter(logFile, os.Stdout)
+	log.SetOutput(multiWriter)
 	return logFile
 }

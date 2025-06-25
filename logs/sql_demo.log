@@ -38,3 +38,670 @@
 2025/06/11 18:53:49 因错误退出，关闭当前Reader, Error: context canceled
 2025/06/11 18:53:49 因错误退出，关闭当前Reader, Error: context canceled
 2025/06/11 18:53:49 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/17 16:15:13 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/17 16:15:14 <zabbix> DataBase Register Success
+2025/06/17 16:15:14 <sql_demo> DataBase Register Success
+2025/06/17 16:15:14 <shower> DataBase Register Success
+2025/06/17 16:15:14 Task Worker Starting ....
+2025/06/17 16:15:14 Result Reader Starting ...
+2025/06/17 16:15:14 Map Clean Worker Starting ...
+2025/06/17 16:15:14 HouseKeeper Starting ...
+2025/06/17 16:15:53 closed server!!
+2025/06/17 16:15:53 [DEBUG] <worker goroutine 退出前> 
+2025/06/17 16:15:53 [DEBUG] <worker goroutine 退出前> 
+2025/06/17 16:15:53 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/17 16:15:53 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/17 16:16:11 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/17 16:16:12 <zabbix> DataBase Register Success
+2025/06/17 16:16:12 <sql_demo> DataBase Register Success
+2025/06/17 16:16:12 <shower> DataBase Register Success
+2025/06/17 16:16:12 Task Worker Starting ....
+2025/06/17 16:16:12 Result Reader Starting ...
+2025/06/17 16:16:12 Map Clean Worker Starting ...
+2025/06/17 16:16:12 HouseKeeper Starting ...
+2025/06/17 16:21:26 closed server!!
+2025/06/17 16:21:26 [DEBUG] <worker goroutine 退出前> 
+2025/06/17 16:21:26 [DEBUG] <worker goroutine 退出前> 
+2025/06/17 16:35:00 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/17 16:35:01 <zabbix> DataBase Register Success
+2025/06/17 16:35:01 <sql_demo> DataBase Register Success
+2025/06/17 16:35:01 <shower> DataBase Register Success
+2025/06/17 16:35:01 Task Worker Starting ....
+2025/06/17 16:35:01 Result Reader Starting ...
+2025/06/17 16:35:01 Map Clean Worker Starting ...
+2025/06/17 16:35:01 HouseKeeper Starting ...
+2025/06/17 17:05:36 closed server!!
+2025/06/17 17:05:36 [DEBUG] <worker goroutine 退出前> 
+2025/06/17 17:05:36 [DEBUG] <worker goroutine 退出前> 
+2025/06/17 17:09:45 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/17 17:09:45 <zabbix> DataBase Register Success
+2025/06/17 17:09:45 <sql_demo> DataBase Register Success
+2025/06/17 17:09:45 <shower> DataBase Register Success
+2025/06/17 17:09:45 Task Worker Starting ....
+2025/06/17 17:09:45 Result Reader Starting ...
+2025/06/17 17:09:45 Map Clean Worker Starting ...
+2025/06/17 17:09:45 HouseKeeper Starting ...
+2025/06/17 17:12:41 http: TLS handshake error from 127.0.0.1:46842: client sent an HTTP request to an HTTPS server
+2025/06/17 17:12:47 http: TLS handshake error from 127.0.0.1:49748: local error: tls: bad record MAC
+2025/06/17 17:14:53 [ERROR] <ParseJWTError> token has invalid claims: token is expired
+2025/06/17 17:22:40 closed server!!
+2025/06/17 17:22:40 [DEBUG] <worker goroutine 退出前> 
+2025/06/17 17:22:40 [DEBUG] <worker goroutine 退出前> 
+2025/06/17 17:37:27 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/17 17:37:28 <zabbix> DataBase Register Success
+2025/06/17 17:37:28 <sql_demo> DataBase Register Success
+2025/06/17 17:37:28 <shower> DataBase Register Success
+2025/06/17 17:37:28 Task Worker Starting ....
+2025/06/17 17:37:28 Result Reader Starting ...
+2025/06/17 17:37:28 Map Clean Worker Starting ...
+2025/06/17 17:37:28 HouseKeeper Starting ...
+2025/06/17 17:37:43 http: TLS handshake error from 127.0.0.1:35094: local error: tls: bad record MAC
+2025/06/17 17:38:55 http: TLS handshake error from 159.75.119.146:60906: local error: tls: bad record MAC
+2025/06/17 17:41:06 closed server!!
+2025/06/17 17:41:06 [DEBUG] <worker goroutine 退出前> 
+2025/06/17 17:41:06 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 00:30:56 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 00:30:56 <shower> DataBase Register Success
+2025/06/18 00:30:56 <zabbix> DataBase Register Success
+2025/06/18 00:30:56 <sql_demo> DataBase Register Success
+2025/06/18 00:30:56 Task Worker Starting ....
+2025/06/18 00:30:56 Result Reader Starting ...
+2025/06/18 00:30:56 Map Clean Worker Starting ...
+2025/06/18 00:30:56 HouseKeeper Starting ...
+2025/06/18 00:30:56 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 00:30:56 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 13:48:34 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 13:48:34 <zabbix> DataBase Register Success
+2025/06/18 13:48:34 <sql_demo> DataBase Register Success
+2025/06/18 13:48:34 <shower> DataBase Register Success
+2025/06/18 13:48:34 Task Worker Starting ....
+2025/06/18 13:48:34 Result Reader Starting ...
+2025/06/18 13:48:34 Map Clean Worker Starting ...
+2025/06/18 13:48:34 HouseKeeper Starting ...
+2025/06/18 13:48:34 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 13:48:34 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 13:48:34 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/18 13:48:34 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/18 13:50:15 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 13:50:15 <zabbix> DataBase Register Success
+2025/06/18 13:50:15 <sql_demo> DataBase Register Success
+2025/06/18 13:50:15 <shower> DataBase Register Success
+2025/06/18 13:50:15 Task Worker Starting ....
+2025/06/18 13:50:15 Result Reader Starting ...
+2025/06/18 13:50:15 Map Clean Worker Starting ...
+2025/06/18 13:50:15 HouseKeeper Starting ...
+2025/06/18 13:55:52 closed server!!
+2025/06/18 13:55:52 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 13:55:52 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 13:55:54 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 13:55:54 <zabbix> DataBase Register Success
+2025/06/18 13:55:54 <sql_demo> DataBase Register Success
+2025/06/18 13:55:54 <shower> DataBase Register Success
+2025/06/18 13:55:54 Task Worker Starting ....
+2025/06/18 13:55:54 Result Reader Starting ...
+2025/06/18 13:55:54 Map Clean Worker Starting ...
+2025/06/18 13:55:54 HouseKeeper Starting ...
+2025/06/18 14:36:27 closed server!!
+2025/06/18 14:36:27 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 14:36:27 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 14:36:27 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭当前Task Worker, Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/18 14:36:27 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/18 14:36:31 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 14:36:32 <zabbix> DataBase Register Success
+2025/06/18 14:36:32 <sql_demo> DataBase Register Success
+2025/06/18 14:36:33 <shower> DataBase Register Success
+2025/06/18 14:36:33 Task Worker Starting ....
+2025/06/18 14:36:33 Result Reader Starting ...
+2025/06/18 14:36:33 Map Clean Worker Starting ...
+2025/06/18 14:36:33 HouseKeeper Starting ...
+2025/06/18 14:37:05 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=2dbdf6042d5717c490c1e8672acdc5241c6f803747cfaea59fe6831f2c55c8ea&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fsso%2Fcallback&response_type=code&scope=read_user&state=E0yMIL_Ar9uO0008TSaH7Qx60La19SI93tHQKbHbKwI%3D
+2025/06/18 14:39:58 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=2dbdf6042d5717c490c1e8672acdc5241c6f803747cfaea59fe6831f2c55c8ea&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fsso%2Fcallback&response_type=code&scope=read_user&state=cA7dyph5AAufPe55tc-RqUOrjlK6_Z05D9PgQCaijwQ%3D
+2025/06/18 14:42:05 type=SessionMap taskID=E0yMIL_Ar9uO0008TSaH7Qx60La19SI93tHQKbHbKwI= Cleaned Up
+2025/06/18 14:42:34 {sql_demo select * from users;  }
+2025/06/18 14:42:34 task id=1fa93093-863d-44d5-840a-fe16838452c9 is enqueue
+2025/06/18 14:43:23 closed server!!
+2025/06/18 14:43:23 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 14:43:23 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:09:49 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 17:09:49 <zabbix> DataBase Register Success
+2025/06/18 17:09:49 <sql_demo> DataBase Register Success
+2025/06/18 17:09:49 <shower> DataBase Register Success
+2025/06/18 17:09:49 Result Reader Starting ...
+2025/06/18 17:09:49 Map Clean Worker Starting ...
+2025/06/18 17:09:49 HouseKeeper Starting ...
+2025/06/18 17:35:54 closed server!!
+2025/06/18 17:35:54 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:35:54 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:35:58 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 17:35:59 <sql_demo> DataBase Register Success
+2025/06/18 17:35:59 <shower> DataBase Register Success
+2025/06/18 17:35:59 <zabbix> DataBase Register Success
+2025/06/18 17:35:59 Result Reader Starting ...
+2025/06/18 17:35:59 Map Clean Worker Starting ...
+2025/06/18 17:35:59 HouseKeeper Starting ...
+2025/06/18 17:35:59 [DEBUG] <EventDispatcher> is ready
+2025/06/18 17:35:59 [DEBUG] <EventDispatcher> is ready
+2025/06/18 17:37:13 {sql_demo select * from users;  }
+2025/06/18 17:37:13 task id=ea9ac6ce-8243-44b7-8947-6252545b2d06 is enqueue
+2025/06/18 17:40:00 [ERROR] <ParseJWTError> token has invalid claims: token is expired
+2025/06/18 17:40:03 closed server!!
+2025/06/18 17:40:03 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:40:03 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:42:41 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 17:42:41 <zabbix> DataBase Register Success
+2025/06/18 17:42:41 <sql_demo> DataBase Register Success
+2025/06/18 17:42:41 <shower> DataBase Register Success
+2025/06/18 17:42:41 Result Reader Starting ...
+2025/06/18 17:42:41 Map Clean Worker Starting ...
+2025/06/18 17:42:41 HouseKeeper Starting ...
+2025/06/18 17:42:41 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:42:41 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:42:41 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:42:41 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:42:41 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:42:41 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:11 closed server!!
+2025/06/18 17:43:11 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:43:11 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:43:13 <zabbix> DataBase Register Success
+2025/06/18 17:43:13 <sql_demo> DataBase Register Success
+2025/06/18 17:43:13 <shower> DataBase Register Success
+2025/06/18 17:43:13 Result Reader Starting ...
+2025/06/18 17:43:13 Map Clean Worker Starting ...
+2025/06/18 17:43:13 HouseKeeper Starting ...
+2025/06/18 17:43:13 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:13 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:13 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:13 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:13 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:13 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:40 closed server!!
+2025/06/18 17:43:40 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:43:40 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:43:42 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 17:43:42 <zabbix> DataBase Register Success
+2025/06/18 17:43:42 <sql_demo> DataBase Register Success
+2025/06/18 17:43:42 <shower> DataBase Register Success
+2025/06/18 17:43:42 Result Reader Starting ...
+2025/06/18 17:43:42 Map Clean Worker Starting ...
+2025/06/18 17:43:42 HouseKeeper Starting ...
+2025/06/18 17:43:42 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:42 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:42 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:43:57 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=2dbdf6042d5717c490c1e8672acdc5241c6f803747cfaea59fe6831f2c55c8ea&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fsso%2Fcallback&response_type=code&scope=read_user&state=sVPWye-jdKBs5IilArXj5TqtaDeCOr3T5u0KG0WfQio%3D
+2025/06/18 17:44:07 {sql_demo select * from users;  }
+2025/06/18 17:44:07 task id=fdf42cc7-fad7-4f8c-80f5-e5c13f4ed5c4 is enqueue
+2025/06/18 17:45:10 closed server!!
+2025/06/18 17:45:10 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:45:32 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 17:45:32 <zabbix> DataBase Register Success
+2025/06/18 17:45:32 <sql_demo> DataBase Register Success
+2025/06/18 17:45:32 <shower> DataBase Register Success
+2025/06/18 17:45:32 Result Reader Starting ...
+2025/06/18 17:45:32 Map Clean Worker Starting ...
+2025/06/18 17:45:32 HouseKeeper Starting ...
+2025/06/18 17:45:32 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:45:32 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:45:32 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:45:50 {sql_demo select * from su   }
+2025/06/18 17:45:50 task id=da85e766-5739-4aae-ac79-c2b229270ff1 is enqueue
+2025/06/18 17:46:59 closed server!!
+2025/06/18 17:46:59 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:47:02 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 17:47:02 <zabbix> DataBase Register Success
+2025/06/18 17:47:02 <sql_demo> DataBase Register Success
+2025/06/18 17:47:02 <shower> DataBase Register Success
+2025/06/18 17:47:02 Result Reader Starting ...
+2025/06/18 17:47:02 Map Clean Worker Starting ...
+2025/06/18 17:47:02 HouseKeeper Starting ...
+2025/06/18 17:47:02 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:47:02 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:47:02 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:47:21 {sql_demo select *from users  }
+2025/06/18 17:47:21 task id=400e952f-4d94-4f59-824e-d8e857ce0b36 is enqueue
+2025/06/18 17:48:30 closed server!!
+2025/06/18 17:48:30 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:48:33 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 17:48:33 <shower> DataBase Register Success
+2025/06/18 17:48:33 <zabbix> DataBase Register Success
+2025/06/18 17:48:33 <sql_demo> DataBase Register Success
+2025/06/18 17:48:33 Result Reader Starting ...
+2025/06/18 17:48:33 Map Clean Worker Starting ...
+2025/06/18 17:48:33 HouseKeeper Starting ...
+2025/06/18 17:48:33 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:48:33 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:48:33 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:48:43 {sql_demo select * from users  }
+2025/06/18 17:48:43 task id=474ad8a1-ea13-4fbe-8ab9-488e6cf10669 is enqueue
+2025/06/18 17:52:31 closed server!!
+2025/06/18 17:52:31 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 17:52:33 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 17:52:34 <zabbix> DataBase Register Success
+2025/06/18 17:52:34 <sql_demo> DataBase Register Success
+2025/06/18 17:52:34 <shower> DataBase Register Success
+2025/06/18 17:52:34 Result Reader Starting ...
+2025/06/18 17:52:34 Map Clean Worker Starting ...
+2025/06/18 17:52:34 HouseKeeper Starting ...
+2025/06/18 17:52:34 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:52:34 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:52:34 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 17:52:49 {sql_demo select * from users  }
+2025/06/18 17:52:49 task id=cc5b2226-8a27-484e-a366-44bac52411f9 is enqueue
+2025/06/18 18:07:01 closed server!!
+2025/06/18 18:07:01 [DEBUG] <worker goroutine 退出前> 
+2025/06/18 18:07:03 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/18 18:07:03 <zabbix> DataBase Register Success
+2025/06/18 18:07:03 <sql_demo> DataBase Register Success
+2025/06/18 18:07:03 <shower> DataBase Register Success
+2025/06/18 18:07:03 Result Reader Starting ...
+2025/06/18 18:07:03 Map Clean Worker Starting ...
+2025/06/18 18:07:03 HouseKeeper Starting ...
+2025/06/18 18:07:03 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 18:07:03 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 18:07:03 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/18 18:07:20 {sql_demo select * from users;  }
+2025/06/18 18:07:20 task id=17970d4f-dd06-4dce-ac2e-41ee72f4f25a is enqueue
+2025/06/23 17:10:10 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/23 17:10:10 <zabbix> DataBase Register Success
+2025/06/23 17:10:10 <sql_demo> DataBase Register Success
+2025/06/23 17:10:10 <shower> DataBase Register Success
+2025/06/23 17:10:10 Result Reader Starting ...
+2025/06/23 17:10:10 Map Clean Worker Starting ...
+2025/06/23 17:10:10 HouseKeeper Starting ...
+2025/06/23 17:10:10 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:10:10 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:10:10 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:10:41 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=2dbdf6042d5717c490c1e8672acdc5241c6f803747cfaea59fe6831f2c55c8ea&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fsso%2Fcallback&response_type=code&scope=read_user&state=ur-4KWQARkgr-uQEvyaEAY8Hp33EZrSI_cqB9iPedOA%3D
+2025/06/23 17:10:52 {sql_demo select * from users  }
+2025/06/23 17:10:52 task id=cb510efb-6f35-482f-b6ea-8df76e7903f5 is enqueue
+2025/06/23 17:15:13 closed server!!
+2025/06/23 17:15:13 [DEBUG] <worker goroutine 退出前> 
+2025/06/23 17:18:07 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/23 17:18:07 <zabbix> DataBase Register Success
+2025/06/23 17:18:07 <sql_demo> DataBase Register Success
+2025/06/23 17:18:07 <shower> DataBase Register Success
+2025/06/23 17:18:07 Result Reader Starting ...
+2025/06/23 17:18:07 Map Clean Worker Starting ...
+2025/06/23 17:18:07 HouseKeeper Starting ...
+2025/06/23 17:18:07 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:18:07 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:18:07 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:18:20 {sql_demo select * from users;  }
+2025/06/23 17:18:20 task id=98a053d8-d4cf-4d00-a8a8-c1559c2996bf is enqueue
+2025/06/23 17:25:54 closed server!!
+2025/06/23 17:25:54 [DEBUG] <worker goroutine 退出前> 
+2025/06/23 17:25:59 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/23 17:26:00 <zabbix> DataBase Register Success
+2025/06/23 17:26:00 <sql_demo> DataBase Register Success
+2025/06/23 17:26:00 <shower> DataBase Register Success
+2025/06/23 17:26:00 Result Reader Starting ...
+2025/06/23 17:26:00 Map Clean Worker Starting ...
+2025/06/23 17:26:00 HouseKeeper Starting ...
+2025/06/23 17:26:00 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:26:00 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:26:00 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:26:24 {sql_demo select * from users;  }
+2025/06/23 17:26:24 task id=a4d80de8-9d5b-42fc-8799-6d68c951e5c8 is enqueue
+2025/06/23 17:27:15 closed server!!
+2025/06/23 17:27:15 [DEBUG] <worker goroutine 退出前> !
+2025/06/23 17:27:18 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/23 17:27:18 <zabbix> DataBase Register Success
+2025/06/23 17:27:18 <sql_demo> DataBase Register Success
+2025/06/23 17:27:18 <shower> DataBase Register Success
+2025/06/23 17:27:18 Result Reader Starting ...
+2025/06/23 17:27:18 Map Clean Worker Starting ...
+2025/06/23 17:27:18 HouseKeeper Starting ...
+2025/06/23 17:27:18 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:27:18 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:27:18 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 17:27:36 {sql_demo select * from users;  }
+2025/06/23 17:27:36 task id=8a700adf-e8d2-4603-b7a3-5a68652828e6 is enqueue
+2025/06/23 18:14:32 closed server!!
+2025/06/23 18:14:32 [DEBUG] <worker goroutine 退出前> 
+2025/06/23 18:14:39 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/23 18:14:39 <zabbix> DataBase Register Success
+2025/06/23 18:14:39 <sql_demo> DataBase Register Success
+2025/06/23 18:14:39 <shower> DataBase Register Success
+2025/06/23 18:14:39 Result Reader Starting ...
+2025/06/23 18:14:39 Map Clean Worker Starting ...
+2025/06/23 18:14:39 HouseKeeper Starting ...
+2025/06/23 18:14:39 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 18:14:39 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 18:14:39 [DEBUG] <EventDispatcher> dispatcher is ready
+2025/06/23 18:14:53 {sql_demo select * from users  }
+2025/06/23 18:14:53 task id=d83e68eb-01ce-4b99-aa26-f95b44378c2d is enqueue
+2025/06/23 18:14:53 task id=d83e68eb-01ce-4b99-aa26-f95b44378c2d is working
+2025/06/23 18:14:53 task id=d83e68eb-01ce-4b99-aa26-f95b44378c2d is completed
+2025/06/23 18:17:53 type=ResultMap taskID=d83e68eb-01ce-4b99-aa26-f95b44378c2d Cleaned Up
+2025/06/23 18:19:53 type=QueryTaskMap taskID=d83e68eb-01ce-4b99-aa26-f95b44378c2d Cleaned Up
+2025/06/23 18:54:20 closed server!!
+2025/06/23 18:54:20 [DEBUG] <worker goroutine 退出前> 
+2025/06/25 14:47:39 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/25 14:47:39 <zabbix> DataBase Register Success
+2025/06/25 14:47:39 <sql_demo> DataBase Register Success
+2025/06/25 14:47:39 <shower> DataBase Register Success
+2025/06/25 14:47:39 Map Clean Worker Starting ...
+2025/06/25 14:47:39 HouseKeeper Starting ...
+2025/06/25 14:47:39 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:39 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:39 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:41 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:41 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:41 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:43 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:43 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:43 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:45 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:45 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:45 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:47 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:47 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:47 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:49 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:49 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:49 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:51 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:51 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:51 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:53 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:53 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:53 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:55 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:55 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:55 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:57 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:57 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:57 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:59 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:59 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:47:59 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:01 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:01 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:01 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:03 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:03 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:03 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:05 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:05 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:05 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:07 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:07 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:07 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:09 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:09 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:09 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:11 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:11 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:11 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:13 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:13 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:13 [DEBUG] <EventRoute???> 无事件调度，有可能eventChannel无数据
+2025/06/25 14:48:13 closed server!!
+2025/06/25 14:48:13 [DEBUG] <worker goroutine 退出前> 
+2025/06/25 14:48:13 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/25 14:48:13 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/25 14:48:13 因错误退出，关闭当前Reader, Error: context canceled
+2025/06/25 14:48:13 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/25 14:48:13 因错误退出，关闭Clean Worker. Error: context canceled
+2025/06/25 14:48:30 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/25 14:48:30 <zabbix> DataBase Register Success
+2025/06/25 14:48:30 <sql_demo> DataBase Register Success
+2025/06/25 14:48:30 <shower> DataBase Register Success
+2025/06/25 14:48:30 Map Clean Worker Starting ...
+2025/06/25 14:48:30 HouseKeeper Starting ...
+2025/06/25 14:49:10 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=2dbdf6042d5717c490c1e8672acdc5241c6f803747cfaea59fe6831f2c55c8ea&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fsso%2Fcallback&response_type=code&scope=read_user&state=SF_pN9aTJ03-FTkShdNoQzP1_O8wy7LaD7BiB2hDME0%3D
+2025/06/25 14:49:31 {shower select * from users;  }
+2025/06/25 14:49:31 task id=777ce574-4131-4972-85e8-e872c49a7207 is enqueue
+2025/06/25 14:49:31 {sql_query {777ce574-4131-4972-85e8-e872c49a7207 shower select * from users; 12 6}}
+2025/06/25 14:49:32 [DEBUG] <事件消费>>>> 777ce574-4131-4972-85e8-e872c49a7207
+2025/06/25 14:49:32 task id=777ce574-4131-4972-85e8-e872c49a7207 is working
+2025/06/25 14:49:33 task id=777ce574-4131-4972-85e8-e872c49a7207 is completed
+2025/06/25 14:54:10 type=SessionMap taskID=SF_pN9aTJ03-FTkShdNoQzP1_O8wy7LaD7BiB2hDME0= Cleaned Up
+2025/06/25 14:54:32 type=QueryTaskMap taskID=777ce574-4131-4972-85e8-e872c49a7207 Cleaned Up
+2025/06/25 14:55:04 closed server!!
+2025/06/25 14:55:04 [DEBUG] <worker goroutine 退出前> U
+2025/06/25 14:56:52 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/25 14:56:53 <zabbix> DataBase Register Success
+2025/06/25 14:56:53 <sql_demo> DataBase Register Success
+2025/06/25 14:56:53 <shower> DataBase Register Success
+2025/06/25 14:56:53 Map Clean Worker Starting ...
+2025/06/25 14:56:53 HouseKeeper Starting ...
+2025/06/25 14:57:14 {sql_demo select * from users  }
+2025/06/25 14:57:14 task id=fa5c6a16-2b66-4a3f-846d-34c5b7a1bc7b is enqueue
+2025/06/25 14:57:14 {sql_query {fa5c6a16-2b66-4a3f-846d-34c5b7a1bc7b sql_demo select * from users; 12 6}}
+2025/06/25 14:57:15 [DEBUG] <SQL查询事件消费>>>> fa5c6a16-2b66-4a3f-846d-34c5b7a1bc7b
+2025/06/25 14:57:15 task id=fa5c6a16-2b66-4a3f-846d-34c5b7a1bc7b is working
+2025/06/25 14:57:15 task id=fa5c6a16-2b66-4a3f-846d-34c5b7a1bc7b is completed
+2025/06/25 15:01:04 closed server!!
+2025/06/25 15:01:04 [DEBUG] <worker goroutine 退出前> 
+2025/06/25 15:01:18 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/25 15:01:18 <zabbix> DataBase Register Success
+2025/06/25 15:01:18 <sql_demo> DataBase Register Success
+2025/06/25 15:01:19 <shower> DataBase Register Success
+2025/06/25 15:01:19 Map Clean Worker Starting ...
+2025/06/25 15:01:19 HouseKeeper Starting ...
+2025/06/25 15:01:32 {sql_demo select * from users;  }
+2025/06/25 15:01:32 task id=9ea95feb-7d89-480b-90f6-0f9cc430e6a2 is enqueue
+2025/06/25 15:01:32 {sql_query {9ea95feb-7d89-480b-90f6-0f9cc430e6a2 sql_demo select * from users; 12 6}}
+2025/06/25 15:01:33 [DEBUG] <SQL查询事件消费>>>> 9ea95feb-7d89-480b-90f6-0f9cc430e6a2
+2025/06/25 15:01:33 task id=9ea95feb-7d89-480b-90f6-0f9cc430e6a2 is working
+2025/06/25 15:01:33 task id=9ea95feb-7d89-480b-90f6-0f9cc430e6a2 is completed
+2025/06/25 15:01:33 {get_result 0xc00040e000}
+2025/06/25 15:01:35 [DEBUG] <查询结果事件消费>>>> 9ea95feb-7d89-480b-90f6-0f9cc430e6a2
+2025/06/25 15:01:46 {sql_demo select * from users;  }
+2025/06/25 15:01:46 task id=e11701eb-edf6-432b-866e-75870216ad77 is enqueue
+2025/06/25 15:01:46 {sql_query {e11701eb-edf6-432b-866e-75870216ad77 sql_demo select * from users; 12 6}}
+2025/06/25 15:01:47 [DEBUG] <SQL查询事件消费>>>> e11701eb-edf6-432b-866e-75870216ad77
+2025/06/25 15:01:47 task id=e11701eb-edf6-432b-866e-75870216ad77 is working
+2025/06/25 15:01:47 task id=e11701eb-edf6-432b-866e-75870216ad77 is completed
+2025/06/25 15:01:47 {get_result 0xc0000994a0}
+2025/06/25 15:01:49 [DEBUG] <查询结果事件消费>>>> e11701eb-edf6-432b-866e-75870216ad77
+2025/06/25 15:01:57 {sql_demo select * from users;  }
+2025/06/25 15:01:57 task id=d5fb6b79-48de-4576-9564-db3ea805039f is enqueue
+2025/06/25 15:01:57 {sql_query {d5fb6b79-48de-4576-9564-db3ea805039f sql_demo select * from users; 12 6}}
+2025/06/25 15:01:59 [DEBUG] <SQL查询事件消费>>>> d5fb6b79-48de-4576-9564-db3ea805039f
+2025/06/25 15:01:59 task id=d5fb6b79-48de-4576-9564-db3ea805039f is working
+2025/06/25 15:01:59 task id=d5fb6b79-48de-4576-9564-db3ea805039f is completed
+2025/06/25 15:01:59 {get_result 0xc0000990e0}
+2025/06/25 15:02:01 [DEBUG] <查询结果事件消费>>>> d5fb6b79-48de-4576-9564-db3ea805039f
+2025/06/25 15:02:50 closed server!!
+2025/06/25 15:02:50 [DEBUG] <worker goroutine 退出前> $
+2025/06/25 15:02:53 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/25 15:02:53 <shower> DataBase Register Success
+2025/06/25 15:02:53 <zabbix> DataBase Register Success
+2025/06/25 15:02:53 <sql_demo> DataBase Register Success
+2025/06/25 15:02:53 Map Clean Worker Starting ...
+2025/06/25 15:02:53 HouseKeeper Starting ...
+2025/06/25 15:02:57 {sql_demo select * from users;  }
+2025/06/25 15:02:57 task id=8639f475-8fbd-4725-a9d2-5c0090584f01 is enqueue
+2025/06/25 15:02:57 {sql_query {8639f475-8fbd-4725-a9d2-5c0090584f01 sql_demo select * from users; 12 6}}
+2025/06/25 15:02:57 [DEBUG] <SQL查询事件消费>>>> 8639f475-8fbd-4725-a9d2-5c0090584f01
+2025/06/25 15:02:57 task id=8639f475-8fbd-4725-a9d2-5c0090584f01 is working
+2025/06/25 15:02:57 task id=8639f475-8fbd-4725-a9d2-5c0090584f01 is completed
+2025/06/25 15:02:57 {get_result 0xc0001cbe60}
+2025/06/25 15:02:57 [DEBUG] <查询结果事件消费>>>> 8639f475-8fbd-4725-a9d2-5c0090584f01
+2025/06/25 15:03:13 {sql_demo select * from users;  }
+2025/06/25 15:03:13 task id=b085265e-c593-4f39-9ffd-8381e4d50923 is enqueue
+2025/06/25 15:03:13 {sql_query {b085265e-c593-4f39-9ffd-8381e4d50923 sql_demo select * from users; 12 6}}
+2025/06/25 15:03:13 [DEBUG] <SQL查询事件消费>>>> b085265e-c593-4f39-9ffd-8381e4d50923
+2025/06/25 15:03:13 task id=b085265e-c593-4f39-9ffd-8381e4d50923 is working
+2025/06/25 15:03:13 task id=b085265e-c593-4f39-9ffd-8381e4d50923 is completed
+2025/06/25 15:03:13 {get_result 0xc000099560}
+2025/06/25 15:03:13 [DEBUG] <查询结果事件消费>>>> b085265e-c593-4f39-9ffd-8381e4d50923
+2025/06/25 15:03:57 {sql_demo select * from users;  }
+2025/06/25 15:03:57 task id=2348e64e-96e7-43d7-a567-7dcd17eac02f is enqueue
+2025/06/25 15:03:57 {sql_query {2348e64e-96e7-43d7-a567-7dcd17eac02f sql_demo select * from users; 12 6}}
+2025/06/25 15:03:57 [DEBUG] <SQL查询事件消费>>>> 2348e64e-96e7-43d7-a567-7dcd17eac02f
+2025/06/25 15:03:57 task id=2348e64e-96e7-43d7-a567-7dcd17eac02f is working
+2025/06/25 15:03:57 task id=2348e64e-96e7-43d7-a567-7dcd17eac02f is completed
+2025/06/25 15:03:57 {get_result 0xc000436420}
+2025/06/25 15:03:57 [DEBUG] <查询结果事件消费>>>> 2348e64e-96e7-43d7-a567-7dcd17eac02f
+2025/06/25 15:04:49 {sql_demo select * from users;  }
+2025/06/25 15:04:49 task id=33d36a56-9b7c-4455-a97c-b5b90f25aa4d is enqueue
+2025/06/25 15:04:49 {sql_query {33d36a56-9b7c-4455-a97c-b5b90f25aa4d sql_demo select * from users; 12 6}}
+2025/06/25 15:04:49 [DEBUG] <SQL查询事件消费>>>> 33d36a56-9b7c-4455-a97c-b5b90f25aa4d
+2025/06/25 15:04:49 task id=33d36a56-9b7c-4455-a97c-b5b90f25aa4d is working
+2025/06/25 15:04:49 task id=33d36a56-9b7c-4455-a97c-b5b90f25aa4d is completed
+2025/06/25 15:04:49 {get_result 0xc000099bc0}
+2025/06/25 15:04:49 [DEBUG] <查询结果事件消费>>>> 33d36a56-9b7c-4455-a97c-b5b90f25aa4d
+2025/06/25 15:05:57 type=ResultMap taskID=8639f475-8fbd-4725-a9d2-5c0090584f01 Cleaned Up
+2025/06/25 15:06:13 type=ResultMap taskID=b085265e-c593-4f39-9ffd-8381e4d50923 Cleaned Up
+2025/06/25 15:06:26 [DEBUG] <ExportTask> export task 33d36a56-9b7c-4455-a97c-b5b90f25aa4d is starting...
+2025/06/25 15:06:26 [Completed] export task done
+2025/06/25 15:06:26 [DEBUG] <ExportTask> export task 33d36a56-9b7c-4455-a97c-b5b90f25aa4d is completed
+2025/06/25 15:06:27 [Download] download start... /tmp/sql_demo_export_file/33d36a56-9b7c-4455-a97c-b5b90f25aa4d_20250625150626.csv
+2025/06/25 15:06:28 [Download] download completed
+2025/06/25 15:06:57 type=ResultMap taskID=2348e64e-96e7-43d7-a567-7dcd17eac02f Cleaned Up
+2025/06/25 15:07:12 {sql_demo select * from users  }
+2025/06/25 15:07:12 task id=82002b4e-3606-4139-8633-75de39901625 is enqueue
+2025/06/25 15:07:12 {sql_query {82002b4e-3606-4139-8633-75de39901625 sql_demo select * from users; 12 6}}
+2025/06/25 15:07:12 [DEBUG] <SQL查询事件消费>>>> 82002b4e-3606-4139-8633-75de39901625
+2025/06/25 15:07:12 task id=82002b4e-3606-4139-8633-75de39901625 is working
+2025/06/25 15:07:13 task id=82002b4e-3606-4139-8633-75de39901625 is completed
+2025/06/25 15:07:13 {get_result 0xc000100720}
+2025/06/25 15:07:13 [DEBUG] <查询结果事件消费>>>> 82002b4e-3606-4139-8633-75de39901625
+2025/06/25 15:07:21 {sql_demo select * from users  }
+2025/06/25 15:07:21 task id=6b2a8ab8-e462-45e7-a615-8b3ca5753bfa is enqueue
+2025/06/25 15:07:21 {sql_query {6b2a8ab8-e462-45e7-a615-8b3ca5753bfa sql_demo select * from users; 12 6}}
+2025/06/25 15:07:21 [DEBUG] <SQL查询事件消费>>>> 6b2a8ab8-e462-45e7-a615-8b3ca5753bfa
+2025/06/25 15:07:21 task id=6b2a8ab8-e462-45e7-a615-8b3ca5753bfa is working
+2025/06/25 15:07:22 task id=6b2a8ab8-e462-45e7-a615-8b3ca5753bfa is completed
+2025/06/25 15:07:22 {get_result 0xc0004363c0}
+2025/06/25 15:07:22 [DEBUG] <查询结果事件消费>>>> 6b2a8ab8-e462-45e7-a615-8b3ca5753bfa
+2025/06/25 15:07:26 [Completed] 33d36a56-9b7c-4455-a97c-b5b90f25aa4d_20250625150626.csv is cleaned up
+2025/06/25 15:07:49 type=ResultMap taskID=33d36a56-9b7c-4455-a97c-b5b90f25aa4d Cleaned Up
+2025/06/25 15:07:57 type=QueryTaskMap taskID=8639f475-8fbd-4725-a9d2-5c0090584f01 Cleaned Up
+2025/06/25 15:08:13 type=QueryTaskMap taskID=b085265e-c593-4f39-9ffd-8381e4d50923 Cleaned Up
+2025/06/25 15:08:57 type=QueryTaskMap taskID=2348e64e-96e7-43d7-a567-7dcd17eac02f Cleaned Up
+2025/06/25 15:09:49 type=QueryTaskMap taskID=33d36a56-9b7c-4455-a97c-b5b90f25aa4d Cleaned Up
+2025/06/25 15:10:13 type=ResultMap taskID=82002b4e-3606-4139-8633-75de39901625 Cleaned Up
+2025/06/25 15:10:22 type=ResultMap taskID=6b2a8ab8-e462-45e7-a615-8b3ca5753bfa Cleaned Up
+2025/06/25 15:11:26 type=ExportWorkMap taskID=33d36a56-9b7c-4455-a97c-b5b90f25aa4d Cleaned Up
+2025/06/25 15:12:12 type=QueryTaskMap taskID=82002b4e-3606-4139-8633-75de39901625 Cleaned Up
+2025/06/25 15:12:21 type=QueryTaskMap taskID=6b2a8ab8-e462-45e7-a615-8b3ca5753bfa Cleaned Up
+2025/06/25 15:12:56 [DEBUG] <ExportTask> export task 6b2a8ab8-e462-45e7-a615-8b3ca5753bfa is starting...
+2025/06/25 15:12:56 [ExportFailed] export task is failed ==> [ERROR] <QueryTaskError> query task id is not exist,please re-excute sql query
+2025/06/25 15:12:56 [DEBUG] <ExportTask> export task 6b2a8ab8-e462-45e7-a615-8b3ca5753bfa is failed,error: [ERROR] <QueryTaskError> query task id is not exist,please re-excute sql query
+2025/06/25 15:17:56 type=ExportWorkMap taskID=6b2a8ab8-e462-45e7-a615-8b3ca5753bfa Cleaned Up
+2025/06/25 15:27:01 closed server!!
+2025/06/25 15:27:01 [DEBUG] <worker goroutine 退出前> 
+2025/06/25 15:39:20 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/25 15:39:20 <shower> DataBase Register Success
+2025/06/25 15:39:20 <zabbix> DataBase Register Success
+2025/06/25 15:39:20 <sql_demo> DataBase Register Success
+2025/06/25 15:39:35 closed server!!
+2025/06/25 15:39:35 [DEBUG] <worker goroutine 退出前> 
+2025/06/25 15:39:38 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/25 15:39:39 <zabbix> DataBase Register Success
+2025/06/25 15:39:39 <sql_demo> DataBase Register Success
+2025/06/25 15:39:39 <shower> DataBase Register Success
+2025/06/25 15:39:46 closed server!!
+2025/06/25 15:39:46 [DEBUG] <worker goroutine 退出前>  
+2025/06/25 15:42:40 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/25 15:42:40 <zabbix> DataBase Register Success
+2025/06/25 15:42:40 <sql_demo> DataBase Register Success
+2025/06/25 15:42:40 <shower> DataBase Register Success
+2025/06/25 15:42:41 closed server!!
+2025/06/25 15:42:41 [DEBUG] <worker goroutine 退出前>  
+2025/06/25 15:42:44 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/06/25 15:42:44 <zabbix> DataBase Register Success
+2025/06/25 15:42:45 <sql_demo> DataBase Register Success
+2025/06/25 15:42:45 <shower> DataBase Register Success
+2025/06/25 15:43:11 {sql_demo select * from users;  }
+2025/06/25 15:43:11 task id=5d3681ef-067a-410b-9b6c-973b666a6486 is enqueue
+2025/06/25 15:43:11 {sql_query {5d3681ef-067a-410b-9b6c-973b666a6486 sql_demo select * from users; 12 6}}
+2025/06/25 15:43:11 [DEBUG] <SQL查询事件消费>>>> 5d3681ef-067a-410b-9b6c-973b666a6486
+2025/06/25 15:43:11 task id=5d3681ef-067a-410b-9b6c-973b666a6486 is working
+2025/06/25 15:43:11 task id=5d3681ef-067a-410b-9b6c-973b666a6486 is completed
+2025/06/25 15:43:11 {get_result 0xc000099320}
+2025/06/25 15:43:11 [DEBUG] <查询结果事件消费>>>> 5d3681ef-067a-410b-9b6c-973b666a6486
+2025/06/25 15:43:15 {sql_demo select * from users;  }
+2025/06/25 15:43:15 task id=f9ad2d18-644b-433c-bdf1-016037399054 is enqueue
+2025/06/25 15:43:15 {sql_query {f9ad2d18-644b-433c-bdf1-016037399054 sql_demo select * from users; 12 6}}
+2025/06/25 15:43:15 [DEBUG] <SQL查询事件消费>>>> f9ad2d18-644b-433c-bdf1-016037399054
+2025/06/25 15:43:15 task id=f9ad2d18-644b-433c-bdf1-016037399054 is working
+2025/06/25 15:43:15 task id=f9ad2d18-644b-433c-bdf1-016037399054 is completed
+2025/06/25 15:43:15 {get_result 0xc000099920}
+2025/06/25 15:43:15 [DEBUG] <查询结果事件消费>>>> f9ad2d18-644b-433c-bdf1-016037399054
+2025/06/25 15:43:17 {export_result 0xc000496730}
+2025/06/25 15:43:17 [DEBUG] <导出结果事件消费>>>> f9ad2d18-644b-433c-bdf1-016037399054
+2025/06/25 15:43:17 [DEBUG] <ExportTask> export task f9ad2d18-644b-433c-bdf1-016037399054 is starting...
+2025/06/25 15:43:17 [Completed] export task done
+2025/06/25 15:43:17 [DEBUG] <ExportTask> export task f9ad2d18-644b-433c-bdf1-016037399054 is completed
+2025/06/25 15:43:18 [Download] download start... /tmp/sql_demo_export_file/f9ad2d18-644b-433c-bdf1-016037399054_20250625154317.csv
+2025/06/25 15:43:18 [Download] download completed
+2025/06/25 15:44:17 {file_housekeeping 0xc000496730}
+2025/06/25 15:44:17 [DEBUG] <文件清理事件消费>>>> f9ad2d18-644b-433c-bdf1-016037399054
+2025/06/25 15:44:17 [Completed] f9ad2d18-644b-433c-bdf1-016037399054_20250625154317.csv is cleaned up
+2025/06/25 15:46:11 {clean_task {0 5d3681ef-067a-410b-9b6c-973b666a6486}}
+2025/06/25 15:46:11 [DEBUG] <清理结果事件消费>>>> 5d3681ef-067a-410b-9b6c-973b666a6486
+2025/06/25 15:46:11 type=ResultMap taskID=5d3681ef-067a-410b-9b6c-973b666a6486 Cleaned Up
+2025/06/25 15:46:15 {clean_task {0 f9ad2d18-644b-433c-bdf1-016037399054}}
+2025/06/25 15:46:15 [DEBUG] <清理结果事件消费>>>> f9ad2d18-644b-433c-bdf1-016037399054
+2025/06/25 15:46:15 type=ResultMap taskID=f9ad2d18-644b-433c-bdf1-016037399054 Cleaned Up
+2025/06/25 15:48:11 {clean_task {1 5d3681ef-067a-410b-9b6c-973b666a6486}}
+2025/06/25 15:48:11 [DEBUG] <清理结果事件消费>>>> 5d3681ef-067a-410b-9b6c-973b666a6486
+2025/06/25 15:48:11 type=QueryTaskMap taskID=5d3681ef-067a-410b-9b6c-973b666a6486 Cleaned Up
+2025/06/25 15:48:15 {clean_task {1 f9ad2d18-644b-433c-bdf1-016037399054}}
+2025/06/25 15:48:15 [DEBUG] <清理结果事件消费>>>> f9ad2d18-644b-433c-bdf1-016037399054
+2025/06/25 15:48:15 type=QueryTaskMap taskID=f9ad2d18-644b-433c-bdf1-016037399054 Cleaned Up
+2025/06/25 15:48:17 {clean_task {3 f9ad2d18-644b-433c-bdf1-016037399054}}
+2025/06/25 15:48:17 [DEBUG] <清理结果事件消费>>>> f9ad2d18-644b-433c-bdf1-016037399054
+2025/06/25 15:48:17 type=ExportWorkMap taskID=f9ad2d18-644b-433c-bdf1-016037399054 Cleaned Up
+2025/06/25 15:51:28 {sql_demo select * from users;  }
+2025/06/25 15:51:28 task id=41961ee8-728c-4d0f-b743-638d63bf2e12 is enqueue
+2025/06/25 15:51:28 {sql_query {41961ee8-728c-4d0f-b743-638d63bf2e12 sql_demo select * from users; 12 6}}
+2025/06/25 15:51:28 [DEBUG] <SQL查询事件消费>>>> 41961ee8-728c-4d0f-b743-638d63bf2e12
+2025/06/25 15:51:28 task id=41961ee8-728c-4d0f-b743-638d63bf2e12 is working
+2025/06/25 15:51:28 task id=41961ee8-728c-4d0f-b743-638d63bf2e12 is completed
+2025/06/25 15:51:28 {get_result 0xc000418000}
+2025/06/25 15:51:28 [DEBUG] <查询结果事件消费>>>> 41961ee8-728c-4d0f-b743-638d63bf2e12
+2025/06/25 15:51:33 {zabbix select * from users;  }
+2025/06/25 15:51:33 task id=30b84311-1e37-467c-b730-406d7cc2256a is enqueue
+2025/06/25 15:51:33 {sql_query {30b84311-1e37-467c-b730-406d7cc2256a zabbix select * from users; 12 6}}
+2025/06/25 15:51:33 [DEBUG] <SQL查询事件消费>>>> 30b84311-1e37-467c-b730-406d7cc2256a
+2025/06/25 15:51:33 task id=30b84311-1e37-467c-b730-406d7cc2256a is working
+2025/06/25 15:51:34 task id=30b84311-1e37-467c-b730-406d7cc2256a is completed
+2025/06/25 15:51:34 {get_result 0xc0004182a0}
+2025/06/25 15:51:34 [DEBUG] <查询结果事件消费>>>> 30b84311-1e37-467c-b730-406d7cc2256a
+2025/06/25 15:54:28 {clean_task {0 41961ee8-728c-4d0f-b743-638d63bf2e12}}
+2025/06/25 15:54:28 [DEBUG] <清理结果事件消费>>>> 41961ee8-728c-4d0f-b743-638d63bf2e12
+2025/06/25 15:54:28 type=ResultMap taskID=41961ee8-728c-4d0f-b743-638d63bf2e12 Cleaned Up
+2025/06/25 15:54:34 {clean_task {0 30b84311-1e37-467c-b730-406d7cc2256a}}
+2025/06/25 15:54:34 [DEBUG] <清理结果事件消费>>>> 30b84311-1e37-467c-b730-406d7cc2256a
+2025/06/25 15:54:34 type=ResultMap taskID=30b84311-1e37-467c-b730-406d7cc2256a Cleaned Up
+2025/06/25 15:56:28 {clean_task {1 41961ee8-728c-4d0f-b743-638d63bf2e12}}
+2025/06/25 15:56:28 [DEBUG] <清理结果事件消费>>>> 41961ee8-728c-4d0f-b743-638d63bf2e12
+2025/06/25 15:56:28 type=QueryTaskMap taskID=41961ee8-728c-4d0f-b743-638d63bf2e12 Cleaned Up
+2025/06/25 15:56:33 {clean_task {1 30b84311-1e37-467c-b730-406d7cc2256a}}
+2025/06/25 15:56:33 [DEBUG] <清理结果事件消费>>>> 30b84311-1e37-467c-b730-406d7cc2256a
+2025/06/25 15:56:33 type=QueryTaskMap taskID=30b84311-1e37-467c-b730-406d7cc2256a Cleaned Up
+2025/06/25 15:57:35 closed server!!
+2025/06/25 15:57:35 [DEBUG] <worker goroutine 退出前> #
