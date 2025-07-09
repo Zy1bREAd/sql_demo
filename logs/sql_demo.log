@@ -705,3 +705,411 @@
 2025/06/25 15:56:33 type=QueryTaskMap taskID=30b84311-1e37-467c-b730-406d7cc2256a Cleaned Up
 2025/06/25 15:57:35 closed server!!
 2025/06/25 15:57:35 [DEBUG] <worker goroutine 退出前> #
+2025/07/02 16:26:11 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/02 16:26:12 <zabbix> DataBase Register Success
+2025/07/02 16:26:12 <sql_demo> DataBase Register Success
+2025/07/02 16:26:12 <shower> DataBase Register Success
+2025/07/02 16:26:21 closed server!!
+2025/07/02 16:26:21 [DEBUG] <worker goroutine 退出前>  
+2025/07/02 16:47:04 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/02 16:47:05 <zabbix> DataBase Register Success
+2025/07/02 16:47:05 <sql_demo> DataBase Register Success
+2025/07/02 16:47:05 <shower> DataBase Register Success
+2025/07/02 16:57:26 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=be201c4b441b3be03d5c3af63a5c7d499079feb4e1f4dcc3658ed0689677724f&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fapi%2Fv1%2Fsso%2Fcallback&response_type=code&scope=read_user&state=kR-nNqN-G_glpOm_EoJ85Hxme_-hlBq7FFx-bqmyGQ8%3D
+2025/07/02 17:02:26 {clean_task {2 kR-nNqN-G_glpOm_EoJ85Hxme_-hlBq7FFx-bqmyGQ8=}}
+2025/07/02 17:02:26 [DEBUG] <清理结果事件消费>>>> kR-nNqN-G_glpOm_EoJ85Hxme_-hlBq7FFx-bqmyGQ8=
+2025/07/02 17:02:26 type=SessionMap taskID=kR-nNqN-G_glpOm_EoJ85Hxme_-hlBq7FFx-bqmyGQ8= Cleaned Up
+2025/07/02 17:04:56 closed server!!
+2025/07/02 17:04:56 [DEBUG] <worker goroutine 退出前> "
+2025/07/02 17:04:56 [DEBUG] <EventRouteStop> 收到全局退出信号，退出所有
+2025/07/02 17:05:00 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/02 17:05:02 <zabbix> DataBase Register Success
+2025/07/02 17:05:02 <sql_demo> DataBase Register Success
+2025/07/02 17:05:03 <shower> DataBase Register Success
+2025/07/02 17:05:09 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=be201c4b441b3be03d5c3af63a5c7d499079feb4e1f4dcc3658ed0689677724f&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fsso%2Fcallback&response_type=code&scope=read_user&state=iFz939L08gCi-7Ye1th1tUMZeR6jndD9EgdvDKYZLOw%3D
+2025/07/02 17:08:09 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=be201c4b441b3be03d5c3af63a5c7d499079feb4e1f4dcc3658ed0689677724f&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fsso%2Fcallback&response_type=code&scope=read_user&state=1qZP_HEaZGefurMzPMSTGqBfguNcft70HAafnGZLFNc%3D
+2025/07/02 17:10:09 {clean_task {2 iFz939L08gCi-7Ye1th1tUMZeR6jndD9EgdvDKYZLOw=}}
+2025/07/02 17:10:09 [DEBUG] <清理结果事件消费>>>> iFz939L08gCi-7Ye1th1tUMZeR6jndD9EgdvDKYZLOw=
+2025/07/02 17:10:09 type=SessionMap taskID=iFz939L08gCi-7Ye1th1tUMZeR6jndD9EgdvDKYZLOw= Cleaned Up
+2025/07/02 17:12:51 closed server!!
+2025/07/02 17:12:51 [DEBUG] <worker goroutine 退出前> 
+2025/07/02 17:12:55 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/02 17:12:55 <zabbix> DataBase Register Success
+2025/07/02 17:12:55 <sql_demo> DataBase Register Success
+2025/07/02 17:12:56 <shower> DataBase Register Success
+2025/07/02 17:13:29 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=7b91c2172e240a344f7d37bd1de30f934b7e187122c120094f3d8db6a9d289b2&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fsso%2Fcallback&response_type=code&scope=read_user&state=5Z9oM8caowD3xHpXeRzL0rR6DY3h2XRpcGUI_I0Od8I%3D
+2025/07/02 17:14:20 构造后的auth url: http://159.75.119.146:28660/oauth/authorize?client_id=7b91c2172e240a344f7d37bd1de30f934b7e187122c120094f3d8db6a9d289b2&redirect_uri=http%3A%2F%2F124.220.17.5%3A25731%2Fsso%2Fcallback&response_type=code&scope=read_user&state=R9smtOPsH8gg47KBg8MZhGf2eeBFMoAzOe-ujhJj0TI%3D
+2025/07/02 17:18:29 {clean_task {2 5Z9oM8caowD3xHpXeRzL0rR6DY3h2XRpcGUI_I0Od8I=}}
+2025/07/02 17:18:29 [DEBUG] <清理结果事件消费>>>> 5Z9oM8caowD3xHpXeRzL0rR6DY3h2XRpcGUI_I0Od8I=
+2025/07/02 17:18:29 type=SessionMap taskID=5Z9oM8caowD3xHpXeRzL0rR6DY3h2XRpcGUI_I0Od8I= Cleaned Up
+2025/07/02 17:19:20 {clean_task {2 R9smtOPsH8gg47KBg8MZhGf2eeBFMoAzOe-ujhJj0TI=}}
+2025/07/02 17:19:20 [DEBUG] <清理结果事件消费>>>> R9smtOPsH8gg47KBg8MZhGf2eeBFMoAzOe-ujhJj0TI=
+2025/07/02 17:19:20 type=SessionMap taskID=R9smtOPsH8gg47KBg8MZhGf2eeBFMoAzOe-ujhJj0TI= Cleaned Up
+2025/07/02 17:20:11 {sql_demo select * from users;  }
+2025/07/02 17:20:11 task id=4aaea010-7061-4670-acfb-6c75bfba1481 is enqueue
+2025/07/02 17:20:11 {sql_query {4aaea010-7061-4670-acfb-6c75bfba1481 sql_demo select * from users; 12 8}}
+2025/07/02 17:20:11 [DEBUG] <SQL查询事件消费>>>> 4aaea010-7061-4670-acfb-6c75bfba1481
+2025/07/02 17:20:11 task id=4aaea010-7061-4670-acfb-6c75bfba1481 is working
+2025/07/02 17:20:11 task id=4aaea010-7061-4670-acfb-6c75bfba1481 is completed
+2025/07/02 17:20:11 {get_result 0xc000400120}
+2025/07/02 17:20:11 [DEBUG] <查询结果事件消费>>>> 4aaea010-7061-4670-acfb-6c75bfba1481
+2025/07/02 17:23:11 {clean_task {0 4aaea010-7061-4670-acfb-6c75bfba1481}}
+2025/07/02 17:23:11 [DEBUG] <清理结果事件消费>>>> 4aaea010-7061-4670-acfb-6c75bfba1481
+2025/07/02 17:23:11 type=ResultMap taskID=4aaea010-7061-4670-acfb-6c75bfba1481 Cleaned Up
+2025/07/02 17:25:11 {clean_task {1 4aaea010-7061-4670-acfb-6c75bfba1481}}
+2025/07/02 17:25:11 [DEBUG] <清理结果事件消费>>>> 4aaea010-7061-4670-acfb-6c75bfba1481
+2025/07/02 17:25:11 type=QueryTaskMap taskID=4aaea010-7061-4670-acfb-6c75bfba1481 Cleaned Up
+2025/07/04 15:15:22 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/04 15:15:23 <zabbix> DataBase Register Success
+2025/07/04 15:15:23 <sql_demo> DataBase Register Success
+2025/07/04 15:15:23 <shower> DataBase Register Success
+2025/07/04 15:23:55 http: TLS handshake error from 127.0.0.1:50762: local error: tls: bad record MAC
+2025/07/04 15:24:01 http: TLS handshake error from 127.0.0.1:50766: local error: tls: bad record MAC
+2025/07/04 15:25:14 closed server!!
+2025/07/04 15:25:14 [DEBUG] <worker goroutine 退出前> 
+2025/07/04 15:25:17 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/04 15:25:17 <zabbix> DataBase Register Success
+2025/07/04 15:25:17 <sql_demo> DataBase Register Success
+2025/07/04 15:25:17 <shower> DataBase Register Success
+2025/07/04 15:27:57 closed server!!
+2025/07/04 15:27:57 [DEBUG] <worker goroutine 退出前> 
+2025/07/04 15:28:00 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/04 15:28:00 <zabbix> DataBase Register Success
+2025/07/04 15:28:00 <sql_demo> DataBase Register Success
+2025/07/04 15:28:00 <shower> DataBase Register Success
+2025/07/04 15:29:33 closed server!!
+2025/07/04 15:29:33 [DEBUG] <worker goroutine 退出前> 
+2025/07/04 15:29:36 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/04 15:29:36 <zabbix> DataBase Register Success
+2025/07/04 15:29:36 <sql_demo> DataBase Register Success
+2025/07/04 15:29:36 <shower> DataBase Register Success
+2025/07/04 15:30:17 closed server!!
+2025/07/04 15:30:17 [DEBUG] <worker goroutine 退出前>  
+2025/07/04 15:30:17 [DEBUG] <EventRouteStop> 收到全局退出信号，退出所有
+2025/07/04 15:30:19 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/04 15:30:19 <zabbix> DataBase Register Success
+2025/07/04 15:30:19 <sql_demo> DataBase Register Success
+2025/07/04 15:30:19 <shower> DataBase Register Success
+2025/07/04 15:31:26 closed server!!
+2025/07/04 15:31:26 [DEBUG] <worker goroutine 退出前> 
+2025/07/04 15:31:29 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/04 15:31:29 <zabbix> DataBase Register Success
+2025/07/04 15:31:29 <sql_demo> DataBase Register Success
+2025/07/04 15:31:29 <shower> DataBase Register Success
+2025/07/04 15:31:34 [{2 2 [select] 查询测试查询测试 opened `SELECT *
+FROM membercenter.`t_im_msg`
+WHERE group_id = '42769732119' limit 20;`
+description: xxxcadasd
+date: 20250702
+repoter: wwq} {1 1 [查询] 关于某个接口事件的SQL查询 opened `select * from users;`}]
+2025/07/04 16:03:33 closed server!!
+2025/07/04 16:03:33 [DEBUG] <worker goroutine 退出前> 
+2025/07/07 15:54:46 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/07 15:54:46 <zabbix> DataBase Register Success
+2025/07/07 15:54:46 <sql_demo> DataBase Register Success
+2025/07/07 15:54:46 <shower> DataBase Register Success
+2025/07/07 15:54:56 http: TLS handshake error from 159.75.119.146:59884: remote error: tls: unknown certificate authority
+2025/07/07 15:55:13 http: TLS handshake error from 159.75.119.146:45280: remote error: tls: unknown certificate authority
+2025/07/07 16:01:55 closed server!!
+2025/07/07 16:01:55 [DEBUG] <worker goroutine 退出前> 
+2025/07/07 16:01:57 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/07 16:01:58 <zabbix> DataBase Register Success
+2025/07/07 16:01:58 <sql_demo> DataBase Register Success
+2025/07/07 16:01:58 <shower> DataBase Register Success
+2025/07/07 18:01:44 closed server!!
+2025/07/07 18:01:44 [DEBUG] <worker goroutine 退出前> 
+2025/07/07 18:01:47 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/07 18:01:47 <zabbix> DataBase Register Success
+2025/07/07 18:01:47 <sql_demo> DataBase Register Success
+2025/07/07 18:01:47 <shower> DataBase Register Success
+2025/07/07 18:33:33 closed server!!
+2025/07/07 18:33:33 [DEBUG] <worker goroutine 退出前> 
+2025/07/07 18:33:36 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/07 18:33:36 <zabbix> DataBase Register Success
+2025/07/07 18:33:36 <sql_demo> DataBase Register Success
+2025/07/07 18:33:36 <shower> DataBase Register Success
+2025/07/07 18:36:42 closed server!!
+2025/07/07 18:36:42 [DEBUG] <worker goroutine 退出前> 
+2025/07/07 18:36:47 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/07 18:36:47 <zabbix> DataBase Register Success
+2025/07/07 18:36:47 <sql_demo> DataBase Register Success
+2025/07/07 18:36:47 <shower> DataBase Register Success
+2025/07/07 18:39:09 closed server!!
+2025/07/07 18:39:09 [DEBUG] <worker goroutine 退出前> 
+2025/07/07 18:39:12 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/07 18:39:12 <zabbix> DataBase Register Success
+2025/07/07 18:39:12 <sql_demo> DataBase Register Success
+2025/07/07 18:39:12 <shower> DataBase Register Success
+2025/07/07 18:40:59 closed server!!
+2025/07/07 18:40:59 [DEBUG] <worker goroutine 退出前> 
+2025/07/07 18:41:02 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/07 18:41:02 <zabbix> DataBase Register Success
+2025/07/07 18:41:02 <sql_demo> DataBase Register Success
+2025/07/07 18:41:02 <shower> DataBase Register Success
+2025/07/07 18:41:31 closed server!!
+2025/07/07 18:41:31 [DEBUG] <worker goroutine 退出前>  
+2025/07/07 18:41:31 [DEBUG] <EventRouteStop> 收到全局退出信号，退出所有
+2025/07/07 18:41:33 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/07 18:41:34 <zabbix> DataBase Register Success
+2025/07/07 18:41:34 <sql_demo> DataBase Register Success
+2025/07/07 18:41:34 <shower> DataBase Register Success
+2025/07/07 18:42:13 closed server!!
+2025/07/07 18:42:13 [DEBUG] <worker goroutine 退出前>  
+2025/07/07 18:42:16 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/07 18:42:16 <zabbix> DataBase Register Success
+2025/07/07 18:42:16 <sql_demo> DataBase Register Success
+2025/07/07 18:42:16 <shower> DataBase Register Success
+2025/07/08 01:06:32 http: TLS handshake error from 157.245.15.218:54210: EOF
+2025/07/08 09:40:54 closed server!!
+2025/07/08 09:40:54 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 09:42:02 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 09:42:02 <sql_demo> DataBase Register Success
+2025/07/08 09:42:02 <shower> DataBase Register Success
+2025/07/08 09:42:02 <zabbix> DataBase Register Success
+2025/07/08 11:23:27 closed server!!
+2025/07/08 11:23:27 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 11:45:49 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 11:45:49 <zabbix> DataBase Register Success
+2025/07/08 11:45:49 <sql_demo> DataBase Register Success
+2025/07/08 11:45:49 <shower> DataBase Register Success
+2025/07/08 15:02:34 closed server!!
+2025/07/08 15:02:34 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 16:46:06 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 16:46:07 <zabbix> DataBase Register Success
+2025/07/08 16:46:07 <sql_demo> DataBase Register Success
+2025/07/08 16:46:07 <shower> DataBase Register Success
+2025/07/08 16:48:53 closed server!!
+2025/07/08 16:48:53 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 16:48:56 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 16:48:57 <zabbix> DataBase Register Success
+2025/07/08 16:48:57 <sql_demo> DataBase Register Success
+2025/07/08 16:48:57 <shower> DataBase Register Success
+2025/07/08 17:02:41 closed server!!
+2025/07/08 17:02:41 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 17:02:44 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:02:45 <zabbix> DataBase Register Success
+2025/07/08 17:02:45 <sql_demo> DataBase Register Success
+2025/07/08 17:02:45 <shower> DataBase Register Success
+2025/07/08 17:03:31 [DEBUG] <JSONError> invalid character 'x' looking for beginning of value
+2025/07/08 17:07:39 closed server!!
+2025/07/08 17:07:39 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 17:07:40 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:07:41 <zabbix> DataBase Register Success
+2025/07/08 17:07:41 <sql_demo> DataBase Register Success
+2025/07/08 17:07:41 <shower> DataBase Register Success
+2025/07/08 17:07:53 http: panic serving 159.75.119.146:35832: runtime error: invalid memory address or nil pointer dereference
+goroutine 31 [running]:
+net/http.(*conn).serve.func1()
+	/opt/go/src/net/http/server.go:1947 +0xbe
+panic({0xc66240?, 0x14cfe70?})
+	/opt/go/src/runtime/panic.go:787 +0x132
+sql_demo/apis.(*GitLabAPI).IssueView(0xc000398a00, 0xc000116030?, 0x9)
+	/opt/oceanwang/golang/sql_demo/apis/gitlab.go:81 +0x385
+sql_demo/apis.(*CommentWebhook).CommentIssueHandle(0xc000406160)
+	/opt/oceanwang/golang/sql_demo/apis/webhook.go:126 +0x18c
+sql_demo/apis.CommentCallBack(0xc0000b4a00)
+	/opt/oceanwang/golang/sql_demo/apis/router.go:212 +0x7d
+github.com/gin-gonic/gin.(*Context).Next(0xc0000b4a00)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/context.go:185 +0x2b
+sql_demo/apis.InitRouter.corsMiddleware.func4(0xc0000b4a00)
+	/opt/oceanwang/golang/sql_demo/apis/router.go:242 +0x146
+github.com/gin-gonic/gin.(*Context).Next(...)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/context.go:185
+github.com/gin-gonic/gin.(*Engine).handleHTTPRequest(0xc0000d0000, 0xc0000b4a00)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/gin.go:633 +0x872
+github.com/gin-gonic/gin.(*Engine).ServeHTTP(0xc0000d0000, {0xeede90, 0xc0000002a0}, 0xc0000be780)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/gin.go:589 +0x1aa
+net/http.serverHandler.ServeHTTP({0xee9438?}, {0xeede90?, 0xc0000002a0?}, 0x6?)
+	/opt/go/src/net/http/server.go:3301 +0x8e
+net/http.(*conn).serve(0xc0003a6990, {0xef18e8, 0xc0003a5bf0})
+	/opt/go/src/net/http/server.go:2102 +0x625
+created by net/http.(*Server).Serve in goroutine 43
+	/opt/go/src/net/http/server.go:3454 +0x485
+2025/07/08 17:08:19 [DEBUG] <JSONError> invalid character 'a' looking for beginning of value
+2025/07/08 17:08:37 http: panic serving 159.75.119.146:58934: runtime error: invalid memory address or nil pointer dereference
+goroutine 53 [running]:
+net/http.(*conn).serve.func1()
+	/opt/go/src/net/http/server.go:1947 +0xbe
+panic({0xc66240?, 0x14cfe70?})
+	/opt/go/src/runtime/panic.go:787 +0x132
+sql_demo/apis.(*GitLabAPI).IssueView(0xc000398280, 0xc000116030?, 0x9)
+	/opt/oceanwang/golang/sql_demo/apis/gitlab.go:81 +0x385
+sql_demo/apis.(*CommentWebhook).CommentIssueHandle(0xc0004066e0)
+	/opt/oceanwang/golang/sql_demo/apis/webhook.go:126 +0x18c
+sql_demo/apis.CommentCallBack(0xc00013f700)
+	/opt/oceanwang/golang/sql_demo/apis/router.go:212 +0x7d
+github.com/gin-gonic/gin.(*Context).Next(0xc00013f700)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/context.go:185 +0x2b
+sql_demo/apis.InitRouter.corsMiddleware.func4(0xc00013f700)
+	/opt/oceanwang/golang/sql_demo/apis/router.go:242 +0x146
+github.com/gin-gonic/gin.(*Context).Next(...)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/context.go:185
+github.com/gin-gonic/gin.(*Engine).handleHTTPRequest(0xc0000d0000, 0xc00013f700)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/gin.go:633 +0x872
+github.com/gin-gonic/gin.(*Engine).ServeHTTP(0xc0000d0000, {0xeede90, 0xc00017a1c0}, 0xc000320280)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/gin.go:589 +0x1aa
+net/http.serverHandler.ServeHTTP({0xee9438?}, {0xeede90?, 0xc00017a1c0?}, 0x6?)
+	/opt/go/src/net/http/server.go:3301 +0x8e
+net/http.(*conn).serve(0xc0000c0360, {0xef18e8, 0xc0003a5bf0})
+	/opt/go/src/net/http/server.go:2102 +0x625
+created by net/http.(*Server).Serve in goroutine 43
+	/opt/go/src/net/http/server.go:3454 +0x485
+2025/07/08 17:10:14 closed server!!
+2025/07/08 17:10:14 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 17:10:17 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:10:17 <zabbix> DataBase Register Success
+2025/07/08 17:10:17 <sql_demo> DataBase Register Success
+2025/07/08 17:10:17 <shower> DataBase Register Success
+2025/07/08 17:15:52 http: panic serving 159.75.119.146:57026: runtime error: invalid memory address or nil pointer dereference
+goroutine 47 [running]:
+net/http.(*conn).serve.func1()
+	/opt/go/src/net/http/server.go:1947 +0xbe
+panic({0xc66240?, 0x14cfe70?})
+	/opt/go/src/runtime/panic.go:787 +0x132
+sql_demo/apis.(*GitLabAPI).IssueView(0xc00007a3c0, 0xc000114030?, 0x9)
+	/opt/oceanwang/golang/sql_demo/apis/gitlab.go:81 +0x385
+sql_demo/apis.(*CommentWebhook).CommentIssueHandle(0xc0003f4160)
+	/opt/oceanwang/golang/sql_demo/apis/webhook.go:126 +0x1ca
+sql_demo/apis.CommentCallBack(0xc00013da00)
+	/opt/oceanwang/golang/sql_demo/apis/router.go:212 +0x7d
+github.com/gin-gonic/gin.(*Context).Next(0xc00013da00)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/context.go:185 +0x2b
+sql_demo/apis.InitRouter.corsMiddleware.func4(0xc00013da00)
+	/opt/oceanwang/golang/sql_demo/apis/router.go:242 +0x146
+github.com/gin-gonic/gin.(*Context).Next(...)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/context.go:185
+github.com/gin-gonic/gin.(*Engine).handleHTTPRequest(0xc00036c340, 0xc00013da00)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/gin.go:633 +0x872
+github.com/gin-gonic/gin.(*Engine).ServeHTTP(0xc00036c340, {0xeeded0, 0xc00017a700}, 0xc000321680)
+	/root/go/pkg/mod/github.com/gin-gonic/gin@v1.10.0/gin.go:589 +0x1aa
+net/http.serverHandler.ServeHTTP({0xee9478?}, {0xeeded0?, 0xc00017a700?}, 0x6?)
+	/opt/go/src/net/http/server.go:3301 +0x8e
+net/http.(*conn).serve(0xc0003a6ab0, {0xef1928, 0xc0000a48a0})
+	/opt/go/src/net/http/server.go:2102 +0x625
+created by net/http.(*Server).Serve in goroutine 43
+	/opt/go/src/net/http/server.go:3454 +0x485
+2025/07/08 17:19:07 closed server!!
+2025/07/08 17:19:07 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 17:19:10 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:19:10 <zabbix> DataBase Register Success
+2025/07/08 17:19:10 <sql_demo> DataBase Register Success
+2025/07/08 17:19:10 <shower> DataBase Register Success
+2025/07/08 17:19:25 [DEBUG] <JSONError> [ERROR] <IssueViewError> not 200
+2025/07/08 17:20:04 closed server!!
+2025/07/08 17:20:04 [DEBUG] <worker goroutine 退出前>  
+2025/07/08 17:20:08 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:20:08 <zabbix> DataBase Register Success
+2025/07/08 17:20:08 <sql_demo> DataBase Register Success
+2025/07/08 17:20:08 <shower> DataBase Register Success
+2025/07/08 17:20:12 [DEBUG] <JSONError> [ERROR] <IssueViewError> not 200
+2025/07/08 17:20:39 closed server!!
+2025/07/08 17:20:39 [DEBUG] <worker goroutine 退出前>  
+2025/07/08 17:20:41 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:20:41 <sql_demo> DataBase Register Success
+2025/07/08 17:20:42 <shower> DataBase Register Success
+2025/07/08 17:20:42 <zabbix> DataBase Register Success
+2025/07/08 17:20:46 [DEBUG] <JSONError> [ERROR] <IssueViewError> not 200
+2025/07/08 17:21:16 closed server!!
+2025/07/08 17:21:16 [DEBUG] <worker goroutine 退出前>  
+2025/07/08 17:21:18 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:21:19 <sql_demo> DataBase Register Success
+2025/07/08 17:21:19 <shower> DataBase Register Success
+2025/07/08 17:21:19 <zabbix> DataBase Register Success
+2025/07/08 17:21:28 [DEBUG] <JSONError> [ERROR] <IssueViewError> not 200
+2025/07/08 17:38:54 [DEBUG] <JSONError> [ERROR] <IssueViewError> not 200
+2025/07/08 17:42:04 closed server!!
+2025/07/08 17:42:04 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 17:42:06 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:42:07 <zabbix> DataBase Register Success
+2025/07/08 17:42:07 <sql_demo> DataBase Register Success
+2025/07/08 17:42:07 <shower> DataBase Register Success
+2025/07/08 17:42:23 closed server!!
+2025/07/08 17:42:23 [DEBUG] <worker goroutine 退出前>  
+2025/07/08 17:42:25 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:42:26 <zabbix> DataBase Register Success
+2025/07/08 17:42:26 <sql_demo> DataBase Register Success
+2025/07/08 17:42:26 <shower> DataBase Register Success
+2025/07/08 17:42:35 [DEBUG] <JSONError> [ERROR] <IssueViewError> not 200
+2025/07/08 17:45:19 closed server!!
+2025/07/08 17:45:19 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 17:45:21 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 17:45:22 <zabbix> DataBase Register Success
+2025/07/08 17:45:22 <sql_demo> DataBase Register Success
+2025/07/08 17:45:22 <shower> DataBase Register Success
+2025/07/08 17:45:33 task id=55a9dd89-5863-4045-97fe-5e6300a1fb25 is enqueue
+2025/07/08 17:45:33 {sql_query {55a9dd89-5863-4045-97fe-5e6300a1fb25 sql_demo select * from users; 12 0}}
+2025/07/08 17:45:33 [DEBUG] <SQL查询事件消费>>>> 55a9dd89-5863-4045-97fe-5e6300a1fb25
+2025/07/08 17:45:33 task id=55a9dd89-5863-4045-97fe-5e6300a1fb25 is working
+2025/07/08 17:45:34 [RecordFailed] Error 1452 (23000): Cannot add or update a child row: a foreign key constraint fails (`sql_demo`.`query_audit_logs`, CONSTRAINT `fk_query_audit_logs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE)
+2025/07/08 17:45:34 task id=55a9dd89-5863-4045-97fe-5e6300a1fb25 is completed
+2025/07/08 17:45:34 {get_result 0xc00039a6c0}
+2025/07/08 17:45:34 [DEBUG] <查询结果事件消费>>>> 55a9dd89-5863-4045-97fe-5e6300a1fb25
+2025/07/08 17:48:34 {clean_task {0 55a9dd89-5863-4045-97fe-5e6300a1fb25}}
+2025/07/08 17:48:34 [DEBUG] <清理结果事件消费>>>> 55a9dd89-5863-4045-97fe-5e6300a1fb25
+2025/07/08 17:48:34 type=ResultMap taskID=55a9dd89-5863-4045-97fe-5e6300a1fb25 Cleaned Up
+2025/07/08 17:49:32 [DEBUG] <JSONError> invalid character 'a' looking for beginning of value
+2025/07/08 17:50:33 {clean_task {1 55a9dd89-5863-4045-97fe-5e6300a1fb25}}
+2025/07/08 17:50:33 [DEBUG] <清理结果事件消费>>>> 55a9dd89-5863-4045-97fe-5e6300a1fb25
+2025/07/08 17:50:33 type=QueryTaskMap taskID=55a9dd89-5863-4045-97fe-5e6300a1fb25 Cleaned Up
+2025/07/08 18:04:19 [DEBUG] <JSONError> invalid character 'h' looking for beginning of value
+2025/07/08 18:11:39 [DEBUG] <JSONError> invalid character '1' looking for beginning of value
+2025/07/08 18:11:59 [DEBUG] <JSONError> invalid character '1' looking for beginning of value
+2025/07/08 18:12:17 [DEBUG] <JSONError> invalid character 'w' looking for beginning of value
+2025/07/08 18:13:02 [DEBUG] <JSONError> invalid character 'h' looking for beginning of value
+2025/07/08 18:27:09 closed server!!
+2025/07/08 18:27:09 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 18:27:09 [DEBUG] <EventRouteStop> 收到全局退出信号，退出所有
+2025/07/08 18:27:13 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 18:27:13 <sql_demo> DataBase Register Success
+2025/07/08 18:27:13 <shower> DataBase Register Success
+2025/07/08 18:27:13 <zabbix> DataBase Register Success
+2025/07/08 18:28:29 closed server!!
+2025/07/08 18:28:29 [DEBUG] <worker goroutine 退出前> 
+2025/07/08 18:28:31 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/08 18:28:31 <zabbix> DataBase Register Success
+2025/07/08 18:28:31 <sql_demo> DataBase Register Success
+2025/07/08 18:28:31 <shower> DataBase Register Success
+2025/07/08 18:28:44 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is string
+2025/07/08 18:36:57 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is string
+2025/07/08 18:38:15 task id=01fdfd77-da43-457c-8c95-e8b66d7b62c3 is enqueue
+2025/07/08 18:38:15 {sql_query {01fdfd77-da43-457c-8c95-e8b66d7b62c3 sql_demo select * from users; 12 0}}
+2025/07/08 18:38:15 [DEBUG] <SQL查询事件消费>>>> 01fdfd77-da43-457c-8c95-e8b66d7b62c3
+2025/07/08 18:38:15 task id=01fdfd77-da43-457c-8c95-e8b66d7b62c3 is working
+2025/07/08 18:38:15 [RecordFailed] Error 1452 (23000): Cannot add or update a child row: a foreign key constraint fails (`sql_demo`.`query_audit_logs`, CONSTRAINT `fk_query_audit_logs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE)
+2025/07/08 18:38:15 task id=01fdfd77-da43-457c-8c95-e8b66d7b62c3 is completed
+2025/07/08 18:38:15 {get_result 0xc000099bc0}
+2025/07/08 18:38:15 [DEBUG] <查询结果事件消费>>>> 01fdfd77-da43-457c-8c95-e8b66d7b62c3
+2025/07/08 18:38:56 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is string
+2025/07/08 18:41:16 {clean_task {0 01fdfd77-da43-457c-8c95-e8b66d7b62c3}}
+2025/07/08 18:41:16 [DEBUG] <清理结果事件消费>>>> 01fdfd77-da43-457c-8c95-e8b66d7b62c3
+2025/07/08 18:41:16 type=ResultMap taskID=01fdfd77-da43-457c-8c95-e8b66d7b62c3 Cleaned Up
+2025/07/08 18:43:15 {clean_task {1 01fdfd77-da43-457c-8c95-e8b66d7b62c3}}
+2025/07/08 18:43:15 [DEBUG] <清理结果事件消费>>>> 01fdfd77-da43-457c-8c95-e8b66d7b62c3
+2025/07/08 18:43:15 type=QueryTaskMap taskID=01fdfd77-da43-457c-8c95-e8b66d7b62c3 Cleaned Up
+2025/07/09 00:15:51 http: TLS handshake error from 221.238.94.141:51242: EOF
+2025/07/09 00:15:51 http: TLS handshake error from 221.238.94.141:51244: client sent an HTTP request to an HTTPS server
+2025/07/09 00:15:51 http: TLS handshake error from 221.238.94.141:51258: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51268: client sent an HTTP request to an HTTPS server
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51278: client sent an HTTP request to an HTTPS server
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51284: tls: unsupported SSLv2 handshake received
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51286: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51292: tls: client offered only unsupported versions: []
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51306: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51308: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51322: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51328: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51340: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51346: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51348: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51358: client sent an HTTP request to an HTTPS server
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51360: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51364: tls: no cipher suite supported by both client and server
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51370: client sent an HTTP request to an HTTPS server
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51380: tls: unsupported SSLv2 handshake received
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51386: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51398: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51394: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:52 http: TLS handshake error from 221.238.94.141:51402: tls: first record does not look like a TLS handshake
+2025/07/09 00:15:53 http: TLS handshake error from 221.238.94.141:51256: unexpected EOF
+2025/07/09 10:06:47 closed server!!
+2025/07/09 10:06:47 [DEBUG] <worker goroutine 退出前> 

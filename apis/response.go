@@ -1,6 +1,10 @@
 package apis
 
-import "github.com/gin-gonic/gin"
+import (
+	"fmt"
+
+	"github.com/gin-gonic/gin"
+)
 
 // ! 封装响应数据
 const (
@@ -43,4 +47,14 @@ func DefaultResp(ctx *gin.Context, code int, data any, msg string) {
 		Data:    data,
 		Message: msg,
 	})
+}
+
+func NotAuthResp(ctx *gin.Context, msg string) {
+	ctx.JSON(401, JSONResponse{
+		Message: msg,
+	})
+}
+
+func FormatPrint(title, msg string) string {
+	return fmt.Sprintf("[%s] - %s", title, msg)
 }

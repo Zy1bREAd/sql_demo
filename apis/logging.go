@@ -87,3 +87,15 @@ func StartFileLogging() *os.File {
 	log.SetOutput(multiWriter)
 	return logFile
 }
+
+//! 工具类的函数
+
+func Str2TimeObj(t string) time.Time {
+	newT, err := time.Parse(time.DateTime, t)
+	if err != nil {
+		DebugPrint("FormatTimeError", err.Error())
+		// 出现则返回1970的时间段！
+		return time.Unix(0, 0)
+	}
+	return newT
+}

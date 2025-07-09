@@ -270,8 +270,11 @@ func newDBInstance(name, dsn string, maxConn, idleTime int) (*DBInstance, error)
 func GetDBInstance(name string) (*DBInstance, error) {
 	globalDBPool.mu.RLock()
 	defer globalDBPool.mu.RUnlock()
+	if name == "" {
+		return nil, GenerateError("InstanceError", "db_name is not null")
+	}
 	if instance, ok := globalDBPool.Pool[name]; ok {
 		return instance, nil
 	}
-	return nil, GenerateError("Instance Error", fmt.Sprintf("(%s) db instance not found", name))
+	return nil, GenerateError("InstanceError", fmt.Sprintf("(%s) db instance not found", name))
 }

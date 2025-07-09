@@ -101,7 +101,7 @@ func InitRouter() {
 
 }
 
-// 初始化基础路由
+// ! 初始化基础路由
 func InitBaseRoutes() {
 	RegisterRoute(func(rgPublic, rgAuth *gin.RouterGroup) {
 		rgPublic.POST("/register", userCreate)
@@ -119,8 +119,58 @@ func InitBaseRoutes() {
 		rgAuth.GET("/:taskId/result", getQueryResult)
 		rgAuth.GET("/sql/result/keys", getMapKeys)
 		rgAuth.GET("/db/list", DBList)
-	})
 
+		rgPublic.POST("/issue/callback", IssueCallBack)
+		rgPublic.POST("/comment/callback", CommentCallBack)
+		// 测试专用路由
+		// rgPublic.GET("/issue/list", getIssueList)
+		// rgPublic.POST("/issue/comment/update")
+	})
+}
+
+func IssueCallBack(ctx *gin.Context) {
+	err := PreCheckCallback(ctx, "Issue Hook")
+	if err != nil {
+		NotAuthResp(ctx, err.Error()) // ERROR：401
+		return
+	}
+	//！ callback 核心逻辑
+	// 获取并解析请求体
+	var reqBody IssueWebhook
+	err = ctx.ShouldBind(&reqBody)
+	if err != nil {
+		ErrorResp(ctx, FormatPrint("BindError", err.Error()))
+		return
+	}
+	fmt.Println("测试Issue callback，data=", reqBody)
+	err = reqBody.OpenIssueHandle()
+	if err != nil {
+		ErrorResp(ctx, FormatPrint("IssueHandleError", err.Error()))
+		return
+	}
+	// utils.Str2TimeObj(reqBody.ObjectAttr.CreateAt)
+	SuccessResp(ctx, nil, "Success gitlab issue callback")
+}
+
+func CommentCallBack(ctx *gin.Context) {
+	err := PreCheckCallback(ctx, "Note Hook")
+	if err != nil {
+		NotAuthResp(ctx, err.Error()) // ERROR：401
+		return
+	}
+	// 评论事件触发的逻辑
+	var reqBody CommentWebhook
+	err = ctx.ShouldBind(&reqBody)
+	if err != nil {
+		ErrorResp(ctx, FormatPrint("BindError", err.Error()))
+		return
+	}
+	err = reqBody.CommentIssueHandle()
+	if err != nil {
+		ErrorResp(ctx, FormatPrint("CommentHandleError", err.Error()))
+		return
+	}
+	SuccessResp(ctx, nil, "Success gitlab comment callback")
 }
 
 type UserQuery struct {

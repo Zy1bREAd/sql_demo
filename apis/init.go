@@ -16,6 +16,9 @@ type appEnvConfig struct {
 	WebSrvEnv    WebServerConfig        `yaml:"web"`
 	SSOEnv       SSOConfig              `yaml:"sso"`
 	ExportEnv    ExportConfig           `yaml:"export"`
+	GitLabEnv    GitLabConfig           `yaml:"gitlab"`
+	WeixinEnv    WeixinConfig           `yaml:"weixin"`
+	ApprovalMap  map[string]uint        `yaml:"approval_list"`
 }
 
 type ExportConfig struct {
@@ -51,6 +54,23 @@ type EndpointConfig struct {
 	AuthURL  string `yaml:"auth_url"`
 	TokenURL string `yaml:"token_url"`
 }
+type WebhookConfig struct {
+	SceretToken string `yaml:"secret_token"`
+}
+
+type GitLabConfig struct {
+	AccessToken string        `yaml:"access_token"`
+	URL         string        `yaml:"url"`
+	WebhookEnv  WebhookConfig `yaml:"webhook"`
+}
+
+type WeixinConfig struct {
+	InformWebhook string `yaml:"inform_webhook"`
+}
+
+// type ApprovalConfig struct{
+
+// }
 
 var appConfig *appEnvConfig
 
