@@ -262,6 +262,8 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
 	}
 	DebugPrint("SQL查询事件消费>>>", task.ID)
 	QueryTaskMap.Set(task.ID, task, 300, 1) // 存储查询任务信息
+	// 新增存储GitLab Issue和任务信息的映射表
+	// GitLabIssueMap.Set(task.ID,)
 	ExcuteSQLTask(ctx, &task)
 	return nil
 }

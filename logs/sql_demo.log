@@ -1113,3 +1113,107 @@ created by net/http.(*Server).Serve in goroutine 43
 2025/07/09 00:15:53 http: TLS handshake error from 221.238.94.141:51256: unexpected EOF
 2025/07/09 10:06:47 closed server!!
 2025/07/09 10:06:47 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 10:24:13 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 10:24:13 <shower> DataBase Register Success
+2025/07/09 10:24:13 <zabbix> DataBase Register Success
+2025/07/09 10:24:13 <sql_demo> DataBase Register Success
+2025/07/09 14:10:20 closed server!!
+2025/07/09 14:10:20 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 14:10:20 [DEBUG] <EventRouteStop> 收到全局退出信号，退出所有
+2025/07/09 16:03:42 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 16:03:42 <zabbix> DataBase Register Success
+2025/07/09 16:03:42 <sql_demo> DataBase Register Success
+2025/07/09 16:03:42 <shower> DataBase Register Success
+2025/07/09 16:42:09 closed server!!
+2025/07/09 16:42:09 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 16:42:13 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 16:42:13 <zabbix> DataBase Register Success
+2025/07/09 16:42:13 <sql_demo> DataBase Register Success
+2025/07/09 16:42:13 <shower> DataBase Register Success
+2025/07/09 16:46:42 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is string
+2025/07/09 16:52:34 closed server!!
+2025/07/09 16:52:34 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 16:52:36 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 16:52:36 <zabbix> DataBase Register Success
+2025/07/09 16:52:36 <sql_demo> DataBase Register Success
+2025/07/09 16:52:36 <shower> DataBase Register Success
+2025/07/09 16:52:55 closed server!!
+2025/07/09 16:52:55 [DEBUG] <worker goroutine 退出前>  
+2025/07/09 16:52:58 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 16:52:58 <zabbix> DataBase Register Success
+2025/07/09 16:52:58 <sql_demo> DataBase Register Success
+2025/07/09 16:52:58 <shower> DataBase Register Success
+2025/07/09 16:53:50 closed server!!
+2025/07/09 16:53:50 [DEBUG] <worker goroutine 退出前>  
+2025/07/09 16:53:52 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 16:53:52 <zabbix> DataBase Register Success
+2025/07/09 16:53:52 <sql_demo> DataBase Register Success
+2025/07/09 16:53:53 <shower> DataBase Register Success
+2025/07/09 17:01:56 closed server!!
+2025/07/09 17:01:56 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 17:02:00 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 17:02:00 <zabbix> DataBase Register Success
+2025/07/09 17:02:00 <sql_demo> DataBase Register Success
+2025/07/09 17:02:00 <shower> DataBase Register Success
+2025/07/09 17:02:17 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is string
+2025/07/09 17:04:54 closed server!!
+2025/07/09 17:04:54 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 17:04:56 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 17:04:56 <shower> DataBase Register Success
+2025/07/09 17:04:56 <zabbix> DataBase Register Success
+2025/07/09 17:04:57 <sql_demo> DataBase Register Success
+2025/07/09 17:05:02 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is stringinvalid character 'x' looking for beginning of value
+2025/07/09 17:05:35 closed server!!
+2025/07/09 17:05:35 [DEBUG] <worker goroutine 退出前> "
+2025/07/09 17:05:35 [DEBUG] <EventRouteStop> 收到全局退出信号，退出所有
+2025/07/09 17:05:43 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 17:05:43 <zabbix> DataBase Register Success
+2025/07/09 17:05:43 <sql_demo> DataBase Register Success
+2025/07/09 17:05:43 <shower> DataBase Register Success
+2025/07/09 17:06:22 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is stringinvalid character 'ã' looking for beginning of value
+2025/07/09 17:07:17 closed server!!
+2025/07/09 17:07:17 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 17:07:30 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 17:07:31 <zabbix> DataBase Register Success
+2025/07/09 17:07:31 <sql_demo> DataBase Register Success
+2025/07/09 17:07:31 <shower> DataBase Register Success
+2025/07/09 17:07:40 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is stringinvalid character 'æ' looking for beginning of value
+2025/07/09 17:12:03 closed server!!
+2025/07/09 17:12:03 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 17:12:05 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 17:12:05 <zabbix> DataBase Register Success
+2025/07/09 17:12:05 <sql_demo> DataBase Register Success
+2025/07/09 17:12:05 <shower> DataBase Register Success
+2025/07/09 17:12:12 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is stringinvalid character '@' looking for beginning of value
+2025/07/09 17:13:19 closed server!!
+2025/07/09 17:13:19 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 17:13:22 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 17:13:22 <zabbix> DataBase Register Success
+2025/07/09 17:13:23 <sql_demo> DataBase Register Success
+2025/07/09 17:13:23 <shower> DataBase Register Success
+2025/07/09 17:13:28 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is stringinvalid character '@' looking for beginning of value
+2025/07/09 17:17:45 closed server!!
+2025/07/09 17:17:45 [DEBUG] <worker goroutine 退出前> 
+2025/07/09 17:17:47 map[rulesA:{[keys pas[a-z]word e[a-z]+il lang] full true *** {0 0}} rulesB:{[name] partial false  {2 2}} rulesC:{[email [a-zA-Z]+word] partial true  {1 8}}]
+2025/07/09 17:17:48 <zabbix> DataBase Register Success
+2025/07/09 17:17:48 <sql_demo> DataBase Register Success
+2025/07/09 17:17:48 <shower> DataBase Register Success
+2025/07/09 17:18:00 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is stringinvalid character '@' looking for beginning of value
+2025/07/09 17:18:37 [DEBUG] <UpdateIssueHandle> update issue
+2025/07/09 17:18:44 [DEBUG] <IsNotJSON> comment is not JSON format, maybe is stringinvalid character '@' looking for beginning of value
+2025/07/09 17:19:15 [DEBUG] <UpdateIssueHandle> update issue
+2025/07/09 17:19:20 task id=757b9878-6347-4573-be8c-a2d7103c7c10 is enqueue
+2025/07/09 17:19:20 {sql_query {757b9878-6347-4573-be8c-a2d7103c7c10  select * from users; 12 0}}
+2025/07/09 17:19:20 [DEBUG] <SQL查询事件消费>>>> 757b9878-6347-4573-be8c-a2d7103c7c10
+2025/07/09 17:19:20 task id=757b9878-6347-4573-be8c-a2d7103c7c10 is working
+2025/07/09 17:19:20 {get_result 0xc00034c5a0}
+2025/07/09 17:19:20 [DEBUG] <查询结果事件消费>>>> 757b9878-6347-4573-be8c-a2d7103c7c10
+2025/07/09 17:19:20 TaskId=757b9878-6347-4573-be8c-a2d7103c7c10 TaskError=[ERROR] <InstanceError> db_name is not null
+2025/07/09 17:22:20 {clean_task {0 757b9878-6347-4573-be8c-a2d7103c7c10}}
+2025/07/09 17:22:20 [DEBUG] <清理结果事件消费>>>> 757b9878-6347-4573-be8c-a2d7103c7c10
+2025/07/09 17:22:20 type=ResultMap taskID=757b9878-6347-4573-be8c-a2d7103c7c10 Cleaned Up
+2025/07/09 17:24:20 {clean_task {1 757b9878-6347-4573-be8c-a2d7103c7c10}}
+2025/07/09 17:24:20 [DEBUG] <清理结果事件消费>>>> 757b9878-6347-4573-be8c-a2d7103c7c10
+2025/07/09 17:24:20 type=QueryTaskMap taskID=757b9878-6347-4573-be8c-a2d7103c7c10 Cleaned Up
+2025/07/09 17:34:37 closed server!!
+2025/07/09 17:34:37 [DEBUG] <worker goroutine 退出前> 

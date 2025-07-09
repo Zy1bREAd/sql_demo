@@ -12,13 +12,14 @@ import (
 )
 
 // 维护全局变量
-var TaskQueue chan *QueryTask = make(chan *QueryTask, 30) // 预分配空间
-var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
-var CleanQueue chan cleanTask = make(chan cleanTask, 30)
-var HouseKeepQueue chan *ExportTask = make(chan *ExportTask, 30)
-var ExportQueue chan *ExportTask = make(chan *ExportTask, 30)
-var QueryTaskMap *CachesMap = &CachesMap{cache: &sync.Map{}}  // 存储查询任务相关信息的集合（QueryTask)
-var ExportWorkMap *CachesMap = &CachesMap{cache: &sync.Map{}} //导出工作的映射表(任务 -> 结果)
+// var TaskQueue chan *QueryTask = make(chan *QueryTask, 30) // 预分配空间
+// var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
+// var CleanQueue chan cleanTask = make(chan cleanTask, 30)
+// var HouseKeepQueue chan *ExportTask = make(chan *ExportTask, 30)
+// var ExportQueue chan *ExportTask = make(chan *ExportTask, 30)
+var QueryTaskMap *CachesMap = &CachesMap{cache: &sync.Map{}}   // 存储查询任务相关信息的映射表（任务 -> 详细QueryTask数据)
+var ExportWorkMap *CachesMap = &CachesMap{cache: &sync.Map{}}  //导出工作的映射表(任务 -> 结果)
+var GitLabIssueMap *CachesMap = &CachesMap{cache: &sync.Map{}} // GitLab Issue和Task Id的映射表(任务 -> GitLab Issue)
 
 type ExportResult struct {
 	Done     chan struct{}
@@ -39,22 +40,24 @@ type QueryTask struct {
 	Statement string
 	deadline  int64 // 超时时间（单位为秒）,默认 30s
 	UserID    uint  // 关联执行用户id
+	// 关联GitLab
+	GitLabIssue Issue
 }
 
-// 提交SQL查询任务入队
-func SubmitSQLTask(statement string, database string, userId string) string {
-	//! context控制超时
-	task := &QueryTask{
-		ID:        GenerateUUIDKey(),
-		DBName:    database,
-		Statement: statement,
-		deadline:  12,
-		UserID:    StrToUint(userId),
-	}
-	TaskQueue <- task
-	log.Printf("task id=%s is enqueue", task.ID)
-	return task.ID
-}
+// 提交SQL查询任务入队(v1.0)
+// func SubmitSQLTask(statement string, database string, userId string) string {
+// 	//! context控制超时
+// 	task := &QueryTask{
+// 		ID:        GenerateUUIDKey(),
+// 		DBName:    database,
+// 		Statement: statement,
+// 		deadline:  12,
+// 		UserID:    StrToUint(userId),
+// 	}
+// 	TaskQueue <- task
+// 	log.Printf("task id=%s is enqueue", task.ID)
+// 	return task.ID
+// }
 
 // 事件驱动(v2.0)
 func CreateSQLQueryTask(statement string, database string, userId string) QueryTask {

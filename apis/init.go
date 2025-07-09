@@ -62,6 +62,7 @@ type GitLabConfig struct {
 	AccessToken string        `yaml:"access_token"`
 	URL         string        `yaml:"url"`
 	WebhookEnv  WebhookConfig `yaml:"webhook"`
+	RobotUserId uint          `yaml:"handle_robot_id"`
 }
 
 type WeixinConfig struct {

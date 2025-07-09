@@ -2,6 +2,7 @@ package apis
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -10,10 +11,17 @@ import (
 )
 
 type IssueWebhook struct {
-	EventType  string  `json:"event_type"`
-	User       GUser   `json:"user"`
-	ObjectAttr Issue   `json:"object_attributes"`
-	Project    Project `json:"project"`
+	EventType  string                `json:"event_type"`
+	User       GUser                 `json:"user"`
+	ObjectAttr Issue                 `json:"object_attributes"`
+	Project    Project               `json:"project"`
+	Changes    map[string]ChangeInfo `json:"changes"` // 记录变更内容
+}
+
+type ChangeInfo struct {
+	// 由于变更内容有uint有string，所以使用空接口代替
+	Previous any `json:"previous"`
+	Current  any `json:"current"`
 }
 
 type CommentWebhook struct {
@@ -26,10 +34,10 @@ type CommentWebhook struct {
 
 // 问题内容
 type IssueContent struct {
-	Action      string `json:"action"`
-	Description string `json:"description"`
-	Statement   string `json:"statement"`
-	DBName      string `json:"db_name"`
+	Action    string `json:"action"`
+	Note      string `json:"description"`
+	Statement string `json:"statement"`
+	DBName    string `json:"db_name"`
 }
 
 // 评论内容
@@ -71,12 +79,42 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 		return err
 	}
 	fmt.Println(">>>>", content)
-	// 区分Issue是open还是update操作
-
+	if len(i.ObjectAttr.Assigneers) == 0 {
+		// 没有签派给robot，因此跳过
+		return nil
+	}
+	// 区分Issue是open还是update操作,企业微信通知,发送消息通知至企业微信机器人
+	switch i.ObjectAttr.Action {
+	case "open":
+		DebugPrint("OpenIssueHandle", "open open open")
+		informBody := &TicketInformBody{
+			TicketType:    "Ticket Create",
+			TicketDueDate: i.ObjectAttr.DueDate,
+			TicketDesc:    i.ObjectAttr.Description,
+			TicketLink:    i.ObjectAttr.URL,
+			UserName:      i.User.Username,
+		}
+		_ = InformRobot(informBody.Fill())
+	case "update":
+		DebugPrint("UpdateIssueHandle", "update issue")
+		desc, exist := i.Changes["description"]
+		if exist {
+			if val, ok := desc.Current.(string); ok {
+				informBody := &TicketInformBody{
+					TicketType:    "Ticket Update",
+					TicketDueDate: i.ObjectAttr.DueDate,
+					TicketDesc:    val,
+					TicketLink:    i.ObjectAttr.URL,
+					UserName:      i.User.Username,
+				}
+				_ = InformRobot(informBody.Fill())
+			}
+		}
+	default:
+		fmt.Println("nothing to do")
+		return nil
+	}
 	// 存储DB？？
-
-	// 企业微信通知,发送消息通知至企业微信机器人
-	InformRobot()
 	return nil
 }
 
@@ -112,7 +150,7 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	var content CommentContent
 	err := json.Unmarshal([]byte(c.ObjectAttr.Note), &content)
 	if err != nil {
-		DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string")
+		DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string"+err.Error())
 		return nil
 	}
 	if content.Approval == 0 {
@@ -120,6 +158,16 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		approvalMap := GetAppConfig().ApprovalMap
 		if v, exist := approvalMap[c.User.Name]; exist {
 			if v == c.User.ID {
+				// 确认签派给SQL Handler这个robot user
+				gitlabConfig := GetAppConfig().GitLabEnv
+				if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
+					// 评论Issue
+					api := InitGitLabAPI()
+					issueAuthor, _ := api.UserView(c.ObjectAttr.AuthorID)
+					robotMsg := fmt.Sprintf("@%s未指派正确的Handler,请重新指派后再次审批", issueAuthor.Username)
+					_ = api.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
+					return GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
+				}
 				// 查找指定的Issue
 				gitlab := InitGitLabAPI()
 				iss, err := gitlab.IssueView(c.Project.ID, c.Issue.ID)
@@ -148,10 +196,24 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	} else if content.Approval == 1 {
 		// 驳回
 		gitlab := InitGitLabAPI()
-		err := gitlab.CommentCreate(c.Project.ID, c.Issue.IID, "驳回你的SQL任务请求,"+content.Reason)
+		err := gitlab.CommentCreate(c.Project.ID, c.Issue.IID, "【驳回】你的SQL任务请求,"+content.Reason)
 		if err != nil {
 			return GenerateError("RejectError", err.Error())
 		}
+		//  发送驳回通知给企业微信机器人
+		api := InitGitLabAPI()
+		issueAuthor, err := api.UserView(c.Issue.AuthorID)
+		if err != nil {
+			return GenerateError("UserViewAPI", err.Error())
+		}
+		informBody := &RejectInformBody{
+			TicketType: "Ticket Reject",
+			TicketLink: c.Issue.URL,
+			UserName:   issueAuthor.Username,
+			Reason:     content.Reason,
+			Approver:   c.User.Username,
+		}
+		InformRobot(informBody.Fill())
 	}
 
 	return nil

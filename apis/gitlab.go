@@ -27,10 +27,12 @@ type Issue struct {
 	Title       string `json:"title"`
 	State       string `json:"state"` // opened、closed
 	Description string `json:"description"`
-	Assigneer   string `json:"assignee"`
+	Assigneers  []uint `json:"assignee_ids"`
 	CreateAt    string `json:"created_at"`
 	UpdateAt    string `json:"updated_at"`
+	DueDate     string `json:"due_date"`
 	AuthorID    uint   `json:"author_id"`
+	ProjectID   uint   `json:"project_id"`
 	URL         string `json:"url"` // Issue URL
 	Action      string `json:"action"`
 }
@@ -58,13 +60,16 @@ type Project struct {
 	Name string `json:"name"`
 }
 
-// 封装API
+// ! 封装GitLab API
+
+// 创建评论
 func (gitlab *GitLabAPI) CommentCreate(projectId, issueIId uint, content string) error {
 	commentCreateURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d/notes?body=%s", projectId, issueIId, content)
 	req, err := http.NewRequest("POST", commentCreateURL, nil)
 	if err != nil {
 		return GenerateError("IssueViewError", err.Error())
 	}
+	// req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -73,12 +78,12 @@ func (gitlab *GitLabAPI) CommentCreate(projectId, issueIId uint, content string)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println(resp.StatusCode, resp)
 		return GenerateError("IssueViewError", "not 200")
 	}
 	return nil
 }
 
+// 获取某个项目下的Issue详情
 func (gitlab *GitLabAPI) IssueView(projectId, issueIId uint) (*Issue, error) {
 	signalIssueURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d", projectId, issueIId)
 	req, err := http.NewRequest("GET", signalIssueURL, nil)
@@ -102,6 +107,32 @@ func (gitlab *GitLabAPI) IssueView(projectId, issueIId uint) (*Issue, error) {
 	if err != nil {
 		return nil, GenerateError("IssueViewError", err.Error())
 	}
-	fmt.Println("issue view result:", i)
 	return &i, nil
+}
+
+// 获取单个用户
+func (gitlab *GitLabAPI) UserView(userId uint) (*GUser, error) {
+	apiURL := gitlab.URL + fmt.Sprintf("/api/v4/users/%d", userId)
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, GenerateError("UserViewError", err.Error())
+	}
+	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, GenerateError("UserViewError", err.Error())
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println(resp.StatusCode, resp)
+		return nil, GenerateError("UserViewError", "not 200")
+	}
+	// 反序列化
+	var u GUser
+	err = json.NewDecoder(resp.Body).Decode(&u)
+	if err != nil {
+		return nil, GenerateError("UserViewError", err.Error())
+	}
+	return &u, nil
 }

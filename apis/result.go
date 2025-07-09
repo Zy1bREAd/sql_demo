@@ -26,7 +26,8 @@ type CachesMap struct {
 }
 
 // 添加kv
-func (rc *CachesMap) Set(key string, values any, expireTime int, taskType int) {
+// ! 使用uint来避免负数，使用0代表无限，大于0都是正常的过期时间。
+func (rc *CachesMap) Set(key string, values any, expireTime uint, taskType int) {
 	rc.cache.Store(key, values) // 应该存储结果集结构体
 	if expireTime > 0 {
 		go func() {
