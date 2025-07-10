@@ -1,7 +1,6 @@
 package apis
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -44,7 +43,8 @@ func generateLog(level int, errorTitle string, msg string) string {
 }
 
 func GenerateError(errorTitle string, msg string) error {
-	newErr := errors.New(generateLog(0, errorTitle, msg))
+	DebugPrint(errorTitle, msg)
+	newErr := fmt.Errorf("[%s] %s", errorTitle, msg)
 	return newErr
 }
 
@@ -54,6 +54,9 @@ func DebugPrint(title string, msg any) {
 		return
 	} else if assertVal, ok := msg.(int); ok {
 		log.Println(generateLog(3, title, string(rune(assertVal))))
+		return
+	} else if assertVal, ok := msg.(error); ok {
+		log.Println(generateLog(3, title, assertVal.Error()))
 		return
 	}
 	log.Println(msg)

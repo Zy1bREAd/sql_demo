@@ -40,8 +40,12 @@ type QueryTask struct {
 	Statement string
 	deadline  int64 // 超时时间（单位为秒）,默认 30s
 	UserID    uint  // 关联执行用户id
-	// 关联GitLab
-	GitLabIssue Issue
+}
+
+// 封装QueryTask 结合GitLab Issue
+type IssueQueryTask struct {
+	QTask  *QueryTask
+	QIssue *Issue
 }
 
 // 提交SQL查询任务入队(v1.0)
@@ -66,11 +70,27 @@ func CreateSQLQueryTask(statement string, database string, userId string) QueryT
 		ID:        GenerateUUIDKey(),
 		DBName:    database,
 		Statement: statement,
-		deadline:  12,
+		deadline:  30,
 		UserID:    StrToUint(userId),
 	}
 	log.Printf("task id=%s is enqueue", task.ID)
 	return task
+}
+
+func CreateSQLQueryTaskWithIssue(statement, database string, userId uint, issue *Issue) *IssueQueryTask {
+	//! context控制超时
+	issueTask := IssueQueryTask{
+		QTask: &QueryTask{
+			ID:        GenerateUUIDKey(),
+			DBName:    database,
+			Statement: statement,
+			deadline:  30,
+			UserID:    userId,
+		},
+		QIssue: issue,
+	}
+	log.Printf("task id=%s is enqueue", issueTask.QTask.ID)
+	return &issueTask
 }
 
 func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
@@ -90,7 +110,7 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 		// ResultQueue <- queryResult
 		ep := GetEventProducer()
 		ep.Produce(Event{
-			Type:    "get_result",
+			Type:    "save_result",
 			Payload: queryResult,
 		})
 		return
@@ -107,7 +127,7 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 		// ResultQueue <- queryResult
 		ep := GetEventProducer()
 		ep.Produce(Event{
-			Type:    "get_result",
+			Type:    "save_result",
 			Payload: queryResult,
 		})
 		return
@@ -131,7 +151,7 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	// ResultQueue <- result
 	ep := GetEventProducer()
 	ep.Produce(Event{
-		Type:    "get_result",
+		Type:    "save_result",
 		Payload: result,
 	})
 

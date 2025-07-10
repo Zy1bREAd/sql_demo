@@ -40,7 +40,7 @@ func GetEventProducer() *EventProducer {
 func (ep *EventProducer) Produce(e Event) {
 	select {
 	case ep.eventChan <- e:
-		DebugPrint("事件产生>>>", e)
+		DebugPrint("事件产生", e)
 	default:
 		// 全局事件生产channel已满
 		fmt.Println("全局事件通道已满，请稍后...")
@@ -76,7 +76,7 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 			eventDispatcher = NewEventDispatcher(3, globalEventChannel)
 			registerMap := map[string]func() EventHandler{
 				"sql_query":         NewQueryEventHandler,
-				"get_result":        NewResultEventHandler,
+				"save_result":       NewResultEventHandler,
 				"clean_task":        NewCleanEventHandler,
 				"export_result":     NewExportEventHandler,
 				"file_housekeeping": NewHousekeepingEventHandler,
@@ -222,7 +222,7 @@ func (wrapper *EventHandlerWrapper) workLoop() {
 	for {
 		select {
 		case event, ok := <-wrapper.queue:
-			fmt.Printf("事件类型=%s", event.Type)
+			fmt.Printf("事件类型=%s\n", event.Type)
 			if !ok {
 				fmt.Println("队列已被关闭")
 				return
@@ -255,19 +255,28 @@ func (eh *QueryEventHandler) Name() string {
 }
 
 func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
-	task, ok := e.Payload.(QueryTask)
-	if !ok {
-		fmt.Println("no type QueryTask")
-		return GenerateError("TypeError", "event payload type is incrroect")
+	// 判断哪种类型的QueryTask
+	switch t := e.Payload.(type) {
+	case *QueryTask:
+		DebugPrint("SQL查询事件消费", t.ID)
+		QueryTaskMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
+		// 新增存储GitLab Issue和任务信息的映射表
+		// GitLabIssueMap.Set(task.ID,)
+		ExcuteSQLTask(ctx, t)
+	case *IssueQueryTask:
+		DebugPrint("SQL查询事件消费", t.QTask.ID)
+		QueryTaskMap.Set(t.QTask.ID, t, 300, 1) // 存储查询任务信息
+		// 新增存储GitLab Issue和任务信息的映射表
+		// GitLabIssueMap.Set(task.ID,)
+		ExcuteSQLTask(ctx, t.QTask)
+	default:
+		DebugPrint("TaskTypeError", "event payload type is incrroect")
+		return GenerateError("TaskTypeError", "event payload type is incrroect")
 	}
-	DebugPrint("SQL查询事件消费>>>", task.ID)
-	QueryTaskMap.Set(task.ID, task, 300, 1) // 存储查询任务信息
-	// 新增存储GitLab Issue和任务信息的映射表
-	// GitLabIssueMap.Set(task.ID,)
-	ExcuteSQLTask(ctx, &task)
 	return nil
 }
 
+// 消费事件、处理结果
 type ResultEventHandler struct {
 }
 
@@ -282,16 +291,23 @@ func (eh *ResultEventHandler) Name() string {
 func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 	res, ok := e.Payload.(*QueryResult)
 	if !ok {
-		fmt.Println("no type QueryTask")
 		return GenerateError("TypeError", "event payload type is incrroect")
 	}
-	DebugPrint("查询结果事件消费>>>", res.ID)
-	if res.Error != nil {
-		// 展示SQL任务执行的错误，并一同写入ResultMap
-		log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
-	}
+	DebugPrint("查询结果事件消费", res.ID)
 	//! 后期核心处理结果集的代码逻辑块
 	ResultMap.Set(res.ID, res, 180, 0)
+	// 获取ID对应的task
+	val, _ := QueryTaskMap.Get(res.ID)
+	if res.Error != nil {
+		log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
+		if v, ok := val.(*IssueQueryTask); ok {
+			api := InitGitLabAPI()
+			err := api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, res.Error.Error())
+			if err != nil {
+				DebugPrint("CommentError", "query task result comment is failed"+err.Error())
+			}
+		}
+	}
 	return nil
 }
 
@@ -327,7 +343,7 @@ func (eh *CleanEventHandler) Work(ctx context.Context, e Event) error {
 	if !ok {
 		return GenerateError("TypeError", "event payload type is incrroect")
 	}
-	DebugPrint("清理结果事件消费>>>", body.ID)
+	DebugPrint("清理结果事件消费", body.ID)
 	//! 后期核心处理结果集的代码逻辑块
 	mapOperator := eh.cleanTypeMap[body.Type]
 	mapOperator.Del(body.ID)
@@ -353,7 +369,7 @@ func (eh *ExportEventHandler) Work(ctx context.Context, e Event) error {
 	if !ok {
 		return GenerateError("TypeError", "event payload type is incrroect")
 	}
-	DebugPrint("导出结果事件消费>>>", body.ID)
+	DebugPrint("导出结果事件消费", body.ID)
 	//! 后期核心处理结果集的代码逻辑块
 	DebugPrint("ExportTask", "export task "+body.ID+" is starting...")
 	err := ExportSQLTask(ctx, body)
@@ -386,7 +402,7 @@ func (eh *HousekeepingEventHandler) Work(ctx context.Context, e Event) error {
 	if !ok {
 		return GenerateError("TypeError", "event payload type is incrroect")
 	}
-	DebugPrint("文件清理事件消费>>>", body.ID)
+	DebugPrint("文件清理事件消费", body.ID)
 	//! 后期核心处理结果集的代码逻辑块
 	FileClean(body.Result.FilePath)
 	return nil

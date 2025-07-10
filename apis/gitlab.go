@@ -1,9 +1,11 @@
 package apis
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 )
 
 // 主要是封装一个操作GITLAB API的Handler
@@ -64,21 +66,41 @@ type Project struct {
 
 // 创建评论
 func (gitlab *GitLabAPI) CommentCreate(projectId, issueIId uint, content string) error {
-	commentCreateURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d/notes?body=%s", projectId, issueIId, content)
-	req, err := http.NewRequest("POST", commentCreateURL, nil)
+	reqBody := struct {
+		Body     string `json:"body"`
+		Internal bool   `json:"internal"`
+		CreateAt string `json:"created_at"`
+	}{
+		Body: content,
+	}
+	jsonData, err := json.Marshal(&reqBody)
+	if err != nil {
+		return GenerateError("JSONError", err.Error())
+	}
+	commentCreateURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d/notes", projectId, issueIId)
+	req, err := http.NewRequest("POST", commentCreateURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return GenerateError("IssueViewError", err.Error())
 	}
-	// req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
+	// 设置请求头，携带JSON形式的POST请求体
+	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return GenerateError("IssueViewError", err.Error())
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return GenerateError("IssueViewError", "not 200")
+	fmt.Println(resp.StatusCode, resp)
+	if slices.Contains([]int{
+		http.StatusBadRequest,
+		http.StatusNotAcceptable,
+		http.StatusNotFound,
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+	}, resp.StatusCode) {
+		return GenerateError("IssueViewError", "response status code is not 200")
 	}
 	return nil
 }

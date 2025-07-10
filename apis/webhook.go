@@ -3,7 +3,6 @@ package apis
 import (
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -44,13 +43,6 @@ type IssueContent struct {
 type CommentContent struct {
 	Approval uint   `json:"approval"`
 	Reason   string `json:"reason"`
-}
-
-type issueHandleFn func(string, string, uint) error
-
-var issueHandlerMap map[string]issueHandleFn = map[string]issueHandleFn{
-	"query":  queryHandle,
-	"excute": excuteHandle,
 }
 
 func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
@@ -119,15 +111,15 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 }
 
 // 查询SQL
-func queryHandle(statement, dbName string, userId uint) error {
+func queryHandle(statement, dbName string, userId uint, issue *Issue) {
 	// 事件驱动：封装成Event推送到事件通道(v2.0)
-	task := CreateSQLQueryTask(statement, dbName, strconv.FormatUint(uint64(userId), 10))
+	// task := CreateSQLQueryTask(statement, dbName, strconv.FormatUint(uint64(userId), 10))
+	issueTask := CreateSQLQueryTaskWithIssue(statement, dbName, userId, issue)
 	ep := GetEventProducer()
 	ep.Produce(Event{
 		Type:    "sql_query",
-		Payload: task,
+		Payload: issueTask,
 	})
-	return nil
 }
 
 // 执行SQL
@@ -169,8 +161,8 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 					return GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
 				}
 				// 查找指定的Issue
-				gitlab := InitGitLabAPI()
-				iss, err := gitlab.IssueView(c.Project.ID, c.Issue.ID)
+				api := InitGitLabAPI()
+				iss, err := api.IssueView(c.Project.ID, c.Issue.ID)
 				if err != nil {
 					DebugPrint("IssueViewAPIError", err.Error())
 					return err
@@ -183,20 +175,23 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 				}
 				// 灵活执行问题处理函数（SQL查询or执行）
 				taskType := strings.ToLower(issContent.Action)
-				err = issueHandlerMap[taskType](issContent.Statement, issContent.DBName, iss.AuthorID)
-				if err != nil {
-					DebugPrint("IssueHandleError", err.Error())
-					return err
+				switch taskType {
+				case "query":
+					queryHandle(issContent.Statement, issContent.DBName, iss.AuthorID, iss)
+				case "excute":
+				default:
+					DebugPrint("NothingDo", "no match task type")
 				}
+			} else {
+				// error: 不相同的userid
+				return GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
 			}
-			// error: 不相同的userid
-			return GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
 		}
 		return GenerateError("ApprovalUserNotExist", "审批人不存在")
 	} else if content.Approval == 1 {
 		// 驳回
 		gitlab := InitGitLabAPI()
-		err := gitlab.CommentCreate(c.Project.ID, c.Issue.IID, "【驳回】你的SQL任务请求,"+content.Reason)
+		err := gitlab.CommentCreate(c.Project.ID, c.Issue.IID, "【驳回】你的SQL任务请求,原因:"+content.Reason)
 		if err != nil {
 			return GenerateError("RejectError", err.Error())
 		}
