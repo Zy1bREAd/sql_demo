@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -8,6 +9,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
 )
+
+// 封装Error信息（用于回复评论）
+// type HandleError struct {
+// 	Err error
+// 	Msg string
+// }
 
 type IssueWebhook struct {
 	EventType  string                `json:"event_type"`
@@ -128,11 +135,15 @@ func excuteHandle(statement, dbName string, userId uint) error {
 	return nil
 }
 
+// 解析Issue描述详情
 func parseIssueDesc(desc string) (*IssueContent, error) {
 	var content IssueContent
 	err := json.Unmarshal([]byte(desc), &content)
 	if err != nil {
-		DebugPrint("JSONError", err.Error())
+		var syntaxErr *json.SyntaxError
+		if errors.As(err, &syntaxErr) {
+			return nil, GenerateError("JSONParseError", "issue decription syntax error")
+		}
 		return nil, err
 	}
 	return &content, nil
@@ -142,7 +153,7 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	var content CommentContent
 	err := json.Unmarshal([]byte(c.ObjectAttr.Note), &content)
 	if err != nil {
-		DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string"+err.Error())
+		DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string"+c.ObjectAttr.Note)
 		return nil
 	}
 	if content.Approval == 0 {
@@ -167,10 +178,17 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 					DebugPrint("IssueViewAPIError", err.Error())
 					return err
 				}
+				// 检查issue状态是否关闭
+				if iss.State == "closed" {
+					return GenerateError("IsClosed", "The issue was closed")
+				}
 				// 解析Issue
 				issContent, err := parseIssueDesc(iss.Description)
 				if err != nil {
 					DebugPrint("ParseError", err.Error())
+					// 针对issue内容描述错误返回回复
+					api := InitGitLabAPI()
+					_ = api.CommentCreate(c.Project.ID, c.Issue.IID, err.Error())
 					return err
 				}
 				// 灵活执行问题处理函数（SQL查询or执行）

@@ -268,6 +268,11 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
 		QueryTaskMap.Set(t.QTask.ID, t, 300, 1) // 存储查询任务信息
 		// 新增存储GitLab Issue和任务信息的映射表
 		// GitLabIssueMap.Set(task.ID,)
+
+		// Issue评论情况更新
+		api := InitGitLabAPI()
+		updateMsg := fmt.Sprintf("TaskId=%s is start work...", t.QTask.ID)
+		api.CommentCreate(t.QIssue.ProjectID, t.QIssue.IID, updateMsg)
 		ExcuteSQLTask(ctx, t.QTask)
 	default:
 		DebugPrint("TaskTypeError", "event payload type is incrroect")
@@ -298,15 +303,23 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 	ResultMap.Set(res.ID, res, 180, 0)
 	// 获取ID对应的task
 	val, _ := QueryTaskMap.Get(res.ID)
+	v, ok := val.(*IssueQueryTask)
+	if !ok {
+		// 有可能是QueryTask，所以跳过
+		return nil
+	}
+	api := InitGitLabAPI()
 	if res.Error != nil {
 		log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
-		if v, ok := val.(*IssueQueryTask); ok {
-			api := InitGitLabAPI()
-			err := api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, res.Error.Error())
-			if err != nil {
-				DebugPrint("CommentError", "query task result comment is failed"+err.Error())
-			}
+		err := api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, res.Error.Error())
+		if err != nil {
+			DebugPrint("CommentError", "query task result comment is failed"+err.Error())
 		}
+	}
+	// 输出结果外链并且关闭issue
+	err := api.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
+	if err != nil {
+		DebugPrint("IssueCloseError", "close issue is failed"+err.Error())
 	}
 	return nil
 }

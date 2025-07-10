@@ -132,6 +132,27 @@ func (gitlab *GitLabAPI) IssueView(projectId, issueIId uint) (*Issue, error) {
 	return &i, nil
 }
 
+func (gitlab *GitLabAPI) IssueClose(projectId, issueIid uint) error {
+	apiURL := gitlab.URL + fmt.Sprintf("/api/v4//projects/%d/issues/%d", projectId, issueIid)
+	stateEvent := []byte("close")
+	req, err := http.NewRequest("PUT", apiURL, bytes.NewBuffer(stateEvent))
+	if err != nil {
+		return GenerateError("IssueCloseError", err.Error())
+	}
+	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return GenerateError("IssueCloseError", err.Error())
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println(resp.StatusCode, resp)
+		return GenerateError("IssueCloseError", "not 200")
+	}
+	return nil
+}
+
 // 获取单个用户
 func (gitlab *GitLabAPI) UserView(userId uint) (*GUser, error) {
 	apiURL := gitlab.URL + fmt.Sprintf("/api/v4/users/%d", userId)
