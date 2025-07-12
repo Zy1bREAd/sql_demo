@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 )
 
 // 主要是封装一个操作GITLAB API的Handler
@@ -33,7 +32,7 @@ type Issue struct {
 	CreateAt    string `json:"created_at"`
 	UpdateAt    string `json:"updated_at"`
 	DueDate     string `json:"due_date"`
-	AuthorID    uint   `json:"author_id"`
+	Author      GUser  `json:"author"`
 	ProjectID   uint   `json:"project_id"`
 	URL         string `json:"url"` // Issue URL
 	Action      string `json:"action"`
@@ -51,7 +50,7 @@ type Comment struct {
 // Issue创建者用户和GitLab Robot
 type GUser struct {
 	ID       uint   `json:"id"`
-	Username string `json:"username"`
+	Username string `json:"username"` // 理解为账号名
 	Name     string `json:"name"`
 	State    string `json:"state"`
 	Email    string `json:"email"`
@@ -91,18 +90,7 @@ func (gitlab *GitLabAPI) CommentCreate(projectId, issueIId uint, content string)
 		return GenerateError("IssueViewError", err.Error())
 	}
 	defer resp.Body.Close()
-	fmt.Println(resp.StatusCode, resp)
-	if slices.Contains([]int{
-		http.StatusBadRequest,
-		http.StatusNotAcceptable,
-		http.StatusNotFound,
-		http.StatusInternalServerError,
-		http.StatusBadGateway,
-		http.StatusServiceUnavailable,
-	}, resp.StatusCode) {
-		return GenerateError("IssueViewError", "response status code is not 200")
-	}
-	return nil
+	return ValidateRespBody("CommentCreateError", resp)
 }
 
 // 获取某个项目下的Issue详情
@@ -119,9 +107,9 @@ func (gitlab *GitLabAPI) IssueView(projectId, issueIId uint) (*Issue, error) {
 		return nil, GenerateError("IssueViewError", err.Error())
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fmt.Println(resp.StatusCode, resp)
-		return nil, GenerateError("IssueViewError", "not 200")
+	err = ValidateRespBody("IssueViewError", resp)
+	if err != nil {
+		return nil, err
 	}
 	// 反序列化
 	var i Issue
@@ -146,11 +134,7 @@ func (gitlab *GitLabAPI) IssueClose(projectId, issueIid uint) error {
 		return GenerateError("IssueCloseError", err.Error())
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fmt.Println(resp.StatusCode, resp)
-		return GenerateError("IssueCloseError", "not 200")
-	}
-	return nil
+	return ValidateRespBody("IssueCloseError", resp)
 }
 
 // 获取单个用户
@@ -167,9 +151,9 @@ func (gitlab *GitLabAPI) UserView(userId uint) (*GUser, error) {
 		return nil, GenerateError("UserViewError", err.Error())
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fmt.Println(resp.StatusCode, resp)
-		return nil, GenerateError("UserViewError", "not 200")
+	err = ValidateRespBody("IssueCloseError", resp)
+	if err != nil {
+		return nil, err
 	}
 	// 反序列化
 	var u GUser
@@ -178,4 +162,32 @@ func (gitlab *GitLabAPI) UserView(userId uint) (*GUser, error) {
 		return nil, GenerateError("UserViewError", err.Error())
 	}
 	return &u, nil
+}
+
+// 获取用户列表
+func (gitlab *GitLabAPI) UserList() ([]GUser, error) {
+	apiURL := gitlab.URL + "/api/v4/users"
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, GenerateError("UserListError", err.Error())
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, GenerateError("UserListError", err.Error())
+	}
+	defer resp.Body.Close()
+	err = ValidateRespBody("IssueCloseError", resp)
+	if err != nil {
+		return nil, err
+	}
+	// 反序列化
+	var userList []GUser
+	err = json.NewDecoder(resp.Body).Decode(&userList)
+	if err != nil {
+		return nil, GenerateError("UserViewError", err.Error())
+	}
+	return userList, nil
 }

@@ -3,6 +3,7 @@ package apis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // 定义一个SSE消息内容对象
@@ -119,6 +121,10 @@ func InitBaseRoutes() {
 		rgAuth.GET("/:taskId/result", getQueryResult)
 		rgAuth.GET("/sql/result/keys", getMapKeys)
 		rgAuth.GET("/db/list", DBList)
+
+		// rgAuth.GET("/result/issue/:issue_id/:task_id", showTempQueryResult)
+		rgAuth.GET("/result/temp-view/:identifier", showTempQueryResult)
+		rgPublic.GET("/gitlab/users", UpdateGitLabUsers)
 
 		rgPublic.POST("/issue/callback", IssueCallBack)
 		rgPublic.POST("/comment/callback", CommentCallBack)
@@ -588,4 +594,82 @@ func getUserAuditRecordHandler(ctx *gin.Context) {
 		return
 	}
 	SuccessResp(ctx, recordData, "get audit records by userid")
+}
+
+// 外链形式展示ticket任务执行结果
+func showTempQueryResult(ctx *gin.Context) {
+	uuKey := ctx.Param("identifier")
+	// 校验链接是否过期
+	res, err := GetTempResult(uuKey)
+	if err != nil {
+		DefaultResp(ctx, 1, nil, "无法获取数据,"+err.Error())
+		return
+	}
+	if time.Now().After(res.ExpireAt) {
+		// 已过期
+		DefaultResp(ctx, 555, nil, "该链接已过期")
+		return
+	}
+
+	// 结果集是否存在
+	userResult, exist := ResultMap.Get(res.TaskId)
+	if !exist {
+		DefaultResp(ctx, 1, nil, "结果集不存在")
+		return
+	}
+	if val, ok := userResult.(*QueryResult); ok {
+		if val.Error != nil {
+			DefaultResp(ctx, 1, nil, val.Error.Error())
+			return
+		}
+		SuccessResp(ctx, gin.H{
+			"result":        val.Results,
+			"rows_count":    val.RowCount,
+			"query_time":    val.QueryTime,
+			"raw_statement": val.QueryRaw,
+		}, "SUCCESS")
+	}
+}
+
+func UpdateGitLabUsers(ctx *gin.Context) {
+	api := InitGitLabAPI()
+	users, err := api.UserList()
+	if err != nil {
+		DefaultResp(ctx, 1, nil, err.Error())
+		return
+	}
+	for _, gu := range users {
+		if gu.State != "active" {
+			continue
+		}
+		var u User
+		err := selfDB.conn.Where("git_lab_identity = ?", gu.ID).First(&u).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// 如果该用户不存在，则新建用户
+				u := User{
+					Name:           gu.Name,
+					UserName:       gu.Username,
+					GitLabIdentity: gu.ID,
+					Email:          gu.Email,
+					UserType:       2,
+				}
+				selfDB.conn.Create(&u)
+				continue
+			}
+		}
+		err = selfDB.conn.Model(&u).Updates(User{
+			ID:             u.ID,
+			Name:           gu.Name,
+			UserName:       gu.Username,
+			GitLabIdentity: gu.ID,
+			Email:          gu.Email,
+			UserType:       2,
+		}).Error
+		if err != nil {
+			DebugPrint("UpdateGitLabUser", "update gitlab user is failed")
+			continue
+		}
+	}
+	SuccessResp(ctx, users, "get users")
 }

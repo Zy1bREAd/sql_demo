@@ -81,7 +81,7 @@ func (db *SelfDatabase) autoMigrator() error {
 		return GenerateError("Migrator Failed", "self db is not init")
 	}
 	// 表多的话要以注册的方式注册进来，避免手动一个个输入
-	return db.conn.AutoMigrate(&User{}, &AuditRecord{})
+	return db.conn.AutoMigrate(&User{}, &AuditRecord{}, &TempResultMap{})
 }
 
 // 创建用户逻辑
@@ -168,7 +168,7 @@ func SSOLogin(username, email string) (uint, error) {
 // 新增操作审计记录
 func NewAuditRecord(record *AuditRecord) error {
 	tx := selfDB.conn.Begin()
-	result := selfDB.conn.Create(&record)
+	result := selfDB.conn.Omit("IsExported", "ExportTime").Create(&record)
 	if result.Error != nil {
 		tx.Rollback()
 		return result.Error
@@ -209,10 +209,10 @@ func AllAuditRecords() error {
 // User DTO
 type UserAuditRecord struct {
 	// 查询的环境
-	Env          string     `json:"env"`
-	SQLStatement string     `json:"statement"`
-	DBName       string     `json:"db_name"`
-	ExcuteTime   *time.Time `json:"excute_time"`
+	Env          string    `json:"env"`
+	SQLStatement string    `json:"statement"`
+	DBName       string    `json:"db_name"`
+	ExcuteTime   time.Time `json:"excute_time"`
 }
 
 func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
@@ -244,4 +244,32 @@ func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
 	}
 	// DebugPrint("resultRows", auditRecords)
 	return userRecords, nil
+}
+
+// 存储临时结果链接
+func SaveTempResult(uukey, taskId string, expireTime uint) error {
+	now := time.Now().Add(time.Duration(expireTime) * time.Second)
+	tempData := TempResultMap{
+		UUKey:    uukey,
+		TaskId:   taskId,
+		ExpireAt: now,
+	}
+	res := selfDB.conn.Create(&tempData)
+	if res.Error != nil {
+		return res.Error
+	}
+
+	return nil
+}
+
+func GetTempResult(uuKey string) (*TempResultMap, error) {
+	var tempData TempResultMap
+	res := selfDB.conn.Where("UUKey = ?", uuKey).First(&tempData)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return &tempData, GenerateError("DataIsNull", "RowsAffected is zero")
+	}
+	return &tempData, nil
 }

@@ -27,9 +27,10 @@ type ExportConfig struct {
 }
 
 type WebServerConfig struct {
-	Addr   string       `yaml:"addr"`
-	Port   string       `yaml:"port"`
-	TLSEnv WebTLSConfig `yaml:"tls"`
+	Addr     string       `yaml:"addr"`
+	Port     string       `yaml:"port"`
+	HostName string       `yaml:"hostname"`
+	TLSEnv   WebTLSConfig `yaml:"tls"`
 }
 
 type WebTLSConfig struct {

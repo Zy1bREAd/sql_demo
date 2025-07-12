@@ -2,6 +2,7 @@ package apis
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -57,4 +58,12 @@ func NotAuthResp(ctx *gin.Context, msg string) {
 
 func FormatPrint(title, msg string) string {
 	return fmt.Sprintf("[%s] - %s", title, msg)
+}
+
+func ValidateRespBody(reqMethodName string, resp *http.Response) error {
+	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+		return nil
+	}
+	ErrMsg := fmt.Sprintf("response status=%s, status_code=%d", resp.Status, resp.StatusCode)
+	return GenerateError(reqMethodName, ErrMsg)
 }

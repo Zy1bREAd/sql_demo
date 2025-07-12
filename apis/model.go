@@ -2,15 +2,15 @@ package apis
 
 import "time"
 
-// UserType： 0=Default User; 2=SSO User
-
 type User struct {
-	ID       uint   `gorm:"primaryKey"`
-	Name     string `gorm:"type:varchar(255);not null"`
-	Password string `gorm:"type:varchar(255);not null"`
-	Email    string `gorm:"type:varchar(255);not null;uniqueIndex"`
-	UserType int    `gorm:"type:smallint;not null"`
-	CreateAt time.Time
+	ID             uint      `gorm:"primaryKey"`
+	UserType       uint      `gorm:"type:smallint;not null"` // 0=Default User; 2=GitLab User
+	GitLabIdentity uint      `gorm:"uniqueIndex"`            // Gitlab User的身份标识
+	Name           string    `gorm:"type:varchar(255);not null"`
+	UserName       string    `gorm:"type:varchar(255);"`
+	Password       string    `gorm:"type:varchar(255);not null"`
+	Email          string    `gorm:"type:varchar(255);"`
+	CreateAt       time.Time `gorm:"autoCreateTime"`
 
 	// 权限？
 
@@ -34,20 +34,32 @@ type UserResp struct {
 }
 
 type AuditRecord struct {
-	ID           uint   `gorm:"primaryKey"`
-	TaskID       string `gorm:"type:varchar(255);not null;uniqueIndex"`
-	UserID       uint
-	SQLStatement string     `gorm:"not null"`
-	DBName       string     `gorm:"type:varchar(255)"`
-	TimeStamp    *time.Time `gorm:"type:datetime(0);autoCreateTime"`
-	IsExported   uint8      `gorm:"default:0;type:smallint"`
-	ExportTime   *time.Time `gorm:"type:datetime(0)"`
+	ID           uint      `gorm:"primaryKey"`
+	TaskID       string    `gorm:"type:varchar(255);not null;uniqueIndex"`
+	SQLStatement string    `gorm:"not null"`
+	DBName       string    `gorm:"type:varchar(255)"`
+	TimeStamp    time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	IsExported   uint8     `gorm:"default:0;type:smallint;"`
+	ExportTime   time.Time `gorm:"type:datetime(0);"`
 	// 查询的环境
 	Env string `gorm:"type:char(64)"`
 	// 关联表
-	User User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
+	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
+	UserID uint
 }
 
 func (audit *AuditRecord) TableName() string {
 	return "query_audit_logs"
+}
+
+type TempResultMap struct {
+	UUKey     string    `gorm:"primaryKey"`
+	TaskId    string    `gorm:"type:varchar(255);not null;uniqueIndex"`
+	CreateAt  time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	ExpireAt  time.Time `gorm:"type:datetime(0)"`
+	IsDeleted uint8     `gorm:"default:0;type:smallint"`
+}
+
+func (temp *TempResultMap) TableName() string {
+	return "temp_results"
 }

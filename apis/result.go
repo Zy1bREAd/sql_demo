@@ -85,8 +85,3 @@ func (rc *CachesMap) Range() {
 		return true
 	})
 }
-
-// // 转换CSV文件
-// func ConvertMapToCSV(data []map[string]any, fileName string) error {
-
-// }

@@ -159,53 +159,53 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	if content.Approval == 0 {
 		// 同意
 		approvalMap := GetAppConfig().ApprovalMap
-		if v, exist := approvalMap[c.User.Name]; exist {
-			if v == c.User.ID {
-				// 确认签派给SQL Handler这个robot user
-				gitlabConfig := GetAppConfig().GitLabEnv
-				if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
-					// 评论Issue
-					api := InitGitLabAPI()
-					issueAuthor, _ := api.UserView(c.ObjectAttr.AuthorID)
-					robotMsg := fmt.Sprintf("@%s未指派正确的Handler,请重新指派后再次审批", issueAuthor.Username)
-					_ = api.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
-					return GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
-				}
-				// 查找指定的Issue
-				api := InitGitLabAPI()
-				iss, err := api.IssueView(c.Project.ID, c.Issue.ID)
-				if err != nil {
-					DebugPrint("IssueViewAPIError", err.Error())
-					return err
-				}
-				// 检查issue状态是否关闭
-				if iss.State == "closed" {
-					return GenerateError("IsClosed", "The issue was closed")
-				}
-				// 解析Issue
-				issContent, err := parseIssueDesc(iss.Description)
-				if err != nil {
-					DebugPrint("ParseError", err.Error())
-					// 针对issue内容描述错误返回回复
-					api := InitGitLabAPI()
-					_ = api.CommentCreate(c.Project.ID, c.Issue.IID, err.Error())
-					return err
-				}
-				// 灵活执行问题处理函数（SQL查询or执行）
-				taskType := strings.ToLower(issContent.Action)
-				switch taskType {
-				case "query":
-					queryHandle(issContent.Statement, issContent.DBName, iss.AuthorID, iss)
-				case "excute":
-				default:
-					DebugPrint("NothingDo", "no match task type")
-				}
-			} else {
-				// error: 不相同的userid
-				return GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
-			}
+		v, exist := approvalMap[c.User.Name]
+		if !exist {
+			return GenerateError("ApprovalUserNotExist", "审批人不存在")
 		}
-		return GenerateError("ApprovalUserNotExist", "审批人不存在")
+		if v != c.User.ID {
+			// error: 不相同的userid
+			return GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
+		}
+		// 确认签派给SQL Handler这个robot user
+		gitlabConfig := GetAppConfig().GitLabEnv
+		if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
+			// 评论Issue
+			api := InitGitLabAPI()
+			issueAuthor, _ := api.UserView(c.ObjectAttr.AuthorID)
+			robotMsg := fmt.Sprintf("@%s未指派正确的Handler,请重新指派后再次审批", issueAuthor.Username)
+			_ = api.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
+			return GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
+		}
+		// 查找指定的Issue
+		api := InitGitLabAPI()
+		iss, err := api.IssueView(c.Project.ID, c.Issue.IID)
+		if err != nil {
+			DebugPrint("IssueViewAPIError", err.Error())
+			return err
+		}
+		// 检查issue状态是否关闭
+		if iss.State == "closed" {
+			return GenerateError("IsClosed", "The issue was closed")
+		}
+		// 解析Issue
+		issContent, err := parseIssueDesc(iss.Description)
+		if err != nil {
+			DebugPrint("ParseError", err.Error())
+			// 针对issue内容描述错误返回回复
+			api := InitGitLabAPI()
+			_ = api.CommentCreate(c.Project.ID, c.Issue.IID, err.Error())
+			return err
+		}
+		// 灵活执行问题处理函数（SQL查询or执行）
+		taskType := strings.ToLower(issContent.Action)
+		switch taskType {
+		case "query":
+			queryHandle(issContent.Statement, issContent.DBName, iss.Author.ID, iss)
+		case "excute":
+		default:
+			DebugPrint("NothingDo", "no match task type")
+		}
 	} else if content.Approval == 1 {
 		// 驳回
 		gitlab := InitGitLabAPI()
@@ -215,7 +215,7 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		}
 		//  发送驳回通知给企业微信机器人
 		api := InitGitLabAPI()
-		issueAuthor, err := api.UserView(c.Issue.AuthorID)
+		issueAuthor, err := api.UserView(c.Issue.Author.ID)
 		if err != nil {
 			return GenerateError("UserViewAPI", err.Error())
 		}

@@ -300,7 +300,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 	}
 	DebugPrint("查询结果事件消费", res.ID)
 	//! 后期核心处理结果集的代码逻辑块
-	ResultMap.Set(res.ID, res, 180, 0)
+	ResultMap.Set(res.ID, res, 300, 0)
 	// 获取ID对应的task
 	val, _ := QueryTaskMap.Get(res.ID)
 	v, ok := val.(*IssueQueryTask)
@@ -308,7 +308,10 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 		// 有可能是QueryTask，所以跳过
 		return nil
 	}
+	// Issue评论情况更新
 	api := InitGitLabAPI()
+	updateMsg := fmt.Sprintf("TaskId=%s is completed", v.QTask.ID)
+	api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, updateMsg)
 	if res.Error != nil {
 		log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
 		err := api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, res.Error.Error())
@@ -316,12 +319,23 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 			DebugPrint("CommentError", "query task result comment is failed"+err.Error())
 		}
 	}
-	// 输出结果外链并且关闭issue
+	// 存储结果、输出结果外链并且关闭issue
+	uuKey, tempURL := NewHashTempLink()
+	SaveTempResult(uuKey, v.QTask.ID, 300)
+	api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, tempURL)
 	err := api.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
 	if err != nil {
 		DebugPrint("IssueCloseError", "close issue is failed"+err.Error())
 	}
 	return nil
+}
+
+// 生成临时链接
+func NewHashTempLink() (string, string) {
+	appConfig := GetAppConfig()
+	uuKey := GenerateUUIDKey()
+	tempResultURL := fmt.Sprintf("http://%s/api/v1/result/temp-view/%s", appConfig.WebSrvEnv.HostName, uuKey)
+	return uuKey, tempResultURL
 }
 
 type CleanEventHandler struct {

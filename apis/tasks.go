@@ -89,7 +89,7 @@ func CreateSQLQueryTaskWithIssue(statement, database string, userId uint, issue 
 		},
 		QIssue: issue,
 	}
-	log.Printf("task id=%s is enqueue", issueTask.QTask.ID)
+	log.Printf("task id=%s is enqueue===%d===%d", issueTask.QTask.ID, userId, issueTask.QTask.UserID)
 	return &issueTask
 }
 
@@ -264,7 +264,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 		TaskID:     task.ID,     // 用于查询
 		UserID:     task.UserID, // 用于查询
 		IsExported: 1,
-		ExportTime: &now,
+		ExportTime: now,
 	}
 	UpdateExportAuditRecord(record)
 	return nil
