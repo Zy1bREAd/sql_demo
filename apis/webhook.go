@@ -153,7 +153,7 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	var content CommentContent
 	err := json.Unmarshal([]byte(c.ObjectAttr.Note), &content)
 	if err != nil {
-		DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string"+c.ObjectAttr.Note)
+		DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string. "+c.ObjectAttr.Note)
 		return nil
 	}
 	if content.Approval == 0 {

@@ -79,7 +79,7 @@ func (gitlab *GitLabAPI) CommentCreate(projectId, issueIId uint, content string)
 	commentCreateURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d/notes", projectId, issueIId)
 	req, err := http.NewRequest("POST", commentCreateURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return GenerateError("IssueViewError", err.Error())
+		return GenerateError("CommentCreateError", err.Error())
 	}
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
 	// 设置请求头，携带JSON形式的POST请求体
@@ -87,7 +87,7 @@ func (gitlab *GitLabAPI) CommentCreate(projectId, issueIId uint, content string)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return GenerateError("IssueViewError", err.Error())
+		return GenerateError("CommentCreateError", err.Error())
 	}
 	defer resp.Body.Close()
 	return ValidateRespBody("CommentCreateError", resp)
@@ -121,12 +121,23 @@ func (gitlab *GitLabAPI) IssueView(projectId, issueIId uint) (*Issue, error) {
 }
 
 func (gitlab *GitLabAPI) IssueClose(projectId, issueIid uint) error {
-	apiURL := gitlab.URL + fmt.Sprintf("/api/v4//projects/%d/issues/%d", projectId, issueIid)
-	stateEvent := []byte("close")
-	req, err := http.NewRequest("PUT", apiURL, bytes.NewBuffer(stateEvent))
+	apiURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d", projectId, issueIid)
+	// 序列化关闭问题的参数
+	reqBody := struct {
+		StateEvent string `json:"state_event"`
+	}{
+		StateEvent: "close",
+	}
+	jsonData, err := json.Marshal(&reqBody)
+	if err != nil {
+		return GenerateError("JSONError", err.Error())
+	}
+	req, err := http.NewRequest("PUT", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return GenerateError("IssueCloseError", err.Error())
 	}
+	// 设置请求头，携带JSON形式的POST请求体
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
 	client := &http.Client{}
 	resp, err := client.Do(req)

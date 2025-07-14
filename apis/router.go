@@ -173,6 +173,12 @@ func CommentCallBack(ctx *gin.Context) {
 	}
 	err = reqBody.CommentIssueHandle()
 	if err != nil {
+		api := InitGitLabAPI()
+		commentErr := api.CommentCreate(reqBody.Project.ID, reqBody.Issue.IID, err.Error())
+		if commentErr != nil {
+			ErrorResp(ctx, FormatPrint("CommnetError", err.Error()))
+			return
+		}
 		ErrorResp(ctx, FormatPrint("CommentHandleError", err.Error()))
 		return
 	}
@@ -602,19 +608,14 @@ func showTempQueryResult(ctx *gin.Context) {
 	// 校验链接是否过期
 	res, err := GetTempResult(uuKey)
 	if err != nil {
-		DefaultResp(ctx, 1, nil, "无法获取数据,"+err.Error())
-		return
-	}
-	if time.Now().After(res.ExpireAt) {
-		// 已过期
-		DefaultResp(ctx, 555, nil, "该链接已过期")
+		DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
 
 	// 结果集是否存在
 	userResult, exist := ResultMap.Get(res.TaskId)
 	if !exist {
-		DefaultResp(ctx, 1, nil, "结果集不存在")
+		DefaultResp(ctx, 1, nil, "SQL Query result is not exist")
 		return
 	}
 	if val, ok := userResult.(*QueryResult); ok {

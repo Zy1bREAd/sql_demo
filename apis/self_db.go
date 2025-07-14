@@ -258,18 +258,34 @@ func SaveTempResult(uukey, taskId string, expireTime uint) error {
 	if res.Error != nil {
 		return res.Error
 	}
+	// 延时设置清理flag标志
+	time.AfterFunc(time.Duration(expireTime)*time.Second, func() {
+		res := selfDB.conn.Model(&TempResultMap{}).Where("uu_key = ?", uukey).Where("task_id = ?", taskId).Update("is_deleted", 1)
+		if res.Error != nil {
+			DebugPrint("DelTempResultError", "delete temp result link is failed "+res.Error.Error())
+			return
+		}
+		if res.RowsAffected == 0 {
+			DebugPrint("DelTempResultError", "RowsAffected is zero")
+			return
+		}
 
+	})
 	return nil
 }
 
 func GetTempResult(uuKey string) (*TempResultMap, error) {
 	var tempData TempResultMap
-	res := selfDB.conn.Where("UUKey = ?", uuKey).First(&tempData)
+	res := selfDB.conn.Where("uu_key = ?", uuKey).First(&tempData)
 	if res.Error != nil {
+		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+			return nil, errors.New("result link is not found")
+		}
 		return nil, res.Error
 	}
-	if res.RowsAffected == 0 {
-		return &tempData, GenerateError("DataIsNull", "RowsAffected is zero")
+	if tempData.IsDeleted != 0 || time.Now().After(tempData.ExpireAt) {
+		// 标识过期已被删除
+		return nil, errors.New("result link is deleted due to expired")
 	}
 	return &tempData, nil
 }

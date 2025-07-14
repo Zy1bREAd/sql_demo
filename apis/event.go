@@ -318,14 +318,18 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 		if err != nil {
 			DebugPrint("CommentError", "query task result comment is failed"+err.Error())
 		}
+		return nil
 	}
 	// 存储结果、输出结果外链并且关闭issue
 	uuKey, tempURL := NewHashTempLink()
-	SaveTempResult(uuKey, v.QTask.ID, 300)
-	api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, tempURL)
-	err := api.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
+	err := SaveTempResult(uuKey, v.QTask.ID, 300)
 	if err != nil {
-		DebugPrint("IssueCloseError", "close issue is failed"+err.Error())
+		DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
+	}
+	api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, tempURL)
+	err = api.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
+	if err != nil {
+		DebugPrint("IssueCloseError", "close issue is failed "+err.Error())
 	}
 	return nil
 }
@@ -334,7 +338,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 func NewHashTempLink() (string, string) {
 	appConfig := GetAppConfig()
 	uuKey := GenerateUUIDKey()
-	tempResultURL := fmt.Sprintf("http://%s/api/v1/result/temp-view/%s", appConfig.WebSrvEnv.HostName, uuKey)
+	tempResultURL := fmt.Sprintf("http://%s/result/temp-view/%s", appConfig.WebSrvEnv.HostName, uuKey)
 	return uuKey, tempResultURL
 }
 
