@@ -44,6 +44,7 @@ type IssueContent struct {
 	Note      string `json:"description"`
 	Statement string `json:"statement"`
 	DBName    string `json:"db_name"`
+	DML       string `json:"dml"`
 }
 
 // 评论内容
@@ -52,6 +53,7 @@ type CommentContent struct {
 	Reason   string `json:"reason"`
 }
 
+// 关于Callback的请求预检
 func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
 	gitlabConfig := GetAppConfig()
 	// 校验请求，避免伪造
@@ -77,7 +79,6 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 		DebugPrint("JSONError", err.Error())
 		return err
 	}
-	fmt.Println(">>>>", content)
 	if len(i.ObjectAttr.Assigneers) == 0 {
 		// 没有签派给robot，因此跳过
 		return nil
@@ -99,6 +100,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 		desc, exist := i.Changes["description"]
 		if exist {
 			if val, ok := desc.Current.(string); ok {
+				// 是否需要强制不能query转excute呢？？
 				informBody := &TicketInformBody{
 					TicketType:    "Ticket Update",
 					TicketDueDate: i.ObjectAttr.DueDate,
@@ -156,6 +158,7 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string. "+c.ObjectAttr.Note)
 		return nil
 	}
+	api := InitGitLabAPI()
 	if content.Approval == 0 {
 		// 同意
 		approvalMap := GetAppConfig().ApprovalMap
@@ -171,14 +174,11 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		gitlabConfig := GetAppConfig().GitLabEnv
 		if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
 			// 评论Issue
-			api := InitGitLabAPI()
-			issueAuthor, _ := api.UserView(c.ObjectAttr.AuthorID)
-			robotMsg := fmt.Sprintf("@%s未指派正确的Handler,请重新指派后再次审批", issueAuthor.Username)
+			robotMsg := fmt.Sprintf("@%s未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Name)
 			_ = api.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
 			return GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
 		}
 		// 查找指定的Issue
-		api := InitGitLabAPI()
 		iss, err := api.IssueView(c.Project.ID, c.Issue.IID)
 		if err != nil {
 			DebugPrint("IssueViewAPIError", err.Error())
@@ -192,10 +192,11 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		issContent, err := parseIssueDesc(iss.Description)
 		if err != nil {
 			DebugPrint("ParseError", err.Error())
-			// 针对issue内容描述错误返回回复
-			api := InitGitLabAPI()
-			_ = api.CommentCreate(c.Project.ID, c.Issue.IID, err.Error())
 			return err
+		}
+		// 检查DML是否对齐SQL语句开头
+		if !strings.HasPrefix(strings.ToLower(issContent.Statement), strings.ToLower(issContent.DML)) {
+			return GenerateError("NotMatchError", "DML and Statement is not match")
 		}
 		// 灵活执行问题处理函数（SQL查询or执行）
 		taskType := strings.ToLower(issContent.Action)
@@ -208,8 +209,7 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		}
 	} else if content.Approval == 1 {
 		// 驳回
-		gitlab := InitGitLabAPI()
-		err := gitlab.CommentCreate(c.Project.ID, c.Issue.IID, "【驳回】你的SQL任务请求,原因:"+content.Reason)
+		err := api.CommentCreate(c.Project.ID, c.Issue.IID, "【驳回】你的SQL任务请求,原因:"+content.Reason)
 		if err != nil {
 			return GenerateError("RejectError", err.Error())
 		}

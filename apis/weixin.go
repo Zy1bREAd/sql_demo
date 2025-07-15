@@ -43,6 +43,12 @@ func (body *RejectInformBody) Fill() string {
 }
 
 func InformRobot(content string) error {
+	qwRobot := RobotNotice{
+		MsgType: "markdown",
+		Markdown: MarkdownMsg{
+			Content: content,
+		},
+	}
 	informURL := GetAppConfig().WeixinEnv.InformWebhook
 	if informURL == "" {
 		DebugPrint("IsURLNull", "inform url is null")
@@ -50,7 +56,7 @@ func InformRobot(content string) error {
 	}
 	// 序列化数据
 	fmt.Println(informURL, content)
-	jsonData, err := json.Marshal(content)
+	jsonData, err := json.Marshal(qwRobot)
 	if err != nil {
 		return GenerateError("JSONMarshal", err.Error())
 	}
