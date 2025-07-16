@@ -112,6 +112,7 @@ func InitBaseRoutes() {
 		rgPublic.GET("/sso/callback", SSOCallBack)
 
 		rgAuth.POST("/sql/query", UserSQLQuery)
+		// 导出文件下载
 		rgAuth.POST("/result/export", ResultExport)
 		rgAuth.GET("/result/download-link/sse", SSEHandle)
 		rgAuth.GET("/result/download", DownloadFile)
@@ -148,7 +149,6 @@ func IssueCallBack(ctx *gin.Context) {
 		ErrorResp(ctx, FormatPrint("BindError", err.Error()))
 		return
 	}
-	fmt.Println("测试Issue callback，data=", reqBody)
 	err = reqBody.OpenIssueHandle()
 	if err != nil {
 		ErrorResp(ctx, FormatPrint("IssueHandleError", err.Error()))
@@ -458,6 +458,10 @@ func DownloadFile(ctx *gin.Context) {
 		DefaultResp(ctx, 1, nil, "param taskid is invalid")
 		return
 	}
+	if !AllowResultExport(taskId) {
+		DefaultResp(ctx, 1, nil, "result file is not allow to export")
+		return
+	}
 	// 应该去指定地方查找filename
 	mapVal, exist := ExportWorkMap.Get(taskId)
 	if !exist {
@@ -483,7 +487,7 @@ func DownloadFile(ctx *gin.Context) {
 	// SuccessResp(ctx, nil, "download success!!")
 }
 
-// SSE处理
+// SSE处理，用于导出文件
 func SSEHandle(ctx *gin.Context) {
 	ctx.Header("Content-Type", "text/event-stream")
 	ctx.Header("Cache-Control", "no-cache")
@@ -623,11 +627,14 @@ func showTempQueryResult(ctx *gin.Context) {
 			DefaultResp(ctx, 1, nil, val.Error.Error())
 			return
 		}
+		QueryTaskMap.Get(val.ID)
 		SuccessResp(ctx, gin.H{
 			"result":        val.Results,
 			"rows_count":    val.RowCount,
 			"query_time":    val.QueryTime,
 			"raw_statement": val.QueryRaw,
+			"is_export":     res.IsAllowExport,
+			"task_id":       res.TaskId,
 		}, "SUCCESS")
 	}
 }

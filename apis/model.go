@@ -34,8 +34,9 @@ type UserResp struct {
 }
 
 type AuditRecord struct {
-	ID           uint      `gorm:"primaryKey"`
-	TaskID       string    `gorm:"type:varchar(255);not null;uniqueIndex"`
+	ID     uint   `gorm:"primaryKey"`
+	TaskID string `gorm:"type:varchar(255);not null;uniqueIndex"`
+	// DML          string    `gorm:"type:char(64);"`
 	SQLStatement string    `gorm:"not null"`
 	DBName       string    `gorm:"type:varchar(255)"`
 	TimeStamp    time.Time `gorm:"type:datetime(0);autoCreateTime"`
@@ -46,6 +47,10 @@ type AuditRecord struct {
 	// 关联表
 	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
 	UserID uint
+
+	// 关联GitLab
+	// ProjectID uint `gorm:"type:int"`
+	// IssueID   uint `gorm:"type:int"`
 }
 
 func (audit *AuditRecord) TableName() string {
@@ -53,11 +58,12 @@ func (audit *AuditRecord) TableName() string {
 }
 
 type TempResultMap struct {
-	UUKey     string    `gorm:"primaryKey"`
-	TaskId    string    `gorm:"type:varchar(255);not null;uniqueIndex"`
-	CreateAt  time.Time `gorm:"type:datetime(0);autoCreateTime"`
-	ExpireAt  time.Time `gorm:"type:datetime(0)"`
-	IsDeleted uint8     `gorm:"default:0;type:smallint"`
+	UUKey         string    `gorm:"primaryKey"`
+	TaskId        string    `gorm:"type:varchar(255);not null;uniqueIndex"`
+	CreateAt      time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	ExpireAt      time.Time `gorm:"type:datetime(0)"`
+	IsDeleted     uint8     `gorm:"default:0;type:smallint"`
+	IsAllowExport bool      `gorm:"default:false"`
 }
 
 func (temp *TempResultMap) TableName() string {

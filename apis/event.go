@@ -320,13 +320,25 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 		}
 		return nil
 	}
-	// 存储结果、输出结果外链并且关闭issue
+	// 存储结果、输出结果临时链接
+	issContent, err := parseIssueDesc(v.QIssue.Description)
+	if err != nil {
+		api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "export result file is failed, "+res.Error.Error())
+	}
 	uuKey, tempURL := NewHashTempLink()
-	err := SaveTempResult(uuKey, v.QTask.ID, 300)
+	err = SaveTempResult(uuKey, v.QTask.ID, 300, issContent.IsExport)
 	if err != nil {
 		DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
 	}
 	api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, tempURL)
+	// 导出结果
+	if issContent.IsExport {
+		exportTask := SubmitExportTask(v.QTask.ID, "csv", v.QIssue.Author.ID)
+		<-exportTask.Result.Done
+		// downloadURL := fmt.Sprintf("http://%s/result/download?task_id=%s", appConfig.WebSrvEnv.HostName, v.QTask.ID)
+		// api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "[ExportResult] "+downloadURL)
+	}
+	// 自动关闭issue（表示完成）
 	err = api.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
 	if err != nil {
 		DebugPrint("IssueCloseError", "close issue is failed "+err.Error())
@@ -400,7 +412,6 @@ func (eh *ExportEventHandler) Work(ctx context.Context, e Event) error {
 	if !ok {
 		return GenerateError("TypeError", "event payload type is incrroect")
 	}
-	DebugPrint("导出结果事件消费", body.ID)
 	//! 后期核心处理结果集的代码逻辑块
 	DebugPrint("ExportTask", "export task "+body.ID+" is starting...")
 	err := ExportSQLTask(ctx, body)

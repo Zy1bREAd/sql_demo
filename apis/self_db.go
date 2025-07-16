@@ -247,12 +247,13 @@ func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
 }
 
 // 存储临时结果链接
-func SaveTempResult(uukey, taskId string, expireTime uint) error {
+func SaveTempResult(uukey, taskId string, expireTime uint, allowExport bool) error {
 	now := time.Now().Add(time.Duration(expireTime) * time.Second)
 	tempData := TempResultMap{
-		UUKey:    uukey,
-		TaskId:   taskId,
-		ExpireAt: now,
+		UUKey:         uukey,
+		TaskId:        taskId,
+		ExpireAt:      now,
+		IsAllowExport: allowExport,
 	}
 	res := selfDB.conn.Create(&tempData)
 	if res.Error != nil {
@@ -288,4 +289,19 @@ func GetTempResult(uuKey string) (*TempResultMap, error) {
 		return nil, errors.New("result link is deleted due to expired")
 	}
 	return &tempData, nil
+}
+
+func AllowResultExport(taskId string) bool {
+	var tempData TempResultMap
+	res := selfDB.conn.Where("task_id = ?", taskId).First(&tempData)
+	if res.Error != nil {
+		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+			return false
+		}
+		return false
+	}
+	if tempData.IsDeleted == 1 || time.Now().After(tempData.ExpireAt) {
+		return false
+	}
+	return tempData.IsAllowExport
 }

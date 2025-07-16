@@ -10,12 +10,7 @@ import (
 	"github.com/goccy/go-json"
 )
 
-// 封装Error信息（用于回复评论）
-// type HandleError struct {
-// 	Err error
-// 	Msg string
-// }
-
+// Issue问题事件的回调
 type IssueWebhook struct {
 	EventType  string                `json:"event_type"`
 	User       GUser                 `json:"user"`
@@ -24,12 +19,14 @@ type IssueWebhook struct {
 	Changes    map[string]ChangeInfo `json:"changes"` // 记录变更内容
 }
 
+// 变更记录
 type ChangeInfo struct {
 	// 由于变更内容有uint有string，所以使用空接口代替
 	Previous any `json:"previous"`
 	Current  any `json:"current"`
 }
 
+// 评论事件的回调
 type CommentWebhook struct {
 	EventType  string  `json:"event_type"`
 	User       GUser   `json:"user"`
@@ -45,6 +42,7 @@ type IssueContent struct {
 	Statement string `json:"statement"`
 	DBName    string `json:"db_name"`
 	DML       string `json:"dml"`
+	IsExport  bool   `json:"is_export"`
 }
 
 // 评论内容

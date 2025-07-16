@@ -171,8 +171,10 @@ func SubmitExportTask(id, exportType string, userId uint) *ExportTask {
 	today := time.Now().Format("20060102150405")
 	conf := GetAppConfig()
 	filename := fmt.Sprintf("%s_%s.csv", id, today)
+	// 避免斜杠重复
 	filePath := conf.ExportEnv.FilePath + "/" + filename
 
+	// 构造导出任务（默认5分钟清理）
 	taskResult := &ExportResult{
 		Error:    nil,
 		FilePath: filePath,
@@ -260,6 +262,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 	// 完成后传递<导出结果>对象信息，并通过channel传递完成消息
 	task.Result.Done <- struct{}{}
 	now := time.Now()
+	//更新日志审计，导出情况更新
 	record := &AuditRecord{
 		TaskID:     task.ID,     // 用于查询
 		UserID:     task.UserID, // 用于查询
