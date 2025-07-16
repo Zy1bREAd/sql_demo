@@ -33,6 +33,7 @@ type Issue struct {
 	UpdateAt    string `json:"updated_at"`
 	DueDate     string `json:"due_date"`
 	Author      GUser  `json:"author"`
+	AuthorID    uint   `json:"author_id"`
 	ProjectID   uint   `json:"project_id"`
 	URL         string `json:"url"` // Issue URL
 	Action      string `json:"action"`
@@ -151,6 +152,7 @@ func (gitlab *GitLabAPI) IssueClose(projectId, issueIid uint) error {
 // 获取单个用户
 func (gitlab *GitLabAPI) UserView(userId uint) (*GUser, error) {
 	apiURL := gitlab.URL + fmt.Sprintf("/api/v4/users/%d", userId)
+	fmt.Println(">>>>", apiURL)
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return nil, GenerateError("UserViewError", err.Error())
@@ -162,7 +164,7 @@ func (gitlab *GitLabAPI) UserView(userId uint) (*GUser, error) {
 		return nil, GenerateError("UserViewError", err.Error())
 	}
 	defer resp.Body.Close()
-	err = ValidateRespBody("IssueCloseError", resp)
+	err = ValidateRespBody("UserViewError", resp)
 	if err != nil {
 		return nil, err
 	}

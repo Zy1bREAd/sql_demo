@@ -458,6 +458,8 @@ func DownloadFile(ctx *gin.Context) {
 		DefaultResp(ctx, 1, nil, "param taskid is invalid")
 		return
 	}
+	// 日志审计（导出文件）
+
 	if !AllowResultExport(taskId) {
 		DefaultResp(ctx, 1, nil, "result file is not allow to export")
 		return
@@ -484,7 +486,6 @@ func DownloadFile(ctx *gin.Context) {
 	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", exportResult.FilePath))
 	ctx.File(exportResult.FilePath)
 	log.Println("[Download] download completed")
-	// SuccessResp(ctx, nil, "download success!!")
 }
 
 // SSE处理，用于导出文件

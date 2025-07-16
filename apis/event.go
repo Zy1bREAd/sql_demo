@@ -255,20 +255,16 @@ func (eh *QueryEventHandler) Name() string {
 }
 
 func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
+	// 防止重复执行任务?
 	// 判断哪种类型的QueryTask
 	switch t := e.Payload.(type) {
 	case *QueryTask:
 		DebugPrint("SQL查询事件消费", t.ID)
 		QueryTaskMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
-		// 新增存储GitLab Issue和任务信息的映射表
-		// GitLabIssueMap.Set(task.ID,)
 		ExcuteSQLTask(ctx, t)
 	case *IssueQueryTask:
 		DebugPrint("SQL查询事件消费", t.QTask.ID)
 		QueryTaskMap.Set(t.QTask.ID, t, 300, 1) // 存储查询任务信息
-		// 新增存储GitLab Issue和任务信息的映射表
-		// GitLabIssueMap.Set(task.ID,)
-
 		// Issue评论情况更新
 		api := InitGitLabAPI()
 		updateMsg := fmt.Sprintf("TaskId=%s is start work...", t.QTask.ID)
@@ -335,14 +331,19 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 	if issContent.IsExport {
 		exportTask := SubmitExportTask(v.QTask.ID, "csv", v.QIssue.Author.ID)
 		<-exportTask.Result.Done
-		// downloadURL := fmt.Sprintf("http://%s/result/download?task_id=%s", appConfig.WebSrvEnv.HostName, v.QTask.ID)
-		// api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "[ExportResult] "+downloadURL)
 	}
 	// 自动关闭issue（表示完成）
 	err = api.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
 	if err != nil {
-		DebugPrint("IssueCloseError", "close issue is failed "+err.Error())
+		DebugPrint("GitLabAPI", err.Error())
 	}
+	// 完成通知
+	informBody := InformTemplate{
+		UserName: v.QIssue.Author.Name,
+		Action:   "Completed",
+		Link:     v.QIssue.URL,
+	}
+	_ = InformRobot(informBody.Fill())
 	return nil
 }
 

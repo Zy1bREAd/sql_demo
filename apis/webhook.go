@@ -86,25 +86,27 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 	case "open":
 		DebugPrint("OpenIssueHandle", "open open open")
 		informBody := &TicketInformBody{
-			TicketType:    "Ticket Create",
-			TicketDueDate: i.ObjectAttr.DueDate,
-			TicketDesc:    i.ObjectAttr.Description,
-			TicketLink:    i.ObjectAttr.URL,
-			UserName:      i.User.Username,
+			Action:   "Create",
+			Title:    i.ObjectAttr.Title,
+			DueDate:  i.ObjectAttr.DueDate,
+			Desc:     i.ObjectAttr.Description,
+			Link:     i.ObjectAttr.URL,
+			UserName: i.User.Username,
 		}
 		_ = InformRobot(informBody.Fill())
 	case "update":
 		DebugPrint("UpdateIssueHandle", "update issue")
 		desc, exist := i.Changes["description"]
 		if exist {
-			if val, ok := desc.Current.(string); ok {
+			if _, ok := desc.Current.(string); ok {
 				// 是否需要强制不能query转excute呢？？
 				informBody := &TicketInformBody{
-					TicketType:    "Ticket Update",
-					TicketDueDate: i.ObjectAttr.DueDate,
-					TicketDesc:    val,
-					TicketLink:    i.ObjectAttr.URL,
-					UserName:      i.User.Username,
+					Action:   "Update",
+					DueDate:  i.ObjectAttr.DueDate,
+					Title:    i.ObjectAttr.Title,
+					Desc:     i.ObjectAttr.Description,
+					Link:     i.ObjectAttr.URL,
+					UserName: i.User.Username,
 				}
 				_ = InformRobot(informBody.Fill())
 			}
@@ -172,14 +174,14 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		gitlabConfig := GetAppConfig().GitLabEnv
 		if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
 			// 评论Issue
-			robotMsg := fmt.Sprintf("@%s未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Name)
+			robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
 			_ = api.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
 			return GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
 		}
 		// 查找指定的Issue
 		iss, err := api.IssueView(c.Project.ID, c.Issue.IID)
 		if err != nil {
-			DebugPrint("IssueViewAPIError", err.Error())
+			DebugPrint("GitLabAPI", err.Error())
 			return err
 		}
 		// 检查issue状态是否关闭
@@ -207,24 +209,23 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		}
 	} else if content.Approval == 1 {
 		// 驳回
-		err := api.CommentCreate(c.Project.ID, c.Issue.IID, "【驳回】你的SQL任务请求,原因:"+content.Reason)
+		err := api.CommentCreate(c.Project.ID, c.Issue.IID, "【审批不通过】驳回该SQL执行, 原因:"+content.Reason)
 		if err != nil {
 			return GenerateError("RejectError", err.Error())
 		}
 		//  发送驳回通知给企业微信机器人
-		api := InitGitLabAPI()
-		issueAuthor, err := api.UserView(c.Issue.Author.ID)
+		issueAuthor, err := api.UserView(c.Issue.AuthorID)
 		if err != nil {
-			return GenerateError("UserViewAPI", err.Error())
+			return GenerateError("GitLabAPI", err.Error())
 		}
 		informBody := &RejectInformBody{
-			TicketType: "Ticket Reject",
-			TicketLink: c.Issue.URL,
-			UserName:   issueAuthor.Username,
-			Reason:     content.Reason,
-			Approver:   c.User.Username,
+			Action:   "Reject",
+			Link:     c.Issue.URL,
+			UserName: issueAuthor.Username,
+			Reason:   content.Reason,
+			Approver: c.User.Username,
 		}
-		InformRobot(informBody.Fill())
+		_ = InformRobot(informBody.Fill())
 	}
 
 	return nil

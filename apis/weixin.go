@@ -18,28 +18,39 @@ type MarkdownMsg struct {
 }
 
 // 考虑不同场景下的机器人通知模板, 包装结构体来传入通知消息的参数
+type InformTemplate struct {
+	UserName string
+	Link     string
+	Action   string
+}
+
+func (body *InformTemplate) Fill() string {
+	return fmt.Sprintf("**【Ticket %s】**\n>**User:** %s\n>**Link:** [%s](%s)", body.Action, body.UserName, body.Link, body.Link)
+}
+
 type TicketInformBody struct {
-	UserName      string
-	TicketType    string
-	TicketDesc    string
-	TicketLink    string
-	TicketDueDate string
+	UserName string
+	Title    string
+	Action   string
+	Desc     string
+	Link     string
+	DueDate  string
 }
 
 func (body *TicketInformBody) Fill() string {
-	return fmt.Sprintf("【%s】\n>User: %s\n>Due Date: %s\n>Description: %s\n>Link: %s", body.TicketType, body.UserName, body.TicketDueDate, body.TicketDesc, body.TicketLink)
+	return fmt.Sprintf("**【Ticket %s】**\n>**User:** %s\n>**Due Date:** %s\n>**Title:** %s\n>**Link:** [%s](%s)\n>**Description:** %s", body.Action, body.UserName, body.DueDate, body.Title, body.Link, body.Link, body.Desc)
 }
 
 type RejectInformBody struct {
-	UserName   string
-	TicketLink string
-	TicketType string
-	Reason     string
-	Approver   string // 审批人
+	UserName string
+	Link     string
+	Action   string
+	Reason   string
+	Approver string // 审批人
 }
 
 func (body *RejectInformBody) Fill() string {
-	return fmt.Sprintf("【%s】\n>User: %s\n>Reason: %s\n>Approver: %s\n>Link: %s", body.TicketType, body.UserName, body.Reason, body.Approver, body.TicketLink)
+	return fmt.Sprintf("**【Ticket %s】**\n>**User:** %s\n>**Reason:** %s\n>**Approver:** %s\n>**Link:** [%s](%s)", body.Action, body.UserName, body.Reason, body.Approver, body.Link, body.Link)
 }
 
 func InformRobot(content string) error {
