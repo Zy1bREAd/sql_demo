@@ -18,6 +18,13 @@ type SelfDatabase struct {
 	conn *gorm.DB
 }
 
+func HaveSelfDB() *SelfDatabase {
+	if selfDB != nil {
+		return selfDB
+	}
+	return nil
+}
+
 func connect(dsn string, maxIdle, maxConn int) error {
 	if selfDB == nil {
 		gdb, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
@@ -81,7 +88,7 @@ func (db *SelfDatabase) autoMigrator() error {
 		return GenerateError("Migrator Failed", "self db is not init")
 	}
 	// 表多的话要以注册的方式注册进来，避免手动一个个输入
-	return db.conn.AutoMigrate(&User{}, &AuditRecord{}, &TempResultMap{})
+	return db.conn.AutoMigrate(&User{}, &AuditRecord{}, &TempResultMap{}, &AuditRecordV2{})
 }
 
 // 创建用户逻辑
@@ -166,9 +173,10 @@ func SSOLogin(username, email string) (uint, error) {
 
 // 查询操作的日志审计
 // 新增操作审计记录
-func NewAuditRecord(record *AuditRecord) error {
+func (re *AuditRecord) InsertOne() error {
 	tx := selfDB.conn.Begin()
-	result := selfDB.conn.Omit("IsExported", "ExportTime").Create(&record)
+	// 避免携带默认值插入污染导出相关信息
+	result := selfDB.conn.Omit("IsExported", "ExportTime").Create(&re)
 	if result.Error != nil {
 		tx.Rollback()
 		return result.Error
@@ -182,9 +190,9 @@ func NewAuditRecord(record *AuditRecord) error {
 	return nil
 }
 
-func UpdateExportAuditRecord(record *AuditRecord) error {
+func (re *AuditRecord) UpdateExport() error {
 	tx := selfDB.conn.Begin()
-	result := selfDB.conn.Where("task_id = ?", record.TaskID).Where("user_id = ?", record.UserID).Updates(&record)
+	result := selfDB.conn.Where("task_id = ?", re.TaskID).Where("user_id = ?", re.UserID).Updates(&re)
 	if result.Error != nil {
 		tx.Rollback()
 		return result.Error
@@ -196,6 +204,21 @@ func UpdateExportAuditRecord(record *AuditRecord) error {
 	tx.Commit()
 	return nil
 }
+
+// func UpdateExportAuditRecord(record *AuditRecord) error {
+// 	tx := selfDB.conn.Begin()
+// 	result := selfDB.conn.Where("task_id = ?", record.TaskID).Where("user_id = ?", record.UserID).Updates(&record)
+// 	if result.Error != nil {
+// 		tx.Rollback()
+// 		return result.Error
+// 	}
+// 	if result.RowsAffected != 1 {
+// 		tx.Rollback()
+// 		return GenerateError("RecordError", "update a query record failed")
+// 	}
+// 	tx.Commit()
+// 	return nil
+// }
 
 func AllAuditRecords() error {
 	auditRecords := AuditRecord{}
@@ -304,4 +327,14 @@ func AllowResultExport(taskId string) bool {
 		return false
 	}
 	return tempData.IsAllowExport
+}
+
+func GetUserId(gUserId uint) uint {
+	var u User
+	res := selfDB.conn.Where("git_lab_identity = ?", gUserId).First(&u)
+	if res.Error != nil {
+		DebugPrint("DBAPIError", "get user id is failed")
+		return 0
+	}
+	return u.ID
 }

@@ -38,8 +38,9 @@ type QueryTask struct {
 	ID        string
 	DBName    string
 	Statement string
-	deadline  int64 // 超时时间（单位为秒）,默认 30s
-	UserID    uint  // 关联执行用户id
+	Env       string // 所执行环境
+	deadline  int64  // 超时时间（单位为秒）,默认 30s
+	UserID    uint   // 关联执行用户id
 }
 
 // 封装QueryTask 结合GitLab Issue
@@ -77,26 +78,27 @@ func CreateSQLQueryTask(statement string, database string, userId string) QueryT
 	return task
 }
 
-func CreateSQLQueryTaskWithIssue(statement, database string, userId uint, issue *Issue) *IssueQueryTask {
-	//! context控制超时
-	issueTask := IssueQueryTask{
-		QTask: &QueryTask{
-			ID:        GenerateUUIDKey(),
-			DBName:    database,
-			Statement: statement,
-			deadline:  30,
-			UserID:    userId,
-		},
-		QIssue: issue,
-	}
-	log.Printf("task id=%s is enqueue===%d===%d", issueTask.QTask.ID, userId, issueTask.QTask.UserID)
-	return &issueTask
-}
+// func CreateSQLQueryTaskWithIssue(statement, database string, userId uint, issue *Issue) *IssueQueryTask {
+// 	//! context控制超时
+// 	issueTask := IssueQueryTask{
+// 		QTask: &QueryTask{
+// 			ID:        GenerateUUIDKey(),
+// 			DBName:    database,
+// 			Statement: statement,
+// 			deadline:  30,
+// 			UserID:    userId,
+// 			Env: ,
+// 		},
+// 		QIssue: issue,
+// 	}
+
+// 	return &issueTask
+// }
 
 func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	log.Printf("task id=%s is working", task.ID)
 	//! 执行任务函数只当只关心任务处理逻辑本身
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(task.deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 	defer cancel()
 
 	// 获取对应数据库实例进行SQL查询
@@ -116,7 +118,7 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 		return
 	}
 	// 执行前健康检查DB
-	err = op.HealthCheck(ctx)
+	err = op.HealthCheck(timeoutCtx)
 	if err != nil {
 		errMsg := fmt.Sprintf("excute sql task is failed : %s", err.Error())
 		queryResult := &QueryResult{
@@ -133,22 +135,8 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 		return
 	}
 	// 拥有细粒度超时控制的核心查询函数
-	result := op.Query(ctx, task.Statement, task.ID)
-	// 插入审计记录
-	record := &AuditRecord{
-		TaskID:       task.ID,
-		UserID:       task.UserID,
-		SQLStatement: task.Statement,
-		DBName:       task.DBName,
-	}
-	err = NewAuditRecord(record)
-	if err != nil {
-		// 类似这种错误不应该影响当前application的运行，可以push到error list，然后在log中打印出来方便有需要的时候进行追踪。
-		log.Println("[RecordFailed]", err)
-	}
+	result := op.Query(timeoutCtx, task.Statement, task.ID)
 	log.Printf("task id=%s is completed", task.ID)
-	//! 有必要管理sqltask的状态吗？
-	// ResultQueue <- result
 	ep := GetEventProducer()
 	ep.Produce(Event{
 		Type:    "save_result",
@@ -261,15 +249,6 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 	// time.Sleep(2 * time.Second)
 	// 完成后传递<导出结果>对象信息，并通过channel传递完成消息
 	task.Result.Done <- struct{}{}
-	now := time.Now()
-	//更新日志审计，导出情况更新
-	record := &AuditRecord{
-		TaskID:     task.ID,     // 用于查询
-		UserID:     task.UserID, // 用于查询
-		IsExported: 1,
-		ExportTime: now,
-	}
-	UpdateExportAuditRecord(record)
 	return nil
 }
 

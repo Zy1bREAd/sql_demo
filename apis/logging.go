@@ -62,6 +62,20 @@ func DebugPrint(title string, msg any) {
 	log.Println(msg)
 }
 
+func ErrorPrint(title string, msg any) {
+	if assertVal, ok := msg.(string); ok {
+		log.Println(generateLog(0, title, assertVal))
+		return
+	} else if assertVal, ok := msg.(int); ok {
+		log.Println(generateLog(0, title, string(rune(assertVal))))
+		return
+	} else if assertVal, ok := msg.(error); ok {
+		log.Println(generateLog(0, title, assertVal.Error()))
+		return
+	}
+	log.Println(msg)
+}
+
 func StartFileLogging() *os.File {
 	filePath := "logs"
 	fileName := "sql_demo.log"

@@ -57,6 +57,26 @@ func (audit *AuditRecord) TableName() string {
 	return "query_audit_logs"
 }
 
+type AuditRecordV2 struct {
+	ID        uint      `gorm:"primaryKey"`
+	TaskID    string    `gorm:"type:varchar(255);not null;index"` // 相当于链路ID
+	EventType string    `gorm:"type:varchar(64);not null"`
+	Payload   string    `gorm:""` // 记录审计的载体，以JSON格式
+	CreatAt   time.Time `gorm:"type:datetime(0);autoCreateTime"`
+
+	// 关联User表
+	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
+	UserID uint
+
+	// 关联GitLab
+	ProjectID uint `gorm:"type:int"`
+	IssueID   uint `gorm:"type:int"`
+}
+
+func (audit *AuditRecordV2) TableName() string {
+	return "audit_logs_v3"
+}
+
 type TempResultMap struct {
 	UUKey         string    `gorm:"primaryKey"`
 	TaskId        string    `gorm:"type:varchar(255);not null;uniqueIndex"`

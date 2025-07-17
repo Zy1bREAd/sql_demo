@@ -39,6 +39,7 @@ type CommentWebhook struct {
 type IssueContent struct {
 	Action    string `json:"action"`
 	Note      string `json:"description"`
+	Env       string `json:"env"`
 	Statement string `json:"statement"`
 	DBName    string `json:"db_name"`
 	DML       string `json:"dml"`
@@ -120,15 +121,25 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 }
 
 // 查询SQL
-func queryHandle(statement, dbName string, userId uint, issue *Issue) {
-	// 事件驱动：封装成Event推送到事件通道(v2.0)
-	// task := CreateSQLQueryTask(statement, dbName, strconv.FormatUint(uint64(userId), 10))
-	issueTask := CreateSQLQueryTaskWithIssue(statement, dbName, userId, issue)
+func queryHandle(userId uint, issue *Issue, issueDesc *IssueContent) {
+	//! context控制超时
+	issueTask := &IssueQueryTask{
+		QTask: &QueryTask{
+			ID:        GenerateUUIDKey(),
+			DBName:    issueDesc.DBName,
+			Statement: issueDesc.Statement,
+			deadline:  30, // 抽离出来
+			UserID:    userId,
+			Env:       issueDesc.Env,
+		},
+		QIssue: issue,
+	}
 	ep := GetEventProducer()
 	ep.Produce(Event{
 		Type:    "sql_query",
 		Payload: issueTask,
 	})
+	DebugPrint("TaskEnqueue", fmt.Sprintf("task id=%s is enqueue", issueTask.QTask.ID))
 }
 
 // 执行SQL
@@ -202,7 +213,9 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		taskType := strings.ToLower(issContent.Action)
 		switch taskType {
 		case "query":
-			queryHandle(issContent.Statement, issContent.DBName, iss.Author.ID, iss)
+			// 获取真正的userId
+			userId := GetUserId(iss.Author.ID)
+			queryHandle(userId, iss, issContent)
 		case "excute":
 		default:
 			DebugPrint("NothingDo", "no match task type")

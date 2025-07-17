@@ -35,7 +35,8 @@ type Issue struct {
 	Author      GUser  `json:"author"`
 	AuthorID    uint   `json:"author_id"`
 	ProjectID   uint   `json:"project_id"`
-	URL         string `json:"url"` // Issue URL
+	URL         string `json:"url"`     // Issue URL
+	WebURL      string `json:"web_url"` // Issue URL
 	Action      string `json:"action"`
 }
 
@@ -152,7 +153,6 @@ func (gitlab *GitLabAPI) IssueClose(projectId, issueIid uint) error {
 // 获取单个用户
 func (gitlab *GitLabAPI) UserView(userId uint) (*GUser, error) {
 	apiURL := gitlab.URL + fmt.Sprintf("/api/v4/users/%d", userId)
-	fmt.Println(">>>>", apiURL)
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return nil, GenerateError("UserViewError", err.Error())

@@ -262,6 +262,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
 		DebugPrint("SQL查询事件消费", t.ID)
 		QueryTaskMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
 		ExcuteSQLTask(ctx, t)
+		// 日志审计插入v2（不支持）
 	case *IssueQueryTask:
 		DebugPrint("SQL查询事件消费", t.QTask.ID)
 		QueryTaskMap.Set(t.QTask.ID, t, 300, 1) // 存储查询任务信息
@@ -270,6 +271,18 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
 		updateMsg := fmt.Sprintf("TaskId=%s is start work...", t.QTask.ID)
 		api.CommentCreate(t.QIssue.ProjectID, t.QIssue.IID, updateMsg)
 		ExcuteSQLTask(ctx, t.QTask)
+		// 日志审计插入v2
+		audit := AuditRecordV2{
+			TaskID:    t.QTask.ID,
+			UserID:    t.QTask.UserID,
+			Payload:   t.QIssue.Description,
+			ProjectID: t.QIssue.ProjectID,
+			IssueID:   t.QIssue.IID,
+		}
+		err := audit.InsertOne("SQL_QUERY")
+		if err != nil {
+			ErrorPrint("AuditRecordV2", err.Error())
+		}
 	default:
 		DebugPrint("TaskTypeError", "event payload type is incrroect")
 		return GenerateError("TaskTypeError", "event payload type is incrroect")
@@ -338,10 +351,14 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 		DebugPrint("GitLabAPI", err.Error())
 	}
 	// 完成通知
+	iss, err := api.IssueView(v.QIssue.ProjectID, v.QIssue.IID)
+	if err != nil {
+		DebugPrint("GitLabAPI", err.Error())
+	}
 	informBody := InformTemplate{
 		UserName: v.QIssue.Author.Name,
 		Action:   "Completed",
-		Link:     v.QIssue.URL,
+		Link:     iss.WebURL,
 	}
 	_ = InformRobot(informBody.Fill())
 	return nil

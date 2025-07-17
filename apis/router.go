@@ -458,13 +458,51 @@ func DownloadFile(ctx *gin.Context) {
 		DefaultResp(ctx, 1, nil, "param taskid is invalid")
 		return
 	}
-	// 日志审计（导出文件）
-
+	// 获取UserId
+	val, exist := ctx.Get("user_id")
+	if !exist {
+		ErrorResp(ctx, "User not exist")
+		return
+	}
+	userId, ok := val.(string)
+	if !ok {
+		ErrorResp(ctx, "convert type is failed")
+		return
+	}
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*25)
+	defer cancel()
+	auditChan := make(chan struct{}, 1)
+	// 插入记录V2
+	go func() {
+		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
+		var auditRecord AuditRecordV2
+		db := HaveSelfDB()
+		res := db.conn.Where("task_id = ?", taskId).First(&auditRecord)
+		if res.Error != nil {
+			cancel()
+			ErrorPrint("DBAPIError", res.Error.Error())
+			return
+		}
+		if res.RowsAffected != 1 {
+			cancel()
+			ErrorPrint("DBAPIError", "rows is zero")
+			return
+		}
+		// 日志审计插入v2
+		auditRecord.ID = 0
+		auditRecord.UserID = StrToUint(userId)
+		err := auditRecord.InsertOne("RESULT_EXPORT")
+		if err != nil {
+			ErrorPrint("AuditRecordV2", err.Error())
+		}
+		time.Sleep(30 * time.Second)
+		auditChan <- struct{}{}
+	}()
 	if !AllowResultExport(taskId) {
 		DefaultResp(ctx, 1, nil, "result file is not allow to export")
 		return
 	}
-	// 应该去指定地方查找filename
+	// 获取文件路径并下载
 	mapVal, exist := ExportWorkMap.Get(taskId)
 	if !exist {
 		DefaultResp(ctx, 4, nil, "result file is not exist,may be cleaned")
@@ -475,17 +513,21 @@ func DownloadFile(ctx *gin.Context) {
 		DefaultResp(ctx, 4, nil, "result file type not match")
 		return
 	}
-
-	log.Println("[Download] download start...", exportResult.FilePath)
-	// 判断要下载的文件
 	if _, err := os.Stat(exportResult.FilePath); err != nil {
-		// pwd, _ := os.Getwd()
-		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "文件不存在"})
+		fmt.Println("file error:", err.Error())
+		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Result File is not exist"})
 		return
 	}
 	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", exportResult.FilePath))
 	ctx.File(exportResult.FilePath)
-	log.Println("[Download] download completed")
+	// 等待审计记录的完成
+	select {
+	case <-timeoutCtx.Done():
+		ErrorResp(ctx, "handle timeout")
+		return
+	case <-auditChan:
+		return
+	}
 }
 
 // SSE处理，用于导出文件
