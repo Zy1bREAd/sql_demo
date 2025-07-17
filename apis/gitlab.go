@@ -204,3 +204,11 @@ func (gitlab *GitLabAPI) UserList() ([]GUser, error) {
 	}
 	return userList, nil
 }
+
+// 生成临时链接
+func NewHashTempLink() (string, string) {
+	appConfig := GetAppConfig()
+	uuKey := GenerateUUIDKey()
+	tempResultURL := fmt.Sprintf("http://%s/result/temp-view/%s", appConfig.WebSrvEnv.HostName, uuKey)
+	return uuKey, tempResultURL
+}

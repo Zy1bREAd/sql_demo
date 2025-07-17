@@ -66,7 +66,6 @@ func InformRobot(content string) error {
 		return nil
 	}
 	// 序列化数据
-	fmt.Println(informURL, content)
 	jsonData, err := json.Marshal(qwRobot)
 	if err != nil {
 		return GenerateError("JSONMarshal", err.Error())

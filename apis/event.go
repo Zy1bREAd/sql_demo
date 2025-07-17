@@ -113,7 +113,6 @@ func (ed *EventDispatcher) registerHandler(eventType string, handler EventHandle
 	// 预先定义好事件（硬编码-写死）
 	// ed.HandlerMap["sql_query"] = NewQueryEventHandler(3)
 	if _, exist := ed.HandlerMap[eventType]; exist {
-		fmt.Println("事件Handler已被注册")
 		return GenerateError("EventHandlerError", "事件Handler已被注册")
 	}
 	// ed.HandlerMap[eventType] = handler		// 该方式仍然存储实际EventHandler
@@ -362,14 +361,6 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 	}
 	_ = InformRobot(informBody.Fill())
 	return nil
-}
-
-// 生成临时链接
-func NewHashTempLink() (string, string) {
-	appConfig := GetAppConfig()
-	uuKey := GenerateUUIDKey()
-	tempResultURL := fmt.Sprintf("http://%s/result/temp-view/%s", appConfig.WebSrvEnv.HostName, uuKey)
-	return uuKey, tempResultURL
 }
 
 type CleanEventHandler struct {

@@ -458,22 +458,22 @@ func DownloadFile(ctx *gin.Context) {
 		DefaultResp(ctx, 1, nil, "param taskid is invalid")
 		return
 	}
-	// 获取UserId
-	val, exist := ctx.Get("user_id")
-	if !exist {
-		ErrorResp(ctx, "User not exist")
-		return
-	}
-	userId, ok := val.(string)
-	if !ok {
-		ErrorResp(ctx, "convert type is failed")
-		return
-	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*25)
 	defer cancel()
 	auditChan := make(chan struct{}, 1)
 	// 插入记录V2
 	go func() {
+		// 获取UserId
+		val, exist := ctx.Get("user_id")
+		if !exist {
+			ErrorResp(ctx, "User not exist")
+			return
+		}
+		userId, ok := val.(string)
+		if !ok {
+			ErrorResp(ctx, "convert type is failed")
+			return
+		}
 		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
 		var auditRecord AuditRecordV2
 		db := HaveSelfDB()
@@ -658,7 +658,45 @@ func showTempQueryResult(ctx *gin.Context) {
 		DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
-
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*25)
+	defer cancel()
+	auditChan := make(chan struct{}, 1)
+	// 插入记录V2
+	go func() {
+		// 获取UserId
+		val, exist := ctx.Get("user_id")
+		if !exist {
+			ErrorResp(ctx, "User not exist")
+			return
+		}
+		userId, ok := val.(string)
+		if !ok {
+			ErrorResp(ctx, "convert type is failed")
+			return
+		}
+		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
+		var auditRecord AuditRecordV2
+		db := HaveSelfDB()
+		res := db.conn.Where("task_id = ?", res.TaskId).First(&auditRecord)
+		if res.Error != nil {
+			cancel()
+			ErrorPrint("DBAPIError", res.Error.Error())
+			return
+		}
+		if res.RowsAffected != 1 {
+			cancel()
+			ErrorPrint("DBAPIError", "rows is zero")
+			return
+		}
+		// 日志审计插入v2
+		auditRecord.ID = 0
+		auditRecord.UserID = StrToUint(userId)
+		err := auditRecord.InsertOne("RESULT_VIEW")
+		if err != nil {
+			ErrorPrint("AuditRecordV2", err.Error())
+		}
+		auditChan <- struct{}{}
+	}()
 	// 结果集是否存在
 	userResult, exist := ResultMap.Get(res.TaskId)
 	if !exist {
@@ -679,6 +717,14 @@ func showTempQueryResult(ctx *gin.Context) {
 			"is_export":     res.IsAllowExport,
 			"task_id":       res.TaskId,
 		}, "SUCCESS")
+	}
+	// 等待审计记录的完成
+	select {
+	case <-timeoutCtx.Done():
+		ErrorResp(ctx, "handle timeout")
+		return
+	case <-auditChan:
+		return
 	}
 }
 
