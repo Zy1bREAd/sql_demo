@@ -39,8 +39,14 @@ type QueryTask struct {
 	DBName    string
 	Statement string
 	Env       string // 所执行环境
-	deadline  int64  // 超时时间（单位为秒）,默认 30s
-	UserID    uint   // 关联执行用户id
+	Service   string
+	deadline  int64 // 超时时间（单位为秒）,默认 30s
+	UserID    uint  // 关联执行用户id
+}
+type QTaskGroup struct {
+	GID      string
+	QTasks   []*QueryTask
+	deadline int64 //超时时间
 }
 
 // 封装QueryTask 结合GitLab Issue
@@ -78,6 +84,52 @@ func CreateSQLQueryTask(statement string, database string, userId string) QueryT
 	return task
 }
 
+// 多SQL执行
+func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
+	log.Printf("task id=%s is working", qtg.GID)
+	//! 执行任务函数只当只关心任务处理逻辑本身
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(qtg.deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
+	defer cancel()
+
+	ep := GetEventProducer()
+	qrg := &QResultGroup{
+		GID:      qtg.GID,
+		resGroup: make([]*QueryResult, 0),
+	}
+	for _, task := range qtg.QTasks {
+		// 获取对应数据库实例进行SQL查询
+		op, err := HaveDBIst(task.Env, task.DBName, task.Service)
+		if err != nil {
+			qrg.resGroup = append(qrg.resGroup, &QueryResult{
+				ID:      task.ID,
+				Results: nil,
+				Error:   err,
+			})
+			continue
+		}
+		// 执行前健康检查DB
+		err = op.HealthCheck(timeoutCtx)
+		if err != nil {
+			qrg.resGroup = append(qrg.resGroup, &QueryResult{
+				ID:      task.ID,
+				Results: nil,
+				Error:   GenerateError("HealthCheckFailed", err.Error()),
+			})
+			continue
+		}
+		// 拥有细粒度超时控制的核心查询函数
+		result := op.Query(timeoutCtx, task.Statement, task.ID)
+		log.Printf("task id=%s is completed", task.ID)
+		qrg.resGroup = append(qrg.resGroup, result)
+
+	}
+	ep.Produce(Event{
+		Type:    "save_result",
+		Payload: qrg,
+	})
+
+}
+
 // func CreateSQLQueryTaskWithIssue(statement, database string, userId uint, issue *Issue) *IssueQueryTask {
 // 	//! context控制超时
 // 	issueTask := IssueQueryTask{
@@ -101,16 +153,15 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 	defer cancel()
 
+	ep := GetEventProducer()
 	// 获取对应数据库实例进行SQL查询
-	op, err := GetDBInstance(task.DBName)
+	op, err := HaveDBIst(task.Env, task.DBName, task.Service)
 	if err != nil {
 		queryResult := &QueryResult{
 			ID:      task.ID,
 			Results: nil,
 			Error:   err,
 		}
-		// ResultQueue <- queryResult
-		ep := GetEventProducer()
 		ep.Produce(Event{
 			Type:    "save_result",
 			Payload: queryResult,
@@ -120,14 +171,11 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	// 执行前健康检查DB
 	err = op.HealthCheck(timeoutCtx)
 	if err != nil {
-		errMsg := fmt.Sprintf("excute sql task is failed : %s", err.Error())
 		queryResult := &QueryResult{
 			ID:      task.ID,
 			Results: nil,
-			Error:   GenerateError("HealthCheck Failed", errMsg),
+			Error:   GenerateError("HealthCheckFailed", err.Error()),
 		}
-		// ResultQueue <- queryResult
-		ep := GetEventProducer()
 		ep.Produce(Event{
 			Type:    "save_result",
 			Payload: queryResult,
@@ -137,7 +185,6 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	// 拥有细粒度超时控制的核心查询函数
 	result := op.Query(timeoutCtx, task.Statement, task.ID)
 	log.Printf("task id=%s is completed", task.ID)
-	ep := GetEventProducer()
 	ep.Produce(Event{
 		Type:    "save_result",
 		Payload: result,

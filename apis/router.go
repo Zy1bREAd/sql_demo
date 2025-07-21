@@ -130,9 +130,73 @@ func InitBaseRoutes() {
 		rgPublic.POST("/issue/callback", IssueCallBack)
 		rgPublic.POST("/comment/callback", CommentCallBack)
 		// 测试专用路由
-		// rgPublic.GET("/issue/list", getIssueList)
+		rgAuth.POST("/sql/excute", SQLExcuteTest)
 		// rgPublic.POST("/issue/comment/update")
 	})
+}
+
+func SQLExcuteTest(ctx *gin.Context) {
+	val, exist := ctx.Get("user_id")
+	if !exist {
+		ErrorResp(ctx, "User not exist")
+		return
+	}
+	userId, ok := val.(string)
+	if !ok {
+		ErrorResp(ctx, "convert type is failed")
+		return
+	}
+	var content SQLTemplate
+	err := ctx.ShouldBindJSON(&content)
+	if err != nil {
+		ErrorResp(ctx, err.Error())
+		return
+	}
+	stmtList, err := parseV2(content.Statement)
+	if err != nil {
+		ErrorResp(ctx, err.Error())
+		return
+	}
+	taskGroup := make([]*QueryTask, 0)
+	for _, s := range stmtList {
+		qTask := QueryTask{
+			ID:        GenerateUUIDKey(),
+			DBName:    content.DBName,
+			Statement: s.SafeStmt,
+			Env:       content.Env,
+			Service:   content.Service,
+			deadline:  30,
+			UserID:    StrToUint(userId),
+		}
+		taskGroup = append(taskGroup, &qTask)
+	}
+	qtg := &QTaskGroup{
+		GID:      GenerateUUIDKey(),
+		QTasks:   taskGroup,
+		deadline: 300,
+	}
+	// 事件驱动：封装成Event推送到事件通道(v2.0)
+
+	ep := GetEventProducer()
+	ep.Produce(Event{
+		Type:    "sql_query",
+		Payload: qtg,
+	})
+
+	// 同步等待获取结果
+	<-testCh
+	fmt.Println("收到信号")
+	res, exist := ResultMap.Get(qtg.GID)
+	if !exist {
+		ErrorResp(ctx, "Not found result")
+		return
+	}
+	if result, ok := res.(*QResultGroup); ok {
+		SuccessResp(ctx, result.resGroup, "result ok!!!")
+		return
+	}
+	ErrorResp(ctx, "result is null")
+
 }
 
 func IssueCallBack(ctx *gin.Context) {
@@ -234,8 +298,14 @@ func AuthMiddleware() gin.HandlerFunc {
 }
 
 func DBList(ctx *gin.Context) {
+	// 获取环境变量
+	envName, exist := ctx.Params.Get("env")
+	if !exist {
+		DefaultResp(ctx, 11, nil, "Env Name is not exist")
+		return
+	}
 	pool := newDBPoolManager()
-	list := pool.getDBList()
+	list := pool.getDBList(envName)
 	SuccessResp(ctx, list, "get db list success")
 }
 
@@ -252,7 +322,7 @@ func UserSQLQuery(ctx *gin.Context) {
 	log.Println(q)
 
 	// SQL语法解析并校验（v2.0)  - 格式化SQL查询语句（确保规范化）
-	sqlRaw, err := ParseSQL(q.Statement)
+	sqlRaw, err := ParseSQL(q.Statement, "select")
 	if err != nil {
 		DefaultResp(ctx, 1, nil, err.Error())
 		return

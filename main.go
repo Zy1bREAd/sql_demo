@@ -16,7 +16,6 @@ func main() {
 	defer self.Close()
 	// 初始化多数据库池子的实例
 	apis.LoadInDB()
-	defer apis.CloseDBPool()
 
 	// 针对请求-工作-处理结果的context
 	ctx, cancel := context.WithCancel(context.Background())

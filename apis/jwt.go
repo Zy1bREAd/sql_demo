@@ -50,7 +50,7 @@ func GenerateJWT(id uint, name, email string) (string, error) {
 	idStr := strconv.FormatUint(uint64(id), 10)
 	userclaim := &UserClaim{
 		OrignalClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(3 * time.Hour)), // default=3h
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(48 * time.Hour)), // default=3h
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    name,

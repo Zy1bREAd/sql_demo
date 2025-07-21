@@ -20,6 +20,11 @@ type QueryResult struct {
 	// ExpireTime time.Time // 结果集过期时间（用于自动清理）
 }
 
+type QResultGroup struct {
+	GID      string
+	resGroup []*QueryResult
+}
+
 // 仅针对QueryResult结果集的并发安全哈希表
 type CachesMap struct {
 	cache *sync.Map

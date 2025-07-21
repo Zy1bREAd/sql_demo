@@ -70,10 +70,6 @@ type WeixinConfig struct {
 	InformWebhook string `yaml:"inform_webhook"`
 }
 
-// type ApprovalConfig struct{
-
-// }
-
 var appConfig *appEnvConfig
 
 // 初始化环境变量配置

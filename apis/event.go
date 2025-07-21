@@ -7,6 +7,9 @@ import (
 	"sync"
 )
 
+// test
+var testCh chan struct{} = make(chan struct{}, 10)
+
 // var globalEventChannel chan Event // 全局事件channel
 var eventProducer *EventProducer
 var eventDispatcher *EventDispatcher
@@ -150,7 +153,7 @@ func (ed *EventDispatcher) registerHandler(eventType string, handler EventHandle
 
 // 2.0路由事件
 func (ed *EventDispatcher) Dispatch(ctx context.Context) {
-	fmt.Printf("启动 %d 个 dispatcher\n", ed.Processer)
+	fmt.Printf("[事件路由] 启动 %d 个 dispatcher\n", ed.Processer)
 	for i := 0; i < ed.Processer; i++ {
 		go func() {
 			for {
@@ -262,6 +265,11 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
 		QueryTaskMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
 		ExcuteSQLTask(ctx, t)
 		// 日志审计插入v2（不支持）
+	case *QTaskGroup:
+		// 支持多SQL
+		DebugPrint("SQL查询Group事件消费", t.GID)
+		QueryTaskMap.Set(t.GID, t, 300, 1)
+		t.ExcuteTask(ctx)
 	case *IssueQueryTask:
 		DebugPrint("SQL查询事件消费", t.QTask.ID)
 		QueryTaskMap.Set(t.QTask.ID, t, 300, 1) // 存储查询任务信息
@@ -302,64 +310,69 @@ func (eh *ResultEventHandler) Name() string {
 }
 
 func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
-	res, ok := e.Payload.(*QueryResult)
-	if !ok {
-		return GenerateError("TypeError", "event payload type is incrroect")
-	}
-	DebugPrint("查询结果事件消费", res.ID)
-	//! 后期核心处理结果集的代码逻辑块
-	ResultMap.Set(res.ID, res, 300, 0)
-	// 获取ID对应的task
-	val, _ := QueryTaskMap.Get(res.ID)
-	v, ok := val.(*IssueQueryTask)
-	if !ok {
-		// 有可能是QueryTask，所以跳过
-		return nil
-	}
-	// Issue评论情况更新
-	api := InitGitLabAPI()
-	updateMsg := fmt.Sprintf("TaskId=%s is completed", v.QTask.ID)
-	api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, updateMsg)
-	if res.Error != nil {
-		log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
-		err := api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, res.Error.Error())
-		if err != nil {
-			DebugPrint("CommentError", "query task result comment is failed"+err.Error())
+	switch res := e.Payload.(type) {
+	case *QResultGroup:
+		DebugPrint("查询结果事件消费", res.GID)
+		ResultMap.Set(res.GID, res, 300, 0)
+		testCh <- struct{}{}
+	case *QueryResult:
+		DebugPrint("查询结果事件消费", res.ID)
+		//! 后期核心处理结果集的代码逻辑块
+		ResultMap.Set(res.ID, res, 300, 0)
+		testCh <- struct{}{}
+		// 获取ID对应的task
+		val, _ := QueryTaskMap.Get(res.ID)
+		v, ok := val.(*IssueQueryTask)
+		if !ok {
+			// 有可能是QueryTask，所以跳过
+			return nil
 		}
-		return nil
+		// Issue评论情况更新
+		api := InitGitLabAPI()
+		updateMsg := fmt.Sprintf("TaskId=%s is completed", v.QTask.ID)
+		api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, updateMsg)
+		if res.Error != nil {
+			log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
+			err := api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, res.Error.Error())
+			if err != nil {
+				DebugPrint("CommentError", "query task result comment is failed"+err.Error())
+			}
+		}
+		// 存储结果、输出结果临时链接
+		issContent, err := parseIssueDesc(v.QIssue.Description)
+		if err != nil {
+			api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "export result file is failed, "+res.Error.Error())
+		}
+		uuKey, tempURL := NewHashTempLink()
+		err = SaveTempResult(uuKey, v.QTask.ID, 300, issContent.IsExport)
+		if err != nil {
+			DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
+		}
+		api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, tempURL)
+		// 导出结果
+		if issContent.IsExport {
+			exportTask := SubmitExportTask(v.QTask.ID, "csv", v.QIssue.Author.ID)
+			<-exportTask.Result.Done
+		}
+		// 自动关闭issue（表示完成）
+		err = api.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
+		if err != nil {
+			DebugPrint("GitLabAPI", err.Error())
+		}
+		// 完成通知
+		iss, err := api.IssueView(v.QIssue.ProjectID, v.QIssue.IID)
+		if err != nil {
+			DebugPrint("GitLabAPI", err.Error())
+		}
+		informBody := InformTemplate{
+			UserName: v.QIssue.Author.Name,
+			Action:   "Completed",
+			Link:     iss.WebURL,
+		}
+		_ = InformRobot(informBody.Fill())
+	default:
+		fmt.Println("》》》没有匹配到的结果集类型")
 	}
-	// 存储结果、输出结果临时链接
-	issContent, err := parseIssueDesc(v.QIssue.Description)
-	if err != nil {
-		api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "export result file is failed, "+res.Error.Error())
-	}
-	uuKey, tempURL := NewHashTempLink()
-	err = SaveTempResult(uuKey, v.QTask.ID, 300, issContent.IsExport)
-	if err != nil {
-		DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
-	}
-	api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, tempURL)
-	// 导出结果
-	if issContent.IsExport {
-		exportTask := SubmitExportTask(v.QTask.ID, "csv", v.QIssue.Author.ID)
-		<-exportTask.Result.Done
-	}
-	// 自动关闭issue（表示完成）
-	err = api.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
-	if err != nil {
-		DebugPrint("GitLabAPI", err.Error())
-	}
-	// 完成通知
-	iss, err := api.IssueView(v.QIssue.ProjectID, v.QIssue.IID)
-	if err != nil {
-		DebugPrint("GitLabAPI", err.Error())
-	}
-	informBody := InformTemplate{
-		UserName: v.QIssue.Author.Name,
-		Action:   "Completed",
-		Link:     iss.WebURL,
-	}
-	_ = InformRobot(informBody.Fill())
 	return nil
 }
 

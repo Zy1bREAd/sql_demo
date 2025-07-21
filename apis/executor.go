@@ -7,13 +7,50 @@ import (
 	"log"
 	"os"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"gopkg.in/yaml.v3"
 )
+
+// 业务数据库配置（从特定源读取）
+type AllEnvDBConfig struct {
+	Databases map[string]map[string]MySQLConfig `yaml:"databases"`
+}
+
+type MySQLConfig struct {
+	MaxConn  int      `yaml:"max_conn"`
+	IdleTime int      `yaml:"idle_time"`
+	Name     string   `yaml:"name"`
+	Host     string   `yaml:"host"`
+	Password string   `yaml:"password"`
+	User     string   `yaml:"user"`
+	Port     string   `yaml:"port"`
+	DSN      string   `yaml:"dsn"`
+	Exclude  []string `yaml:"exclude"`
+}
+
+// 读取配置，加载数据库池
+func LoadInDB() {
+	var config AllEnvDBConfig
+	// 从YAML方式读取
+	Fieldata, err := os.ReadFile("config/db.yaml")
+	if err != nil {
+		panic(err)
+	}
+	err = yaml.Unmarshal(Fieldata, &config)
+	if err != nil {
+		panic(err)
+	}
+
+	// 注册DB实例进入池子
+	pool := newDBPoolManager()
+	err = pool.register(&config)
+	if err != nil {
+		panic(err)
+	}
+}
 
 // 数据库SQL执行器（抽象层）
 type SQLExecutor interface {
@@ -27,31 +64,15 @@ type SQLExecutor interface {
 var once sync.Once
 var globalDBPool *DBPoolManager
 
-// 数据库配置（从特定源读取）
-type AllDBConfig struct {
-	Databases map[string]MySQLConfig `yaml:"databases"`
-}
-
-//	type EnvDBConfig struct {
-//		Env          string                 `yaml:"-"`
-//		InstanceList map[string]MySQLConfig `yaml:""`
-//	}
-type MySQLConfig struct {
-	DSN      string `yaml:"dsn"`
-	MaxConn  int    `yaml:"max_conn"`
-	IdleTime int    `yaml:"idle_time"`
-}
-
 // 多数据库连接的新实例
 type DBInstance struct {
 	conn *sql.DB
 	name string // 数据库名称
-	// config *MySQLConfig
-	// idleTime time.Time
 }
 
+// 数据库连接的池子
 type DBPoolManager struct {
-	Pool map[string]*DBInstance
+	Pool map[string]map[string]*DBInstance
 	mu   sync.RWMutex // 引入读写锁保证并发安全
 }
 
@@ -65,9 +86,52 @@ func (instance *DBInstance) Close() error {
 	return instance.conn.Close()
 }
 
+// 以原生SELECT SQL语句执行查询
 func (instance *DBInstance) QueryForRaw(ctx context.Context, statement string) (*sql.Rows, error) {
-	// 执行SQL查询的Core Code
 	return instance.conn.QueryContext(ctx, statement)
+}
+
+// 以原生DML SQL进行执行（无参数注入）
+func (instance *DBInstance) ExcuteForRaw(ctx context.Context, statement string) (int64, int64, error) {
+	stmt, err := instance.conn.Prepare(statement)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer stmt.Close()
+	res, err := stmt.ExecContext(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	lastId, err := res.LastInsertId()
+	if err != nil {
+		return 0, 0, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, 0, err
+	}
+	return lastId, rows, nil
+}
+
+func (instance *DBInstance) TransferExcuteRaw(ctx context.Context, statement string) (int64, int64, error) {
+	tx, err := instance.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() {
+		if recoverErr := recover(); recoverErr != nil {
+			ErrorPrint("TransferExcute", "Transfer Excute Error")
+			tx.Rollback()
+		}
+	}()
+	lastId, rows, err := instance.ExcuteForRaw(ctx, statement)
+	if err != nil {
+		panic(err)
+	}
+	if err := tx.Commit(); err != nil {
+		panic(GenerateError("TransferExcute", "Your Transfer Excute Error: "+err.Error()))
+	}
+	return lastId, rows, nil
 }
 
 // 对内暴露的查询SQL接口
@@ -79,6 +143,7 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 		ID:       taskId,
 	}
 
+	// 异步执行查询SQL
 	go func() {
 		start := time.Now()
 		rows, err := instance.QueryForRaw(ctx, sqlRaw)
@@ -129,7 +194,7 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 
 	select {
 	case <-ctx.Done():
-		queryResult.Error = GenerateError("Task TimeOut", "sql task is failed ,timeout")
+		queryResult.Error = GenerateError("Task TimeOut", "query sql task is failed ,query timeout")
 		return queryResult
 	case err := <-errCh:
 		if err != nil {
@@ -145,111 +210,50 @@ func (instance *DBInstance) Healthz(ctx context.Context) error {
 }
 
 // the validate func is discard（1.0）
-func (instance *DBInstance) validateCheck(statement string) (string, error) {
-	// 目前只支持一条SQL的查询，多余的直接丢弃
-	sqls := strings.Split(statement, ";")
-	sqlCount := len(sqls)
-	// sql语句数错误处理(目前只支持单SQL查询)
-	if sqlCount != 2 || !strings.HasSuffix(statement, ";") {
-		if sqlCount == 0 {
-			return "", GenerateError("SQL Validate Check", "validate check failed, synatx or format problem, no sql match")
-		} else if sqlCount > 1 {
-			// 提示出现的多余SQL语句
-			// 因为split分割出来最低是1，即无论是否找到分隔符都是1
-			for _, v := range sqls[1:] {
-				log.Printf("<...> Others SQL %s\n", v)
-			}
-			return "", GenerateError("SQL Validate Check", "only 1 SQL `SELECT` query is suppoerted")
-		}
-	}
-	statement = sqls[0] + ";"
+// func (instance *DBInstance) validateCheck(statement string) (string, error) {
+// 	// 目前只支持一条SQL的查询，多余的直接丢弃
+// 	sqls := strings.Split(statement, ";")
+// 	sqlCount := len(sqls)
+// 	// sql语句数错误处理(目前只支持单SQL查询)
+// 	if sqlCount != 2 || !strings.HasSuffix(statement, ";") {
+// 		if sqlCount == 0 {
+// 			return "", GenerateError("SQL Validate Check", "validate check failed, synatx or format problem, no sql match")
+// 		} else if sqlCount > 1 {
+// 			// 提示出现的多余SQL语句
+// 			// 因为split分割出来最低是1，即无论是否找到分隔符都是1
+// 			for _, v := range sqls[1:] {
+// 				log.Printf("<...> Others SQL %s\n", v)
+// 			}
+// 			return "", GenerateError("SQL Validate Check", "only 1 SQL `SELECT` query is suppoerted")
+// 		}
+// 	}
+// 	statement = sqls[0] + ";"
 
-	// 除SELECT外语句都不支持
-	illegalSQL := []string{"UPDATE", "DELETE", "DROP", "INSERT", "CREATE", "ALTER"}
-	for _, illegal := range illegalSQL {
-		if strings.Contains(strings.ToUpper(statement), illegal) {
-			return "", GenerateError("SQL Validate Check", "illegal operations exist in sql statement")
-		}
-	}
+// 	// 除SELECT外语句都不支持
+// 	illegalSQL := []string{"UPDATE", "DELETE", "DROP", "INSERT", "CREATE", "ALTER"}
+// 	for _, illegal := range illegalSQL {
+// 		if strings.Contains(strings.ToUpper(statement), illegal) {
+// 			return "", GenerateError("SQL Validate Check", "illegal operations exist in sql statement")
+// 		}
+// 	}
 
-	return statement, nil
-}
+// 	return statement, nil
+// }
 
 // 初始化数据库池管理者（全局一次）
 func newDBPoolManager() *DBPoolManager {
 	once.Do(func() {
 		globalDBPool = &DBPoolManager{
-			Pool: make(map[string]*DBInstance),
+			Pool: make(map[string]map[string]*DBInstance),
 		}
-		// log.Println("Once.Do Init Pool Success, ", globalDBPool)
 	})
 	return globalDBPool
 }
 
-// 读取配置，加载数据库池
-func LoadInDB() {
-	var config AllDBConfig
-	// 从YAML方式读取
-	Fieldata, err := os.ReadFile("config/db.yaml")
-	if err != nil {
-		panic(err)
-	}
-	err = yaml.Unmarshal(Fieldata, &config)
-	if err != nil {
-		panic(err)
-	}
-
-	// 将读取到DB配置注册进数据库池子中进行管理
-	pool := newDBPoolManager()
-	err = pool.register(&config)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (manager *DBPoolManager) register(configData *AllDBConfig) error {
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	for dbName, conf := range configData.Databases {
-		db, err := newDBInstance(dbName, conf.DSN, conf.MaxConn, conf.IdleTime)
-		if err != nil {
-			log.Printf("<%s> Database Register Failed,error: %s\n", dbName, err.Error())
-			continue
-			// return err
-		}
-		manager.Pool[dbName] = db
-		log.Printf("<%s> DataBase Register Success", dbName)
-	}
-	return nil
-}
-
-func (manager *DBPoolManager) close(instance *DBInstance) error {
-	return instance.Close()
-}
-
-func CloseDBPool() {
-	manager := newDBPoolManager()
-	for _, instance := range manager.Pool {
-		err := manager.close(instance)
-		if err != nil {
-			log.Println(fmt.Sprintf("close db instance=%s is failed!!!", instance.name), err.Error())
-		}
-	}
-}
-
-func (manager *DBPoolManager) getDBList() []string {
-	dbKeys := []string{}
-	for name, _ := range manager.Pool {
-		dbKeys = append(dbKeys, name)
-	}
-	// 新增排序功能
-	slices.Sort(dbKeys)
-	return dbKeys
-}
-
 // 打开数据库实例连接
-func newDBInstance(name, dsn string, maxConn, idleTime int) (*DBInstance, error) {
+func newDBInstance(usr, pwd, host, port string, maxConn, idleTime int) (*DBInstance, error) {
 	// e.g: zabbix:zabbix_password@tcp(124.220.17.5:23366)/zabbix
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/mysql", usr, pwd, host, port)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, err
@@ -263,18 +267,70 @@ func newDBInstance(name, dsn string, maxConn, idleTime int) (*DBInstance, error)
 	}
 	return &DBInstance{
 		conn: db,
-		name: name,
 	}, nil
 }
 
-func GetDBInstance(name string) (*DBInstance, error) {
+// 解析配置并注册
+func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	for env, dbList := range configData.Databases {
+		for istName, dbConf := range dbList {
+			db, err := newDBInstance(dbConf.User, dbConf.Password, dbConf.Host, dbConf.Port, dbConf.MaxConn, dbConf.IdleTime)
+			if err != nil {
+				ErrorPrint("DBRegisterError", "database register is failed, "+err.Error())
+				continue
+			}
+			if manager.Pool[env] == nil {
+				manager.Pool[env] = make(map[string]*DBInstance)
+			}
+			db.name = istName
+			manager.Pool[env][istName] = db
+		}
+	}
+	return nil
+}
+
+// 关闭数据库实例池
+func (manager *DBPoolManager) CloseDBPool() {
+	// manager := newDBPoolManager()
+	for env, istList := range manager.Pool {
+		for _, ist := range istList {
+			err := ist.conn.Close()
+			if err != nil {
+				ErrorPrint("CloseDBError", fmt.Sprintf("[%s] close db %s connection is failed, %s", env, ist.name, err.Error()))
+			}
+		}
+
+	}
+}
+
+// 获取指定环境下所有db实例
+func (manager *DBPoolManager) getDBList(env string) []string {
+	istNameList := []string{}
+	for istName, _ := range manager.Pool[env] {
+		// istNameList = append(istNameList, dbIst.name)
+		istNameList = append(istNameList, istName)
+	}
+	// 新增排序功能
+	slices.Sort(istNameList)
+	return istNameList
+}
+
+// 获取指定db实例
+func HaveDBIst(env, name, service string) (*DBInstance, error) {
 	globalDBPool.mu.RLock()
 	defer globalDBPool.mu.RUnlock()
 	if name == "" {
-		return nil, GenerateError("InstanceError", "db_name is not null")
+		return nil, GenerateError("InstanceIsNull", "db instance name is null")
+	} else if env == "" {
+		return nil, GenerateError("InstanceIsNull", "env name is null")
 	}
-	if instance, ok := globalDBPool.Pool[name]; ok {
-		return instance, nil
+	if dbIstMap, ok := globalDBPool.Pool[env]; ok {
+		if dbIst, ok := dbIstMap[service]; ok {
+			return dbIst, nil
+		}
+		return nil, GenerateError("InstanceError", fmt.Sprintf("<%s> db instance is not exist", service))
 	}
-	return nil, GenerateError("InstanceError", fmt.Sprintf("(%s) db instance not found", name))
+	return nil, GenerateError("InstanceError", fmt.Sprintf("<%s> env is not exist", env))
 }

@@ -36,12 +36,13 @@ type CommentWebhook struct {
 }
 
 // 问题内容
-type IssueContent struct {
+type SQLTemplate struct {
 	Action    string `json:"action"`
-	Note      string `json:"description"`
+	Remark    string `json:"remark"`
 	Env       string `json:"env"`
 	Statement string `json:"statement"`
 	DBName    string `json:"db_name"`
+	Service   string `json:"service"`
 	DML       string `json:"dml"`
 	IsExport  bool   `json:"is_export"`
 }
@@ -72,7 +73,7 @@ func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
 }
 
 func (i *IssueWebhook) OpenIssueHandle() error {
-	var content IssueContent
+	var content SQLTemplate
 	err := json.Unmarshal([]byte(i.ObjectAttr.Description), &content)
 	if err != nil {
 		DebugPrint("JSONError", err.Error())
@@ -121,7 +122,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 }
 
 // 查询SQL
-func queryHandle(userId uint, issue *Issue, issueDesc *IssueContent) {
+func queryHandle(userId uint, issue *Issue, issueDesc *SQLTemplate) {
 	//! context控制超时
 	issueTask := &IssueQueryTask{
 		QTask: &QueryTask{
@@ -131,6 +132,7 @@ func queryHandle(userId uint, issue *Issue, issueDesc *IssueContent) {
 			deadline:  30, // 抽离出来
 			UserID:    userId,
 			Env:       issueDesc.Env,
+			Service:   issueDesc.Service,
 		},
 		QIssue: issue,
 	}
@@ -149,8 +151,8 @@ func excuteHandle(statement, dbName string, userId uint) error {
 }
 
 // 解析Issue描述详情
-func parseIssueDesc(desc string) (*IssueContent, error) {
-	var content IssueContent
+func parseIssueDesc(desc string) (*SQLTemplate, error) {
+	var content SQLTemplate
 	err := json.Unmarshal([]byte(desc), &content)
 	if err != nil {
 		var syntaxErr *json.SyntaxError
