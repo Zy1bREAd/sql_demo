@@ -136,6 +136,7 @@ func InitBaseRoutes() {
 }
 
 func SQLExcuteTest(ctx *gin.Context) {
+	fmt.Printf("处理用户请求，%s\n", time.Now().String())
 	val, exist := ctx.Get("user_id")
 	if !exist {
 		ErrorResp(ctx, "User not exist")
@@ -152,11 +153,15 @@ func SQLExcuteTest(ctx *gin.Context) {
 		ErrorResp(ctx, err.Error())
 		return
 	}
+	fmt.Printf("完成请求信息搜集，%s\n", time.Now().String())
+
 	stmtList, err := parseV2(content.Statement)
 	if err != nil {
 		ErrorResp(ctx, err.Error())
 		return
 	}
+	fmt.Printf("完成SQL语句解析，%s\n", time.Now().String())
+
 	taskGroup := make([]*QueryTask, 0)
 	for _, s := range stmtList {
 		qTask := QueryTask{
@@ -167,36 +172,41 @@ func SQLExcuteTest(ctx *gin.Context) {
 			Service:   content.Service,
 			deadline:  30,
 			UserID:    StrToUint(userId),
+			Action:    s.action,
 		}
 		taskGroup = append(taskGroup, &qTask)
 	}
+	gid := GenerateUUIDKey()
+	fmt.Println("gid===", gid)
 	qtg := &QTaskGroup{
-		GID:      GenerateUUIDKey(),
+		GID:      gid,
 		QTasks:   taskGroup,
+		DML:      content.DML,
 		deadline: 300,
 	}
 	// 事件驱动：封装成Event推送到事件通道(v2.0)
-
 	ep := GetEventProducer()
 	ep.Produce(Event{
 		Type:    "sql_query",
 		Payload: qtg,
 	})
+	fmt.Printf("生产SQL查询消息的事件，%s\n", time.Now().String())
 
 	// 同步等待获取结果
 	<-testCh
-	fmt.Println("收到信号")
+	fmt.Printf("完成SQL查询的消费事件，%s\n", time.Now().String())
 	res, exist := ResultMap.Get(qtg.GID)
 	if !exist {
 		ErrorResp(ctx, "Not found result")
 		return
 	}
-	if result, ok := res.(*QResultGroup); ok {
+	if result, ok := res.(*SQLResultGroup); ok {
 		SuccessResp(ctx, result.resGroup, "result ok!!!")
+		fmt.Printf("响应数据，%s\n", time.Now().String())
 		return
 	}
 	ErrorResp(ctx, "result is null")
-
+	fmt.Printf("响应数据，%s\n", time.Now().String())
 }
 
 func IssueCallBack(ctx *gin.Context) {
@@ -355,9 +365,9 @@ func getQueryResult(ctx *gin.Context) {
 		DefaultResp(ctx, -1, nil, "SQL查询中.......")
 		return
 	}
-	if val, ok := userResult.(*QueryResult); ok {
-		if val.Error != nil {
-			DefaultResp(ctx, 1, "", val.Error.Error())
+	if val, ok := userResult.(*SQLResult); ok {
+		if val.errrr != nil {
+			DefaultResp(ctx, 1, "", val.errrr.Error())
 			return
 		}
 		SuccessResp(ctx, gin.H{
@@ -773,9 +783,9 @@ func showTempQueryResult(ctx *gin.Context) {
 		DefaultResp(ctx, 1, nil, "SQL Query result is not exist")
 		return
 	}
-	if val, ok := userResult.(*QueryResult); ok {
-		if val.Error != nil {
-			DefaultResp(ctx, 1, nil, val.Error.Error())
+	if val, ok := userResult.(*SQLResult); ok {
+		if val.errrr != nil {
+			DefaultResp(ctx, 1, nil, val.errrr.Error())
 			return
 		}
 		QueryTaskMap.Get(val.ID)
@@ -783,7 +793,7 @@ func showTempQueryResult(ctx *gin.Context) {
 			"result":        val.Results,
 			"rows_count":    val.RowCount,
 			"query_time":    val.QueryTime,
-			"raw_statement": val.QueryRaw,
+			"raw_statement": val.Stmt,
 			"is_export":     res.IsAllowExport,
 			"task_id":       res.TaskId,
 		}, "SUCCESS")

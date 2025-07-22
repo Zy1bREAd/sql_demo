@@ -133,6 +133,7 @@ func queryHandle(userId uint, issue *Issue, issueDesc *SQLTemplate) {
 			UserID:    userId,
 			Env:       issueDesc.Env,
 			Service:   issueDesc.Service,
+			Action:    issueDesc.DML,
 		},
 		QIssue: issue,
 	}

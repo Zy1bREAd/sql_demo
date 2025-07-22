@@ -9,20 +9,27 @@ import (
 
 var ResultMap *CachesMap = &CachesMap{cache: &sync.Map{}}
 
-type QueryResult struct {
-	RowCount   int     // 返回结果条数
+// type SQLError struct
+// 查询和执行SQL的结果集
+type SQLResult struct {
+	RowCount   int // 返回结果条数
+	LastId     int64
 	QueryTime  float64 // 查询花费的时间
 	HandleTime float64 // 处理结果集的时间
 	ID         string  // task id
-	QueryRaw   string  // 查询的原生SQL
-	Error      error
+	Stmt       string  // 查询的原生SQL
+	errrr      error
+	ErrMsg     string           // 错误信息
 	Results    []map[string]any // 结果集列表
-	// ExpireTime time.Time // 结果集过期时间（用于自动清理）
 }
 
-type QResultGroup struct {
+type ResultGroup interface {
+	GetGID() string
+}
+
+type SQLResultGroup struct {
 	GID      string
-	resGroup []*QueryResult
+	resGroup []*SQLResult
 }
 
 // 仅针对QueryResult结果集的并发安全哈希表

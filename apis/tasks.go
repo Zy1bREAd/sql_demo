@@ -37,6 +37,7 @@ type cleanTask struct {
 type QueryTask struct {
 	ID        string
 	DBName    string
+	Action    string
 	Statement string
 	Env       string // 所执行环境
 	Service   string
@@ -45,6 +46,7 @@ type QueryTask struct {
 }
 type QTaskGroup struct {
 	GID      string
+	DML      string
 	QTasks   []*QueryTask
 	deadline int64 //超时时间
 }
@@ -84,50 +86,58 @@ func CreateSQLQueryTask(statement string, database string, userId string) QueryT
 	return task
 }
 
-// 多SQL执行
+// 多SQL执行(可Query可Excute)
 func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
-	log.Printf("task id=%s is working", qtg.GID)
+	log.Printf("task group_id=%s is working", qtg.GID)
 	//! 执行任务函数只当只关心任务处理逻辑本身
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(qtg.deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 	defer cancel()
 
 	ep := GetEventProducer()
-	qrg := &QResultGroup{
+	rg := &SQLResultGroup{
 		GID:      qtg.GID,
-		resGroup: make([]*QueryResult, 0),
+		resGroup: make([]*SQLResult, 0),
 	}
 	for _, task := range qtg.QTasks {
+		var result SQLResult = SQLResult{
+			ID:   task.ID,
+			Stmt: task.Statement,
+		}
+		if task.Action != qtg.DML {
+			result.errrr = GenerateError("ActionNotMatch", "DML and Action is not match")
+			result.ErrMsg = result.errrr.Error()
+			rg.resGroup = append(rg.resGroup, &result)
+			continue
+		}
 		// 获取对应数据库实例进行SQL查询
 		op, err := HaveDBIst(task.Env, task.DBName, task.Service)
 		if err != nil {
-			qrg.resGroup = append(qrg.resGroup, &QueryResult{
-				ID:      task.ID,
-				Results: nil,
-				Error:   err,
-			})
+			result.errrr = err
+			result.ErrMsg = result.errrr.Error()
+			rg.resGroup = append(rg.resGroup, &result)
 			continue
 		}
 		// 执行前健康检查DB
 		err = op.HealthCheck(timeoutCtx)
 		if err != nil {
-			qrg.resGroup = append(qrg.resGroup, &QueryResult{
-				ID:      task.ID,
-				Results: nil,
-				Error:   GenerateError("HealthCheckFailed", err.Error()),
-			})
+			result.errrr = GenerateError("HealthCheckFailed", err.Error())
+			result.ErrMsg = result.errrr.Error()
+			rg.resGroup = append(rg.resGroup, &result)
 			continue
 		}
 		// 拥有细粒度超时控制的核心查询函数
-		result := op.Query(timeoutCtx, task.Statement, task.ID)
-		log.Printf("task id=%s is completed", task.ID)
-		qrg.resGroup = append(qrg.resGroup, result)
-
+		if task.Action == "select" {
+			result = op.Query(timeoutCtx, task.Statement, task.ID)
+		} else {
+			result = op.Excute(timeoutCtx, task.Statement, task.ID)
+		}
+		log.Printf("task group_id=%s is completed", rg.GID)
+		rg.resGroup = append(rg.resGroup, &result)
 	}
 	ep.Produce(Event{
 		Type:    "save_result",
-		Payload: qrg,
+		Payload: rg,
 	})
-
 }
 
 // func CreateSQLQueryTaskWithIssue(statement, database string, userId uint, issue *Issue) *IssueQueryTask {
@@ -147,7 +157,7 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 // 	return &issueTask
 // }
 
-func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
+func (task *QueryTask) ExcuteTask(ctx context.Context) {
 	log.Printf("task id=%s is working", task.ID)
 	//! 执行任务函数只当只关心任务处理逻辑本身
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
@@ -157,10 +167,10 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	// 获取对应数据库实例进行SQL查询
 	op, err := HaveDBIst(task.Env, task.DBName, task.Service)
 	if err != nil {
-		queryResult := &QueryResult{
+		queryResult := &SQLResult{
 			ID:      task.ID,
 			Results: nil,
-			Error:   err,
+			errrr:   err,
 		}
 		ep.Produce(Event{
 			Type:    "save_result",
@@ -171,10 +181,10 @@ func ExcuteSQLTask(ctx context.Context, task *QueryTask) {
 	// 执行前健康检查DB
 	err = op.HealthCheck(timeoutCtx)
 	if err != nil {
-		queryResult := &QueryResult{
+		queryResult := &SQLResult{
 			ID:      task.ID,
 			Results: nil,
-			Error:   GenerateError("HealthCheckFailed", err.Error()),
+			errrr:   GenerateError("HealthCheckFailed", err.Error()),
 		}
 		ep.Produce(Event{
 			Type:    "save_result",
@@ -235,7 +245,7 @@ func SubmitExportTask(id, exportType string, userId uint) *ExportTask {
 
 // 导出SQL查询结果
 func ExportSQLTask(ctx context.Context, task *ExportTask) error {
-	var cachesMapResult *QueryResult
+	var cachesMapResult *SQLResult
 	if task.ID == "" {
 		return GenerateError("TaskNotExist", "task id is not found")
 	}
@@ -247,17 +257,20 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 		if !taskExist {
 			return GenerateError("QueryTaskError", "query task id is not exist,please re-excute sql query")
 		}
-		task, ok := taskMap.(*QueryTask)
-		if !ok {
+		switch t := taskMap.(type) {
+		case *QueryTask:
+			t.ExcuteTask(ctx)
+		case *QTaskGroup:
+			t.ExcuteTask(ctx)
+		default:
 			return GenerateError("QueryTaskError", "query task object type not match")
 		}
-		ExcuteSQLTask(ctx, task)
 		// 同步方式每秒检测是否查询任务完成，来获取结果集
 		for i := 0; i <= int(task.deadline); i++ {
 			time.Sleep(1 * time.Second)
 			mapVal, ok := ResultMap.Get(task.ID)
 			if ok {
-				assertVal, ok := mapVal.(*QueryResult)
+				assertVal, ok := mapVal.(*SQLResult)
 				if !ok {
 					return GenerateError("QueryResultError", "query result data type is incorrect")
 				}
@@ -267,7 +280,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 			}
 		}
 	} else {
-		assertVal, ok := mapVal.(*QueryResult)
+		assertVal, ok := mapVal.(*SQLResult)
 		if !ok {
 			return errors.New("resultData is incorrect type")
 		}

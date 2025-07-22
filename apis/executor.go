@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"slices"
 	"sync"
@@ -54,8 +53,8 @@ func LoadInDB() {
 
 // 数据库SQL执行器（抽象层）
 type SQLExecutor interface {
-	// Query(string) (*sql.Rows, error)
-	Query(context.Context, string, string) *QueryResult
+	Query(context.Context, string, string) *SQLResult
+	Excute(context.Context, string, string) *SQLResult
 	HealthCheck(context.Context) error
 	Close() error
 }
@@ -77,23 +76,23 @@ type DBPoolManager struct {
 }
 
 // 健康检查
-func (instance *DBInstance) HealthCheck(ctx context.Context) error {
-	return instance.conn.PingContext(ctx)
+func (ist *DBInstance) HealthCheck(ctx context.Context) error {
+	return ist.conn.PingContext(ctx)
 }
 
 // 关闭数据库连接，释放资源。
-func (instance *DBInstance) Close() error {
-	return instance.conn.Close()
+func (ist *DBInstance) Close() error {
+	return ist.conn.Close()
 }
 
-// 以原生SELECT SQL语句执行查询
-func (instance *DBInstance) QueryForRaw(ctx context.Context, statement string) (*sql.Rows, error) {
-	return instance.conn.QueryContext(ctx, statement)
+// 以原生SQL语句执行查询(使用SELECT)
+func (ist *DBInstance) queryRaw(ctx context.Context, statement string) (*sql.Rows, error) {
+	return ist.conn.QueryContext(ctx, statement)
 }
 
 // 以原生DML SQL进行执行（无参数注入）
-func (instance *DBInstance) ExcuteForRaw(ctx context.Context, statement string) (int64, int64, error) {
-	stmt, err := instance.conn.Prepare(statement)
+func (ist *DBInstance) excuteRaw(ctx context.Context, statement string) (int64, int64, error) {
+	stmt, err := ist.conn.Prepare(statement)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -102,10 +101,12 @@ func (instance *DBInstance) ExcuteForRaw(ctx context.Context, statement string) 
 	if err != nil {
 		return 0, 0, err
 	}
+	// 获取最后更新的id
 	lastId, err := res.LastInsertId()
 	if err != nil {
 		return 0, 0, err
 	}
+	// 所影响的行数
 	rows, err := res.RowsAffected()
 	if err != nil {
 		return 0, 0, err
@@ -113,40 +114,72 @@ func (instance *DBInstance) ExcuteForRaw(ctx context.Context, statement string) 
 	return lastId, rows, nil
 }
 
-func (instance *DBInstance) TransferExcuteRaw(ctx context.Context, statement string) (int64, int64, error) {
-	tx, err := instance.conn.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, 0, err
+func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQLResult {
+	errCh := make(chan error, 1)
+	res := SQLResult{
+		ID:   taskId,
+		Stmt: statement,
 	}
-	defer func() {
-		if recoverErr := recover(); recoverErr != nil {
-			ErrorPrint("TransferExcute", "Transfer Excute Error")
-			tx.Rollback()
+
+	// 超时控制
+	go func() {
+		start := time.Now()
+		tx, err := ist.conn.BeginTx(ctx, nil)
+		if err != nil {
+			errCh <- err
+			return
 		}
+		defer func() {
+			if recoverErr := recover(); recoverErr != nil {
+				ErrorPrint("TransferExcute", "Transfer Excute Error -- "+taskId)
+				tx.Rollback()
+				errVal, ok := recoverErr.(error)
+				if !ok {
+					errCh <- GenerateError("RollBackError", "Unknown Error")
+				}
+				errCh <- errVal
+				return
+			}
+		}()
+		lastId, rows, err := ist.excuteRaw(ctx, statement)
+		if err != nil {
+			panic(err)
+		}
+		if err := tx.Commit(); err != nil {
+			panic(GenerateError("TransferExcute", "Transfer Commit Error: "+err.Error()))
+		}
+		end := time.Since(start)
+		res.QueryTime = end.Seconds()
+		res.LastId = lastId
+		res.RowCount = int(rows)
+		errCh <- nil
 	}()
-	lastId, rows, err := instance.ExcuteForRaw(ctx, statement)
-	if err != nil {
-		panic(err)
+
+	select {
+	case <-ctx.Done():
+		res.errrr = GenerateError("TaskTimeOut", "excute sql task is timeout")
+	case err := <-errCh:
+		if err != nil {
+			res.errrr = err
+			res.ErrMsg = res.errrr.Error()
+		}
 	}
-	if err := tx.Commit(); err != nil {
-		panic(GenerateError("TransferExcute", "Your Transfer Excute Error: "+err.Error()))
-	}
-	return lastId, rows, nil
+	return res
 }
 
 // 对内暴露的查询SQL接口
-func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) *QueryResult {
+func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) SQLResult {
 	errCh := make(chan error, 1)
-
-	queryResult := &QueryResult{
-		QueryRaw: sqlRaw,
-		ID:       taskId,
+	queryResult := SQLResult{
+		Stmt: sqlRaw,
+		ID:   taskId,
 	}
 
 	// 异步执行查询SQL
 	go func() {
 		start := time.Now()
-		rows, err := instance.QueryForRaw(ctx, sqlRaw)
+		// 核心查询
+		rows, err := ist.queryRaw(ctx, sqlRaw)
 		if err != nil {
 			errCh <- err
 			return
@@ -155,25 +188,26 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 		end := time.Since(start)
 		queryResult.QueryTime = end.Seconds()
 
-		start = time.Now()
 		//! 结果集处理
+		start = time.Now()
 		// 获取SQL要查询的列名
 		cols, _ := rows.Columns()
 		// 遍历结果集，逐行处理结果
 		for rows.Next() {
 			if rows.Err() != nil {
-				log.Println("该行有问题，直接跳过")
+				DebugPrint("RowError", "该行数据出现问题")
 				break
 			}
-			values := make([]any, len(cols)) // 每一行都创建结果集容器的切片,按照列的顺序进行存储
 
+			values := make([]any, len(cols)) // 每一行都创建结果集容器的切片,按照列的顺序进行存储
 			// 初始化结果集容器；将该切片中的元素都初始化为sql.RawBytes容器，用于存放列值
 			for i := range values {
 				values[i] = new(sql.RawBytes) // 原始SQL语句最终以字节切片的方式进行存储；type RawBytes []byte
 			}
+
 			// 获取结果集，填充进来
 			if err := rows.Scan(values...); err != nil {
-				errCh <- GenerateError("TaskResult Handle Error", err.Error())
+				errCh <- GenerateError("TaskResultError", err.Error())
 				return
 			}
 			rowResultMap := make(map[string]any, 0) // 创建存储每行数据结果的容器（Map）
@@ -194,51 +228,20 @@ func (instance *DBInstance) Query(ctx context.Context, sqlRaw string, taskId str
 
 	select {
 	case <-ctx.Done():
-		queryResult.Error = GenerateError("Task TimeOut", "query sql task is failed ,query timeout")
-		return queryResult
+		queryResult.errrr = GenerateError("Task TimeOut", "query sql task is failed ,query timeout")
 	case err := <-errCh:
 		if err != nil {
-			queryResult.Error = err
+			queryResult.errrr = err
+			queryResult.ErrMsg = queryResult.errrr.Error()
 		}
-		return queryResult
 	}
+	return queryResult
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
 }
 
-func (instance *DBInstance) Healthz(ctx context.Context) error {
-	return instance.conn.PingContext(ctx)
+func (ist *DBInstance) Healthz(ctx context.Context) error {
+	return ist.conn.PingContext(ctx)
 }
-
-// the validate func is discard（1.0）
-// func (instance *DBInstance) validateCheck(statement string) (string, error) {
-// 	// 目前只支持一条SQL的查询，多余的直接丢弃
-// 	sqls := strings.Split(statement, ";")
-// 	sqlCount := len(sqls)
-// 	// sql语句数错误处理(目前只支持单SQL查询)
-// 	if sqlCount != 2 || !strings.HasSuffix(statement, ";") {
-// 		if sqlCount == 0 {
-// 			return "", GenerateError("SQL Validate Check", "validate check failed, synatx or format problem, no sql match")
-// 		} else if sqlCount > 1 {
-// 			// 提示出现的多余SQL语句
-// 			// 因为split分割出来最低是1，即无论是否找到分隔符都是1
-// 			for _, v := range sqls[1:] {
-// 				log.Printf("<...> Others SQL %s\n", v)
-// 			}
-// 			return "", GenerateError("SQL Validate Check", "only 1 SQL `SELECT` query is suppoerted")
-// 		}
-// 	}
-// 	statement = sqls[0] + ";"
-
-// 	// 除SELECT外语句都不支持
-// 	illegalSQL := []string{"UPDATE", "DELETE", "DROP", "INSERT", "CREATE", "ALTER"}
-// 	for _, illegal := range illegalSQL {
-// 		if strings.Contains(strings.ToUpper(statement), illegal) {
-// 			return "", GenerateError("SQL Validate Check", "illegal operations exist in sql statement")
-// 		}
-// 	}
-
-// 	return statement, nil
-// }
 
 // 初始化数据库池管理者（全局一次）
 func newDBPoolManager() *DBPoolManager {

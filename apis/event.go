@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"reflect"
 	"sync"
 )
 
@@ -263,13 +264,14 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
 	case *QueryTask:
 		DebugPrint("SQL查询事件消费", t.ID)
 		QueryTaskMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
-		ExcuteSQLTask(ctx, t)
+		t.ExcuteTask(ctx)
 		// 日志审计插入v2（不支持）
-	case *QTaskGroup:
-		// 支持多SQL
+
+	case *QTaskGroup: // 支持多SQL
 		DebugPrint("SQL查询Group事件消费", t.GID)
 		QueryTaskMap.Set(t.GID, t, 300, 1)
 		t.ExcuteTask(ctx)
+
 	case *IssueQueryTask:
 		DebugPrint("SQL查询事件消费", t.QTask.ID)
 		QueryTaskMap.Set(t.QTask.ID, t, 300, 1) // 存储查询任务信息
@@ -277,7 +279,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
 		api := InitGitLabAPI()
 		updateMsg := fmt.Sprintf("TaskId=%s is start work...", t.QTask.ID)
 		api.CommentCreate(t.QIssue.ProjectID, t.QIssue.IID, updateMsg)
-		ExcuteSQLTask(ctx, t.QTask)
+		t.QTask.ExcuteTask(ctx)
 		// 日志审计插入v2
 		audit := AuditRecordV2{
 			TaskID:    t.QTask.ID,
@@ -311,11 +313,12 @@ func (eh *ResultEventHandler) Name() string {
 
 func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 	switch res := e.Payload.(type) {
-	case *QResultGroup:
-		DebugPrint("查询结果事件消费", res.GID)
+	// 抽象成接口
+	case *SQLResultGroup:
+		DebugPrint("查询结果Group事件消费", res.GID)
 		ResultMap.Set(res.GID, res, 300, 0)
 		testCh <- struct{}{}
-	case *QueryResult:
+	case *SQLResult:
 		DebugPrint("查询结果事件消费", res.ID)
 		//! 后期核心处理结果集的代码逻辑块
 		ResultMap.Set(res.ID, res, 300, 0)
@@ -331,9 +334,9 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 		api := InitGitLabAPI()
 		updateMsg := fmt.Sprintf("TaskId=%s is completed", v.QTask.ID)
 		api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, updateMsg)
-		if res.Error != nil {
-			log.Printf("TaskId=%s TaskError=%s", res.ID, res.Error)
-			err := api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, res.Error.Error())
+		if res.errrr != nil {
+			log.Printf("TaskId=%s TaskError=%s", res.ID, res.errrr)
+			err := api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, res.errrr.Error())
 			if err != nil {
 				DebugPrint("CommentError", "query task result comment is failed"+err.Error())
 			}
@@ -341,7 +344,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 		// 存储结果、输出结果临时链接
 		issContent, err := parseIssueDesc(v.QIssue.Description)
 		if err != nil {
-			api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "export result file is failed, "+res.Error.Error())
+			api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "export result file is failed, "+res.errrr.Error())
 		}
 		uuKey, tempURL := NewHashTempLink()
 		err = SaveTempResult(uuKey, v.QTask.ID, 300, issContent.IsExport)
@@ -371,7 +374,9 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 		}
 		_ = InformRobot(informBody.Fill())
 	default:
-		fmt.Println("》》》没有匹配到的结果集类型")
+		typeName := reflect.TypeOf(e.Payload)
+		fmt.Println("？？？？？没有匹配到的结果集类型", typeName)
+		testCh <- struct{}{}
 	}
 	return nil
 }

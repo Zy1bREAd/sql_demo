@@ -12,76 +12,107 @@ import (
 )
 
 type SQLParser struct {
-	Action   string
-	From     string
-	DML      string
+	action   string // 代表DML类型
+	cols     []string
+	from     []string
 	SafeStmt string // 经过语法检验的原生SQL
 }
 
+func signelParseV2(sqlRaw string) (SQLParser, error) {
+	// stmt, err := p.Parse(sqlRaw)
+	// if err != nil {
+	// 	return GenerateError("ParseStmtError", err.Error())
+	// }
+	return SQLParser{}, nil
+}
+
 func parseV2(sqlRaw string) ([]SQLParser, error) {
-	stmtResults := make([]SQLParser, 0)
+	parseRes := make([]SQLParser, 0)
 	p, err := sqlparser.New(sqlparser.Options{
 		TruncateUILen:  512,
 		TruncateErrLen: 1024,
 	})
 	if err != nil {
-		return stmtResults, GenerateError("NewParserError", err.Error())
+		return parseRes, GenerateError("NewParserError", err.Error())
 	}
 	token := p.NewStringTokenizer(sqlRaw)
-	// stmt, err := p.Parse(sqlRaw)
-	// if err != nil {
-	// 	return GenerateError("ParseStmtError", err.Error())
-	// }
 	// 尝试解析多条SQL语句
 	for {
 		stmt, err := sqlparser.ParseNext(token)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Println("读取完所有SQL")
+				// 已读取完所有SQL语句，跳出解析SQL的Loop
 				break
 			}
-			return stmtResults, GenerateError("ParseStmtError", err.Error())
+			return parseRes, GenerateError("ParseStmtError", err.Error())
 		}
 		parseBuf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(parseBuf)
 		fmt.Println("format = ", parseBuf.String())
 		switch s := stmt.(type) {
 		case *sqlparser.Select:
+			colsList := make([]string, 0)
+			// 解析列
 			colBuf := sqlparser.NewTrackedBuffer(nil)
-			for _, v := range s.GetColumns() {
-				v.Format(colBuf)
-				fmt.Println("cols=", colBuf, colBuf.String())
+			for _, col := range s.GetColumns() {
+				col.Format(colBuf)
+				colsList = append(colsList, colBuf.String())
 				colBuf.Reset()
 			}
+			// 解析被操作的库和表
 			fromBuf := sqlparser.NewTrackedBuffer(nil)
-			fromList := s.GetFrom()
-			for _, v := range fromList {
+			fromList := make([]string, 0)
+			for _, v := range s.GetFrom() {
 				v.Format(fromBuf)
-				fmt.Println("from = ", fromBuf)
+				fromList = append(fromList, fromBuf.String())
 			}
-			fmt.Println("cols number =", s.GetColumnCount())
-			stmtResults = append(stmtResults, SQLParser{
+			parseRes = append(parseRes, SQLParser{
 				SafeStmt: parseBuf.String(),
-				From:     fromBuf.String(),
-				Action:   "select",
-				DML:      "select",
+				from:     fromList,
+				cols:     colsList,
+				action:   "select",
 			})
 		case *sqlparser.Update:
-			fmt.Println("????", "Update SQL")
+			// 解析被操作的库和表
+			fromBuf := sqlparser.NewTrackedBuffer(nil)
+			fromList := make([]string, 0)
+			for _, v := range s.GetFrom() {
+				v.Format(fromBuf)
+				fromList = append(fromList, fromBuf.String())
+			}
+			fmt.Println("test table = ", s.TableExprs, s.Exprs)
+			vBuf := sqlparser.NewTrackedBuffer(nil)
+			s.Exprs.Format(vBuf) // Exprs 是Update的列名和值
+			fmt.Println("signel>>>>", vBuf)
+			vBuf.Reset()
+			for _, v := range s.TableExprs {
+				vBuf := sqlparser.NewTrackedBuffer(nil)
+				v.Format(vBuf)
+				fmt.Println("Loop>>>>", vBuf)
+				vBuf.Reset()
+			}
+			parseRes = append(parseRes, SQLParser{
+				SafeStmt: parseBuf.String(),
+				from:     fromList,
+				action:   "update",
+			})
 		case *sqlparser.Insert:
-			fmt.Println("????", "Insert SQL")
+			// 解析被操作的库和表
+			fromBuf := sqlparser.NewTrackedBuffer(nil)
+			fmt.Println(s.Columns, s.Rows, s.Table)
+			s.Format(fromBuf)
+			fmt.Println(">>>>>", fromBuf.String())
+			parseRes = append(parseRes, SQLParser{
+				SafeStmt: parseBuf.String(),
+				action:   "insert",
+			})
 		case *sqlparser.Delete:
-			fmt.Println("????", "Delete SQL")
-			return nil, GenerateError("IllegalAction", "DML DELETE action is not allow")
+			return nil, GenerateError("IllegalAction", "dml=DELETE action is not allow")
 		default:
 			return nil, GenerateError("ActionNotSupprt", "Unknown Action")
 		}
 	}
-	return stmtResults, nil
-}
-
-func selectHandle() {
-
+	return parseRes, nil
 }
 
 // 解析一个SQL语句（仅能通过select查询语句）
@@ -123,8 +154,8 @@ func ParseSQL(statement string, dml string) (string, error) {
 
 func (p *SQLParser) validate() error {
 	// 不允许SELECT除外的操作
-	p.Action = strings.Split(p.SafeStmt, " ")[0]
-	lowerStr := strings.ToLower(p.Action)
+	p.action = strings.Split(p.SafeStmt, " ")[0]
+	lowerStr := strings.ToLower(p.action)
 	if lowerStr != "select" {
 		return GenerateError("SQL Validate Failed", "Only `SELECT` sql query is supported")
 	}
