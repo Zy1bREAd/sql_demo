@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"vitess.io/vitess/go/vt/sqlparser"
@@ -65,6 +67,31 @@ func parseV2(sqlRaw string) ([]SQLParser, error) {
 			for _, v := range s.GetFrom() {
 				v.Format(fromBuf)
 				fromList = append(fromList, fromBuf.String())
+			}
+			// LIMIT子句限制(1000)
+			lmtBuf := sqlparser.NewTrackedBuffer(nil)
+			s.GetLimit().Format(lmtBuf)
+			re, err := regexp.Compile(`\s+limit\s+([0-9]+$)`)
+			if err != nil {
+				return parseRes, GenerateError("RegexpError", err.Error())
+			}
+			limitList := re.FindStringSubmatch(lmtBuf.String())
+			// 没有设置LIMIT或者LIMIT大于1000需要设置最大LIMIT值
+			if len(limitList) == 0 {
+				// 默认限制1000
+				s.SetLimit(sqlparser.NewLimit(0, 1000))
+				parseBuf.Reset()
+				parseBuf.WriteString(sqlparser.String(s))
+			} else {
+				limitVal, err := strconv.ParseInt(limitList[1], 10, 64)
+				if err != nil {
+					return parseRes, GenerateError("StrConvIntError", err.Error())
+				}
+				if limitVal > 1000 {
+					s.SetLimit(sqlparser.NewLimit(0, 1000))
+					parseBuf.Reset()
+					parseBuf.WriteString(sqlparser.String(s))
+				}
 			}
 			parseRes = append(parseRes, SQLParser{
 				SafeStmt: parseBuf.String(),

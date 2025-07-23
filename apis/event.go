@@ -168,8 +168,6 @@ func (ed *EventDispatcher) Dispatch(ctx context.Context) {
 				case <-ed.stopChan:
 					DebugPrint("EventRouteStop", "收到退出信号，退出当前调度者")
 					return
-				// default:
-				// DebugPrint("EventRoute???", "无事件调度，有可能eventChannel无数据")
 				case <-ctx.Done():
 					DebugPrint("EventRouteStop", "收到全局退出信号，退出所有")
 					ed.Stop()
@@ -225,7 +223,6 @@ func (wrapper *EventHandlerWrapper) workLoop() {
 	for {
 		select {
 		case event, ok := <-wrapper.queue:
-			fmt.Printf("事件类型=%s\n", event.Type)
 			if !ok {
 				fmt.Println("队列已被关闭")
 				return
