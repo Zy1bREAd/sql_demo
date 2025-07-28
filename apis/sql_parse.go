@@ -15,8 +15,6 @@ import (
 
 type SQLParser struct {
 	action   string // 代表DML类型
-	cols     []string
-	from     []string
 	SafeStmt string // 经过语法检验的原生SQL
 }
 
@@ -28,7 +26,7 @@ func signelParseV2(sqlRaw string) (SQLParser, error) {
 	return SQLParser{}, nil
 }
 
-func parseV2(sqlRaw string) ([]SQLParser, error) {
+func parseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 	parseRes := make([]SQLParser, 0)
 	p, err := sqlparser.New(sqlparser.Options{
 		TruncateUILen:  512,
@@ -50,96 +48,153 @@ func parseV2(sqlRaw string) ([]SQLParser, error) {
 		}
 		parseBuf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(parseBuf)
-		fmt.Println("format = ", parseBuf.String())
+		// 抽象成结构体
+		psr := SQLParser{
+			SafeStmt: parseBuf.String(),
+		}
 		switch s := stmt.(type) {
 		case *sqlparser.Select:
-			colsList := make([]string, 0)
-			// 解析列
-			colBuf := sqlparser.NewTrackedBuffer(nil)
-			for _, col := range s.GetColumns() {
-				col.Format(colBuf)
-				colsList = append(colsList, colBuf.String())
-				colBuf.Reset()
-			}
-			// 解析被操作的库和表
-			fromBuf := sqlparser.NewTrackedBuffer(nil)
-			fromList := make([]string, 0)
-			for _, v := range s.GetFrom() {
-				v.Format(fromBuf)
-				fromList = append(fromList, fromBuf.String())
-			}
 			// LIMIT子句限制(1000)
 			lmtBuf := sqlparser.NewTrackedBuffer(nil)
 			s.GetLimit().Format(lmtBuf)
-			re, err := regexp.Compile(`\s+limit\s+([0-9]+$)`)
-			if err != nil {
-				return parseRes, GenerateError("RegexpError", err.Error())
-			}
-			limitList := re.FindStringSubmatch(lmtBuf.String())
-			// 没有设置LIMIT或者LIMIT大于1000需要设置最大LIMIT值
-			if len(limitList) == 0 {
-				// 默认限制1000
+			if !validateLimit(lmtBuf.String()) {
 				s.SetLimit(sqlparser.NewLimit(0, 1000))
-				parseBuf.Reset()
-				parseBuf.WriteString(sqlparser.String(s))
-			} else {
-				limitVal, err := strconv.ParseInt(limitList[1], 10, 64)
-				if err != nil {
-					return parseRes, GenerateError("StrConvIntError", err.Error())
-				}
-				if limitVal > 1000 {
-					s.SetLimit(sqlparser.NewLimit(0, 1000))
-					parseBuf.Reset()
-					parseBuf.WriteString(sqlparser.String(s))
-				}
+				psr.SafeStmt = sqlparser.String(s)
 			}
-			parseRes = append(parseRes, SQLParser{
-				SafeStmt: parseBuf.String(),
-				from:     fromList,
-				cols:     colsList,
-				action:   "select",
-			})
+			// 判断是否完整的表名
+			if !validateFullTableNameV2(s.GetFrom()) {
+				fmt.Println("dbnameisnotfound")
+				return nil, GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
+			}
+			// 手动设置From并且重新生成SQL语句
+			// s.SetFrom(tableExprsList)
+			psr.SafeStmt = sqlparser.String(s)
+			psr.action = "select"
+
 		case *sqlparser.Update:
-			// 解析被操作的库和表
-			fromBuf := sqlparser.NewTrackedBuffer(nil)
-			fromList := make([]string, 0)
-			for _, v := range s.GetFrom() {
-				v.Format(fromBuf)
-				fromList = append(fromList, fromBuf.String())
+			// 判断是否完整的表名
+			if !validateFullTableNameV2(s.GetFrom()) {
+				fmt.Println("dbnameisnotfound")
+				return nil, GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
 			}
-			fmt.Println("test table = ", s.TableExprs, s.Exprs)
-			vBuf := sqlparser.NewTrackedBuffer(nil)
-			s.Exprs.Format(vBuf) // Exprs 是Update的列名和值
-			fmt.Println("signel>>>>", vBuf)
-			vBuf.Reset()
-			for _, v := range s.TableExprs {
-				vBuf := sqlparser.NewTrackedBuffer(nil)
-				v.Format(vBuf)
-				fmt.Println("Loop>>>>", vBuf)
-				vBuf.Reset()
-			}
-			parseRes = append(parseRes, SQLParser{
-				SafeStmt: parseBuf.String(),
-				from:     fromList,
-				action:   "update",
-			})
+			// 手动设置From并且重新生成SQL语句
+			// s.SetFrom(tableExprsList)
+			psr.SafeStmt = sqlparser.String(s)
+			psr.action = "update"
+
 		case *sqlparser.Insert:
 			// 解析被操作的库和表
-			fromBuf := sqlparser.NewTrackedBuffer(nil)
-			fmt.Println(s.Columns, s.Rows, s.Table)
-			s.Format(fromBuf)
-			fmt.Println(">>>>>", fromBuf.String())
-			parseRes = append(parseRes, SQLParser{
-				SafeStmt: parseBuf.String(),
-				action:   "insert",
-			})
+			originalTable := s.Table.TableNameString()
+			table, err := s.Table.TableName()
+			if err != nil {
+				return parseRes, GenerateError("TableNameError", err.Error())
+			}
+			// 判断是否携带数据库名
+			if table.Qualifier.IsEmpty() {
+				s.Table.Expr = sqlparser.NewTableNameWithQualifier(originalTable, dbName)
+				psr.SafeStmt = sqlparser.String(s)
+			}
+			// if !validateFullTableName(originalTable) {
+			// 	s.Table.Expr = sqlparser.NewTableNameWithQualifier(originalTable, dbName)
+			// 	parseBuf.Reset()
+			// 	parseBuf.WriteString(sqlparser.String(s))
+			// }
+			psr.action = "insert"
 		case *sqlparser.Delete:
 			return nil, GenerateError("IllegalAction", "dml=DELETE action is not allow")
 		default:
 			return nil, GenerateError("ActionNotSupprt", "Unknown Action")
 		}
+
+		parseRes = append(parseRes, psr)
 	}
 	return parseRes, nil
+}
+
+// 校验LIMIT子句约束
+func validateLimit(limitExprs string) bool {
+	re, err := regexp.Compile(`\s+limit\s+([0-9]+$)`)
+	if err != nil {
+		DebugPrint("RegexpError", err.Error())
+		return false
+	}
+	limitList := re.FindStringSubmatch(limitExprs)
+	// 没有设置LIMIT或者LIMIT大于1000需要设置最大LIMIT值
+	if len(limitList) == 0 {
+		return false
+	} else {
+		limitVal, err := strconv.ParseInt(limitList[1], 10, 64)
+		if err != nil {
+			DebugPrint("StrConvIntError", err.Error())
+			return false
+		}
+		if limitVal > 1000 {
+			return false
+		}
+	}
+	return true
+}
+
+// 递归检查是否完整表名（强制约束）
+func validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
+	for _, from := range tableExprs {
+		tempBuf := sqlparser.NewTrackedBuffer(nil)
+		from.Format(tempBuf)
+		currTableName := tempBuf.String()
+
+		switch fr := from.(type) {
+		case *sqlparser.AliasedTableExpr:
+			switch subFr := fr.Expr.(type) {
+			case *sqlparser.TableName:
+				return !subFr.Qualifier.IsEmpty() // 终止条件2: 判断是否完整表名
+			case *sqlparser.DerivedTable:
+				// 子表
+				switch subSelect := subFr.Select.(type) {
+				case *sqlparser.Select:
+					return validateFullTableNameV2(subSelect.GetFrom())
+				default:
+					DebugPrint("UnknownSQL", "Unknown AsTableExpr sql parser,Oops")
+				}
+			default:
+				// 终止条件1：判断字符串是否为完整的表名
+				if !validateTableIsFull(currTableName) {
+					return false
+				}
+				fmt.Println("当前FROM表名检测为完整状态，因此跳过...", tableExprs)
+			}
+		case *sqlparser.JoinTableExpr:
+			// 左右子表
+			tempList := make(sqlparser.TableExprs, 0)
+			tempList = append(tempList, fr.LeftExpr)
+			if !validateFullTableNameV2(tempList) {
+				return false
+			}
+			tempList = nil
+			tempList = append(tempList, fr.RightExpr)
+			if !validateFullTableNameV2(tempList) {
+				return false
+			}
+			return true
+		default:
+			DebugPrint("UnknownSQL", "Unknown JoinTableExpr sql parser,Oops")
+		}
+	}
+	return true
+}
+
+func validateTableIsFull(tableExprs string) bool {
+	// split 和 正则表达式
+	s := strings.Split(tableExprs, ".")
+	if len(s) == 0 {
+		return false
+	}
+	reg, err := regexp.Compile(`([\d\w_]+)\.([\d\w_]+)`)
+	if err != nil {
+		DebugPrint("RegepError", err.Error())
+		return false
+	}
+	findList := reg.FindStringSubmatch(tableExprs)
+	return len(findList) != 0
 }
 
 // 解析一个SQL语句（仅能通过select查询语句）

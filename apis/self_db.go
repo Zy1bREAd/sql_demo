@@ -298,6 +298,7 @@ func SaveTempResult(uukey, taskId string, expireTime uint, allowExport bool) err
 	return nil
 }
 
+// 从数据库中获取结果集是否存在、是否过期
 func GetTempResult(uuKey string) (*TempResultMap, error) {
 	var tempData TempResultMap
 	res := selfDB.conn.Where("uu_key = ?", uuKey).First(&tempData)

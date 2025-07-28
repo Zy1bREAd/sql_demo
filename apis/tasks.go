@@ -37,23 +37,24 @@ type cleanTask struct {
 type QueryTask struct {
 	ID        string
 	DBName    string
-	Action    string
+	Action    string // 表示SQL执行的DML
 	Statement string
 	Env       string // 所执行环境
 	Service   string
-	deadline  int64 // 超时时间（单位为秒）,默认 30s
-	UserID    uint  // 关联执行用户id
+	deadline  int // 单个SQL的超时时间（单位为秒）
+	// UserID    uint // 关联执行用户id
 }
 type QTaskGroup struct {
 	GID      string
 	DML      string
 	QTasks   []*QueryTask
-	deadline int64 //超时时间
+	deadline int  //整个任务组的超时时间
+	UserId   uint // repeat
 }
 
 // 封装QueryTask 结合GitLab Issue
-type IssueQueryTask struct {
-	QTask  *QueryTask
+type IssueQTask struct {
+	QTG    *QTaskGroup
 	QIssue *Issue
 }
 
@@ -73,20 +74,19 @@ type IssueQueryTask struct {
 // }
 
 // 事件驱动(v2.0)
-func CreateSQLQueryTask(statement string, database string, userId string) QueryTask {
-	//! context控制超时
-	task := QueryTask{
-		ID:        GenerateUUIDKey(),
-		DBName:    database,
-		Statement: statement,
-		deadline:  30,
-		UserID:    StrToUint(userId),
-	}
-	log.Printf("task id=%s is enqueue", task.ID)
-	return task
-}
+// func CreateSQLQueryTask(statement string, database string, userId string) QueryTask {
+// 	//! context控制超时
+// 	task := QueryTask{
+// 		ID:        GenerateUUIDKey(),
+// 		DBName:    database,
+// 		Statement: statement,
+// 		deadline:  30,
+// 	}
+// 	log.Printf("task id=%s is enqueue", task.ID)
+// 	return task
+// }
 
-// 多SQL执行(可Query可Excute)
+// 多SQL执行(可Query可Excute), 遇到错误立即退出后续执行
 func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 	log.Printf("task group_id=%s is working", qtg.GID)
 	//! 执行任务函数只当只关心任务处理逻辑本身
@@ -99,23 +99,24 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 		resGroup: make([]*SQLResult, 0),
 	}
 	for _, task := range qtg.QTasks {
+		fmt.Println("debug>>>", task)
 		var result SQLResult = SQLResult{
 			ID:   task.ID,
 			Stmt: task.Statement,
 		}
-		if task.Action != qtg.DML {
-			result.errrr = GenerateError("ActionNotMatch", "DML and Action is not match")
-			result.ErrMsg = result.errrr.Error()
-			rg.resGroup = append(rg.resGroup, &result)
-			continue
-		}
+		// if task.Action != qtg.DML {
+		// 	result.errrr = GenerateError("ActionNotMatch", "DML and Action is not match")
+		// 	result.ErrMsg = result.errrr.Error()
+		// 	rg.resGroup = append(rg.resGroup, &result)
+		// 	break
+		// }
 		// 获取对应数据库实例进行SQL查询
 		op, err := HaveDBIst(task.Env, task.DBName, task.Service)
 		if err != nil {
 			result.errrr = err
 			result.ErrMsg = result.errrr.Error()
 			rg.resGroup = append(rg.resGroup, &result)
-			continue
+			break
 		}
 		// 执行前健康检查DB
 		err = op.HealthCheck(timeoutCtx)
@@ -123,7 +124,7 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 			result.errrr = GenerateError("HealthCheckFailed", err.Error())
 			result.ErrMsg = result.errrr.Error()
 			rg.resGroup = append(rg.resGroup, &result)
-			continue
+			break
 		}
 		// 拥有细粒度超时控制的核心查询函数
 		if task.Action == "select" {
@@ -131,8 +132,12 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 		} else {
 			result = op.Excute(timeoutCtx, task.Statement, task.ID)
 		}
-		log.Printf("task group_id=%s is completed", rg.GID)
+		log.Printf("task group_id=%s iid=%s is completed", rg.GID, task.ID)
 		rg.resGroup = append(rg.resGroup, &result)
+		// 如果该条SQL遇到ERROR立即中止后续执行
+		if result.errrr != nil {
+			break
+		}
 	}
 	ep.Produce(Event{
 		Type:    "save_result",
@@ -207,7 +212,7 @@ type ExportTask struct {
 	Type     string `json:"export_type"`
 	FileName string
 	UserID   uint
-	deadline int64 // task timeout
+	deadline int // task timeout
 	Result   *ExportResult
 }
 
@@ -266,7 +271,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 			return GenerateError("QueryTaskError", "query task object type not match")
 		}
 		// 同步方式每秒检测是否查询任务完成，来获取结果集
-		for i := 0; i <= int(task.deadline); i++ {
+		for i := 0; i <= task.deadline; i++ {
 			time.Sleep(1 * time.Second)
 			mapVal, ok := ResultMap.Get(task.ID)
 			if ok {

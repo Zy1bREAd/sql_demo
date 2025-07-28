@@ -62,8 +62,7 @@ func InformRobot(content string) error {
 	}
 	informURL := GetAppConfig().WeixinEnv.InformWebhook
 	if informURL == "" {
-		DebugPrint("IsURLNull", "inform url is null")
-		return nil
+		return GenerateError("URLNull", "inform url is null")
 	}
 	// 序列化数据
 	jsonData, err := json.Marshal(qwRobot)

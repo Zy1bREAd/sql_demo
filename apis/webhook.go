@@ -3,8 +3,8 @@ package apis
 import (
 	"errors"
 	"fmt"
+	"log"
 	"slices"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
@@ -36,15 +36,16 @@ type CommentWebhook struct {
 }
 
 // 问题内容
-type SQLTemplate struct {
+type SQLIssueTemplate struct {
 	Action    string `json:"action"`
-	Remark    string `json:"remark"`
+	Remark    string `json:"remark,omitempty"`
 	Env       string `json:"env"`
 	Statement string `json:"statement"`
 	DBName    string `json:"db_name"`
 	Service   string `json:"service"`
-	DML       string `json:"dml"`
-	IsExport  bool   `json:"is_export"`
+	// DML       string `json:"dml"`
+	Deadline int  `json:"deadline,omitempty"`
+	IsExport bool `json:"is_export"`
 }
 
 // 评论内容
@@ -73,7 +74,7 @@ func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
 }
 
 func (i *IssueWebhook) OpenIssueHandle() error {
-	var content SQLTemplate
+	var content SQLIssueTemplate
 	err := json.Unmarshal([]byte(i.ObjectAttr.Description), &content)
 	if err != nil {
 		DebugPrint("JSONError", err.Error())
@@ -121,28 +122,37 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 	return nil
 }
 
-// 查询SQL
-func queryHandle(userId uint, issue *Issue, issueDesc *SQLTemplate) {
-	//! context控制超时
-	issueTask := &IssueQueryTask{
-		QTask: &QueryTask{
+// 执行SQL
+func (sqlt *SQLIssueTemplate) queryHandle(userId uint, issue *Issue, stmtList []SQLParser) {
+	taskGroup := make([]*QueryTask, 0)
+	for _, s := range stmtList {
+		qTask := QueryTask{
 			ID:        GenerateUUIDKey(),
-			DBName:    issueDesc.DBName,
-			Statement: issueDesc.Statement,
-			deadline:  30, // 抽离出来
-			UserID:    userId,
-			Env:       issueDesc.Env,
-			Service:   issueDesc.Service,
-			Action:    issueDesc.DML,
-		},
-		QIssue: issue,
+			DBName:    sqlt.DBName,
+			Statement: s.SafeStmt,
+			Env:       sqlt.Env,
+			Service:   sqlt.Service,
+			deadline:  sqlt.Deadline,
+			Action:    s.action,
+		}
+		taskGroup = append(taskGroup, &qTask)
 	}
+	gid := GenerateUUIDKey()
 	ep := GetEventProducer()
 	ep.Produce(Event{
-		Type:    "sql_query",
-		Payload: issueTask,
+		Type: "sql_query",
+		Payload: &IssueQTask{
+			QTG: &QTaskGroup{
+				GID:      gid,
+				DML:      sqlt.Action,
+				QTasks:   taskGroup,
+				deadline: len(taskGroup) * int(sqlt.Deadline),
+				UserId:   userId,
+			},
+			QIssue: issue,
+		},
 	})
-	DebugPrint("TaskEnqueue", fmt.Sprintf("task id=%s is enqueue", issueTask.QTask.ID))
+	DebugPrint("TaskEnqueue", fmt.Sprintf("task id=%s is enqueue", gid))
 }
 
 // 执行SQL
@@ -152,8 +162,8 @@ func excuteHandle(statement, dbName string, userId uint) error {
 }
 
 // 解析Issue描述详情
-func parseIssueDesc(desc string) (*SQLTemplate, error) {
-	var content SQLTemplate
+func parseIssueDesc(desc string) (*SQLIssueTemplate, error) {
+	var content SQLIssueTemplate
 	err := json.Unmarshal([]byte(desc), &content)
 	if err != nil {
 		var syntaxErr *json.SyntaxError
@@ -165,6 +175,96 @@ func parseIssueDesc(desc string) (*SQLTemplate, error) {
 	return &content, nil
 }
 
+func (c *CommentWebhook) handleApprovalPassed() error {
+	// 同意申请
+	glab := InitGitLabAPI()
+	// 检查审批人是否合法
+	approvalUserMap := GetAppConfig().ApprovalMap
+	v, exist := approvalUserMap[c.User.Name]
+	if !exist {
+		return GenerateError("ApprovalUserNotExist", "该用户不是审批人")
+	}
+	if v != c.User.ID {
+		// error: 不相同的userid
+		return GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
+	}
+	// 确认签派给SQL Handle User
+	gitlabConfig := GetAppConfig().GitLabEnv
+	if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
+		robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
+		err := glab.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
+		if err != nil {
+			log.Println(err.Error())
+		}
+		return GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
+	}
+	// 解析指定Issue
+	iss, err := glab.IssueView(c.Project.ID, c.Issue.IID)
+	if err != nil {
+		DebugPrint("GitLabAPIError", err.Error())
+		return err
+	}
+	// 检查issue状态是否关闭
+	if iss.State == "closed" {
+		return GenerateError("IsClosed", "The issue was closed")
+	}
+	// 解析Issue详情
+	issContent, err := parseIssueDesc(iss.Description)
+	if err != nil {
+		DebugPrint("ParseError", err.Error())
+		return err
+	}
+	//设置默认超时时间
+	if issContent.Deadline == 0 {
+		issContent.Deadline = 60
+	}
+	//! 解析Issue中SQL语法与约束
+	stmtList, err := parseV2(issContent.DBName, issContent.Statement)
+	if err != nil {
+		return err
+	}
+	// 执行SQL逻辑
+	userId := GetUserId(iss.Author.ID)
+	issContent.queryHandle(userId, iss, stmtList)
+	return nil
+}
+
+func (c *CommentWebhook) handleApprovalRejected(reason string) error {
+	// 检查审批人是否合法
+	approvalUserMap := GetAppConfig().ApprovalMap
+	v, exist := approvalUserMap[c.User.Name]
+	if !exist {
+		return GenerateError("ApprovalUserNotExist", "该用户不是审批人")
+	}
+	if v != c.User.ID {
+		// error: 不相同的userid
+		return GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
+	}
+	glab := InitGitLabAPI()
+	// 驳回
+	err := glab.CommentCreate(c.Project.ID, c.Issue.IID, "【审批不通过】驳回该SQL执行, 原因:"+reason)
+	if err != nil {
+		return GenerateError("CommentError", err.Error())
+	}
+	//  发送驳回通知给企业微信机器人
+	issueAuthor, err := glab.UserView(c.Issue.AuthorID)
+	if err != nil {
+		return GenerateError("GitLabAPIError", err.Error())
+	}
+	informBody := &RejectInformBody{
+		Action:   "Reject",
+		Link:     c.Issue.URL,
+		UserName: issueAuthor.Username,
+		Reason:   reason,
+		Approver: c.User.Username,
+	}
+	err = InformRobot(informBody.Fill())
+	if err != nil {
+		log.Println(err.Error())
+	}
+	return nil
+}
+
 func (c *CommentWebhook) CommentIssueHandle() error {
 	var content CommentContent
 	err := json.Unmarshal([]byte(c.ObjectAttr.Note), &content)
@@ -172,77 +272,12 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string. "+c.ObjectAttr.Note)
 		return nil
 	}
-	api := InitGitLabAPI()
-	if content.Approval == 0 {
-		// 同意
-		approvalMap := GetAppConfig().ApprovalMap
-		v, exist := approvalMap[c.User.Name]
-		if !exist {
-			return GenerateError("ApprovalUserNotExist", "审批人不存在")
-		}
-		if v != c.User.ID {
-			// error: 不相同的userid
-			return GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
-		}
-		// 确认签派给SQL Handler这个robot user
-		gitlabConfig := GetAppConfig().GitLabEnv
-		if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
-			// 评论Issue
-			robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
-			_ = api.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
-			return GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
-		}
-		// 查找指定的Issue
-		iss, err := api.IssueView(c.Project.ID, c.Issue.IID)
-		if err != nil {
-			DebugPrint("GitLabAPI", err.Error())
-			return err
-		}
-		// 检查issue状态是否关闭
-		if iss.State == "closed" {
-			return GenerateError("IsClosed", "The issue was closed")
-		}
-		// 解析Issue
-		issContent, err := parseIssueDesc(iss.Description)
-		if err != nil {
-			DebugPrint("ParseError", err.Error())
-			return err
-		}
-		// 检查DML是否对齐SQL语句开头
-		if !strings.HasPrefix(strings.ToLower(issContent.Statement), strings.ToLower(issContent.DML)) {
-			return GenerateError("NotMatchError", "DML and Statement is not match")
-		}
-		// 灵活执行问题处理函数（SQL查询or执行）
-		taskType := strings.ToLower(issContent.Action)
-		switch taskType {
-		case "query":
-			// 获取真正的userId
-			userId := GetUserId(iss.Author.ID)
-			queryHandle(userId, iss, issContent)
-		case "excute":
-		default:
-			DebugPrint("NothingDo", "no match task type")
-		}
-	} else if content.Approval == 1 {
-		// 驳回
-		err := api.CommentCreate(c.Project.ID, c.Issue.IID, "【审批不通过】驳回该SQL执行, 原因:"+content.Reason)
-		if err != nil {
-			return GenerateError("RejectError", err.Error())
-		}
-		//  发送驳回通知给企业微信机器人
-		issueAuthor, err := api.UserView(c.Issue.AuthorID)
-		if err != nil {
-			return GenerateError("GitLabAPI", err.Error())
-		}
-		informBody := &RejectInformBody{
-			Action:   "Reject",
-			Link:     c.Issue.URL,
-			UserName: issueAuthor.Username,
-			Reason:   content.Reason,
-			Approver: c.User.Username,
-		}
-		_ = InformRobot(informBody.Fill())
+	switch content.Approval {
+	case ApprovalStatusPassed:
+		return c.handleApprovalPassed()
+	case ApprovalStatusRejected:
+		return c.handleApprovalRejected(content.Reason)
+	default:
+		return GenerateError("ApprovalError", "Unknown Approval Status")
 	}
-
-	return nil
 }

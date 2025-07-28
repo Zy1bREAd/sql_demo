@@ -255,7 +255,6 @@ func (eh *QueryEventHandler) Name() string {
 }
 
 func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
-	// 防止重复执行任务?
 	// 判断哪种类型的QueryTask
 	switch t := e.Payload.(type) {
 	case *QueryTask:
@@ -269,18 +268,19 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
 		QueryTaskMap.Set(t.GID, t, 300, 1)
 		t.ExcuteTask(ctx)
 
-	case *IssueQueryTask:
-		DebugPrint("SQL查询事件消费", t.QTask.ID)
-		QueryTaskMap.Set(t.QTask.ID, t, 300, 1) // 存储查询任务信息
-		// Issue评论情况更新
-		api := InitGitLabAPI()
-		updateMsg := fmt.Sprintf("TaskId=%s is start work...", t.QTask.ID)
-		api.CommentCreate(t.QIssue.ProjectID, t.QIssue.IID, updateMsg)
-		t.QTask.ExcuteTask(ctx)
+	case *IssueQTask:
+		DebugPrint("GItlab Issue SQL查询事件消费", t.QTG.GID)
+		QueryTaskMap.Set(t.QTG.GID, t, 300, 1) // 存储查询任务信息
+		// Issue评论情况更新并开始执行任务
+		glab := InitGitLabAPI()
+		updateMsg := fmt.Sprintf("TaskId=%s is start work...", t.QTG.GID)
+		glab.CommentCreate(t.QIssue.ProjectID, t.QIssue.IID, updateMsg)
+
+		t.QTG.ExcuteTask(ctx)
 		// 日志审计插入v2
 		audit := AuditRecordV2{
-			TaskID:    t.QTask.ID,
-			UserID:    t.QTask.UserID,
+			TaskID:    t.QTG.GID,
+			UserID:    t.QTG.UserId,
 			Payload:   t.QIssue.Description,
 			ProjectID: t.QIssue.ProjectID,
 			IssueID:   t.QIssue.IID,
@@ -290,7 +290,6 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e Event) error {
 			ErrorPrint("AuditRecordV2", err.Error())
 		}
 	default:
-		DebugPrint("TaskTypeError", "event payload type is incrroect")
 		return GenerateError("TaskTypeError", "event payload type is incrroect")
 	}
 	return nil
@@ -311,58 +310,63 @@ func (eh *ResultEventHandler) Name() string {
 func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 	switch res := e.Payload.(type) {
 	// 抽象成接口
-	case *SQLResultGroup:
-		DebugPrint("查询结果Group事件消费", res.GID)
-		ResultMap.Set(res.GID, res, 300, 0)
-		testCh <- struct{}{}
 	case *SQLResult:
 		DebugPrint("查询结果事件消费", res.ID)
-		//! 后期核心处理结果集的代码逻辑块
 		ResultMap.Set(res.ID, res, 300, 0)
+	case *SQLResultGroup:
+		DebugPrint("查询结果组事件消费", res.GID)
+		//! 后期核心处理结果集的代码逻辑块
+		ResultMap.Set(res.GID, res, 300, 0)
 		testCh <- struct{}{}
-		// 获取ID对应的task
-		val, _ := QueryTaskMap.Get(res.ID)
-		v, ok := val.(*IssueQueryTask)
+		// 判断是否为GItLab Issue的任务
+		val, exist := QueryTaskMap.Get(res.GID)
+		if !exist {
+			return nil
+		}
+		v, ok := val.(*IssueQTask)
 		if !ok {
-			// 有可能是QueryTask，所以跳过
 			return nil
 		}
 		// Issue评论情况更新
-		api := InitGitLabAPI()
-		updateMsg := fmt.Sprintf("TaskId=%s is completed", v.QTask.ID)
-		api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, updateMsg)
-		if res.errrr != nil {
-			log.Printf("TaskId=%s TaskError=%s", res.ID, res.errrr)
-			err := api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, res.errrr.Error())
-			if err != nil {
-				DebugPrint("CommentError", "query task result comment is failed"+err.Error())
+		glab := InitGitLabAPI()
+		updateMsg := fmt.Sprintf("TaskGId=%s is completed", res.GID)
+		glab.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, updateMsg)
+		for _, result := range res.resGroup {
+			if result.errrr != nil {
+				errMsg := fmt.Sprintf("- TaskGId=%s\n- IID=%s\n- TaskError=%s", res.GID, result.ID, result.ErrMsg)
+				err := glab.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, errMsg)
+				if err != nil {
+					DebugPrint("CommentError", "query task result comment is failed"+err.Error())
+				}
+				// break
+				return nil
 			}
 		}
 		// 存储结果、输出结果临时链接
 		issContent, err := parseIssueDesc(v.QIssue.Description)
 		if err != nil {
-			api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "export result file is failed, "+res.errrr.Error())
+			glab.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "export result file is failed, "+err.Error())
 		}
 		uuKey, tempURL := NewHashTempLink()
-		err = SaveTempResult(uuKey, v.QTask.ID, 300, issContent.IsExport)
+		err = SaveTempResult(uuKey, res.GID, 300, issContent.IsExport)
 		if err != nil {
 			DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
 		}
-		api.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, tempURL)
-		// 导出结果
+		glab.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, tempURL)
+		// 导出结果(同步)
 		if issContent.IsExport {
-			exportTask := SubmitExportTask(v.QTask.ID, "csv", v.QIssue.Author.ID)
+			exportTask := SubmitExportTask(res.GID, "csv", v.QIssue.Author.ID)
 			<-exportTask.Result.Done
 		}
 		// 自动关闭issue（表示完成）
-		err = api.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
+		err = glab.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
 		if err != nil {
-			DebugPrint("GitLabAPI", err.Error())
+			DebugPrint("GitLabAPIError", err.Error())
 		}
 		// 完成通知
-		iss, err := api.IssueView(v.QIssue.ProjectID, v.QIssue.IID)
+		iss, err := glab.IssueView(v.QIssue.ProjectID, v.QIssue.IID)
 		if err != nil {
-			DebugPrint("GitLabAPI", err.Error())
+			DebugPrint("GitLabAPIError", err.Error())
 		}
 		informBody := InformTemplate{
 			UserName: v.QIssue.Author.Name,
@@ -372,7 +376,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e Event) error {
 		_ = InformRobot(informBody.Fill())
 	default:
 		typeName := reflect.TypeOf(e.Payload)
-		fmt.Println("？？？？？没有匹配到的结果集类型", typeName)
+		log.Println("没有匹配到的结果集类型", typeName)
 		testCh <- struct{}{}
 	}
 	return nil
@@ -445,6 +449,7 @@ func (eh *ExportEventHandler) Work(ctx context.Context, e Event) error {
 		body.Result.FilePath += "_failed"
 		body.Result.Done <- struct{}{}
 		DebugPrint("ExportTask", "export task "+body.ID+" is failed,error: "+err.Error())
+		return nil
 	}
 	DebugPrint("ExportTask", "export task "+body.ID+" is completed")
 	return nil

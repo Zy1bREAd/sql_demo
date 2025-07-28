@@ -111,7 +111,7 @@ func InitBaseRoutes() {
 		rgPublic.POST("/sso/login", userSSOLogin)
 		rgPublic.GET("/sso/callback", SSOCallBack)
 
-		rgAuth.POST("/sql/query", UserSQLQuery)
+		// rgAuth.POST("/sql/query", UserSQLQuery)
 		// 导出文件下载
 		rgAuth.POST("/result/export", ResultExport)
 		rgAuth.GET("/result/download-link/sse", SSEHandle)
@@ -142,12 +142,12 @@ func SQLExcuteTest(ctx *gin.Context) {
 		ErrorResp(ctx, "User not exist")
 		return
 	}
-	userId, ok := val.(string)
+	_, ok := val.(string)
 	if !ok {
 		ErrorResp(ctx, "convert type is failed")
 		return
 	}
-	var content SQLTemplate
+	var content SQLIssueTemplate
 	err := ctx.ShouldBindJSON(&content)
 	if err != nil {
 		ErrorResp(ctx, err.Error())
@@ -155,7 +155,7 @@ func SQLExcuteTest(ctx *gin.Context) {
 	}
 	fmt.Printf("完成请求信息搜集，%s\n", time.Now().String())
 
-	stmtList, err := parseV2(content.Statement)
+	stmtList, err := parseV2(content.DBName, content.Statement)
 	if err != nil {
 		ErrorResp(ctx, err.Error())
 		return
@@ -171,17 +171,17 @@ func SQLExcuteTest(ctx *gin.Context) {
 			Env:       content.Env,
 			Service:   content.Service,
 			deadline:  30,
-			UserID:    StrToUint(userId),
-			Action:    s.action,
+			// UserID:    StrToUint(userId),
+			Action: s.action,
 		}
 		taskGroup = append(taskGroup, &qTask)
 	}
 	gid := GenerateUUIDKey()
 	fmt.Println("gid===", gid)
 	qtg := &QTaskGroup{
-		GID:      gid,
-		QTasks:   taskGroup,
-		DML:      content.DML,
+		GID:    gid,
+		QTasks: taskGroup,
+		// DML:      content.DML,
 		deadline: 300,
 	}
 	// 事件驱动：封装成Event推送到事件通道(v2.0)
@@ -320,37 +320,37 @@ func DBList(ctx *gin.Context) {
 }
 
 // /api/v1/query
-func UserSQLQuery(ctx *gin.Context) {
-	// 防止伪造jwt请求
-	userID, exist := ctx.Get("user_id")
-	if !exist {
-		ErrorResp(ctx, "User not exist")
-		return
-	}
-	var q UserQuery
-	ctx.ShouldBind(&q)
-	log.Println(q)
+// func UserSQLQuery(ctx *gin.Context) {
+// 	// 防止伪造jwt请求
+// 	userID, exist := ctx.Get("user_id")
+// 	if !exist {
+// 		ErrorResp(ctx, "User not exist")
+// 		return
+// 	}
+// 	var q UserQuery
+// 	ctx.ShouldBind(&q)
+// 	log.Println(q)
 
-	// SQL语法解析并校验（v2.0)  - 格式化SQL查询语句（确保规范化）
-	sqlRaw, err := ParseSQL(q.Statement, "select")
-	if err != nil {
-		DefaultResp(ctx, 1, nil, err.Error())
-		return
-	}
-	// 提交异步任务入队(v1.0)
-	// taskID := SubmitSQLTask(sqlRaw, q.Database, userID.(string))
+// 	// SQL语法解析并校验（v2.0)  - 格式化SQL查询语句（确保规范化）
+// 	sqlRaw, err := ParseSQL(q.Statement, "select")
+// 	if err != nil {
+// 		DefaultResp(ctx, 1, nil, err.Error())
+// 		return
+// 	}
+// 	// 提交异步任务入队(v1.0)
+// 	// taskID := SubmitSQLTask(sqlRaw, q.Database, userID.(string))
 
-	// 事件驱动：封装成Event推送到事件通道(v2.0)
-	task := CreateSQLQueryTask(sqlRaw, q.Database, userID.(string))
-	ep := GetEventProducer()
-	ep.Produce(Event{
-		Type:    "sql_query",
-		Payload: task,
-	})
-	SuccessResp(ctx, map[string]string{
-		"task_id": task.ID,
-	}, "submit sql_query event success")
-}
+// 	// 事件驱动：封装成Event推送到事件通道(v2.0)
+// 	task := CreateSQLQueryTask(sqlRaw, q.Database, userID.(string))
+// 	ep := GetEventProducer()
+// 	ep.Produce(Event{
+// 		Type:    "sql_query",
+// 		Payload: task,
+// 	})
+// 	SuccessResp(ctx, map[string]string{
+// 		"task_id": task.ID,
+// 	}, "submit sql_query event success")
+// }
 
 // 通过SSE返回结果数据 ？?
 func getQueryResult(ctx *gin.Context) {
@@ -733,11 +733,12 @@ func getUserAuditRecordHandler(ctx *gin.Context) {
 func showTempQueryResult(ctx *gin.Context) {
 	uuKey := ctx.Param("identifier")
 	// 校验链接是否过期
-	res, err := GetTempResult(uuKey)
+	dbRes, err := GetTempResult(uuKey)
 	if err != nil {
 		DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
+	// 插入审计日志的超时控制
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*25)
 	defer cancel()
 	auditChan := make(chan struct{}, 1)
@@ -757,7 +758,7 @@ func showTempQueryResult(ctx *gin.Context) {
 		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
 		var auditRecord AuditRecordV2
 		db := HaveSelfDB()
-		res := db.conn.Where("task_id = ?", res.TaskId).First(&auditRecord)
+		res := db.conn.Where("task_id = ?", dbRes.TaskId).First(&auditRecord)
 		if res.Error != nil {
 			cancel()
 			ErrorPrint("DBAPIError", res.Error.Error())
@@ -778,24 +779,21 @@ func showTempQueryResult(ctx *gin.Context) {
 		auditChan <- struct{}{}
 	}()
 	// 结果集是否存在
-	userResult, exist := ResultMap.Get(res.TaskId)
+	userResult, exist := ResultMap.Get(dbRes.TaskId)
 	if !exist {
 		DefaultResp(ctx, 1, nil, "SQL Query result is not exist")
 		return
 	}
-	if val, ok := userResult.(*SQLResult); ok {
-		if val.errrr != nil {
-			DefaultResp(ctx, 1, nil, val.errrr.Error())
-			return
-		}
-		QueryTaskMap.Get(val.ID)
+	if val, ok := userResult.(*SQLResultGroup); ok {
+		// if val.resGroup != nil {
+		// 	DefaultResp(ctx, 1, nil, val.errrr.Error())
+		// 	return
+		// }
+		// QueryTaskMap.Get(val.ID)
 		SuccessResp(ctx, gin.H{
-			"result":        val.Results,
-			"rows_count":    val.RowCount,
-			"query_time":    val.QueryTime,
-			"raw_statement": val.Stmt,
-			"is_export":     res.IsAllowExport,
-			"task_id":       res.TaskId,
+			"result":    val.resGroup,
+			"is_export": dbRes.IsAllowExport,
+			"task_id":   val.GID,
 		}, "SUCCESS")
 	}
 	// 等待审计记录的完成

@@ -7,6 +7,11 @@ import (
 	"net/http"
 )
 
+const (
+	ApprovalStatusRejected = 0
+	ApprovalStatusPassed   = 1
+)
+
 // 主要是封装一个操作GITLAB API的Handler
 type GitLabAPI struct {
 	URL         string
@@ -209,6 +214,7 @@ func (gitlab *GitLabAPI) UserList() ([]GUser, error) {
 func NewHashTempLink() (string, string) {
 	appConfig := GetAppConfig()
 	uuKey := GenerateUUIDKey()
+	// 导出链接组成
 	tempResultURL := fmt.Sprintf("http://%s/result/temp-view/%s", appConfig.WebSrvEnv.HostName, uuKey)
 	return uuKey, tempResultURL
 }
