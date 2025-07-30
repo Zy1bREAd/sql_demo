@@ -47,6 +47,11 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 	go ed.Dispatch(ctx)
 }
 
+const (
+	QTaskGroupType = 1
+	IssueQTaskType = 2
+)
+
 // 具体实现事件处理者
 type QueryEventHandler struct {
 }
@@ -63,16 +68,30 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	// 判断哪种类型的QueryTask
 	switch t := e.Payload.(type) {
 	case *QueryTask:
-		utils.DebugPrint("SQL查询事件消费", t.ID)
-		QueryTaskMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
-		t.ExcuteTask(ctx)
+		utils.DebugPrint("不再支持该类型SQL", t.ID)
+		// QueryTaskMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
+		// t.ExcuteTask(ctx)
 		// 日志审计插入v2（不支持）
 
 	case *QTaskGroup: // 支持多SQL
 		utils.DebugPrint("SQL查询Group事件消费", t.GID)
 		QueryTaskMap.Set(t.GID, t, 300, 1)
 		t.ExcuteTask(ctx)
-
+		// 日志审计插入v2
+		stmtAll := ""
+		for _, t := range t.QTasks {
+			stmtAll = stmtAll + t.Statement + ";"
+		}
+		audit := dbo.AuditRecordV2{
+			TaskID:   t.GID,
+			UserID:   t.UserId,
+			Payload:  stmtAll,
+			TaskType: QTaskGroupType,
+		}
+		err := audit.InsertOne("SQL_QUERY")
+		if err != nil {
+			utils.ErrorPrint("AuditRecordV2", err.Error())
+		}
 	case *IssueQTask:
 		utils.DebugPrint("GItlab Issue SQL查询事件消费", t.QTG.GID)
 		QueryTaskMap.Set(t.QTG.GID, t, 300, 1) // 存储查询任务信息
@@ -89,6 +108,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			Payload:   t.QIssue.Description,
 			ProjectID: t.QIssue.ProjectID,
 			IssueID:   t.QIssue.IID,
+			TaskType:  IssueQTaskType,
 		}
 		err := audit.InsertOne("SQL_QUERY")
 		if err != nil {

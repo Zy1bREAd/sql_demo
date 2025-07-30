@@ -12,7 +12,11 @@ import (
 )
 
 func main() {
-	// defer apis.ErrorRecover()
+	defer func() {
+		if err := recover(); err != nil {
+			utils.DebugPrint("PrintGoroutineNumber2", runtime.NumGoroutine())
+		}
+	}()
 	// 开启文件日志记录
 	conf.InitAppConfig()
 	file := utils.StartFileLogging()
@@ -27,7 +31,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	// defer cancel()
 	defer func() {
-		utils.DebugPrint("worker goroutine 退出前", runtime.NumGoroutine())
+		utils.DebugPrint("PrintGoroutineNumber1", runtime.NumGoroutine())
 		cancel()
 	}()
 	// 初始化Gin以及路由( 从yaml file env中读取配置加载Server )

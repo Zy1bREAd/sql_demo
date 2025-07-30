@@ -178,37 +178,37 @@ func (usr *User) SSOLogin() (uint, error) {
 
 // 查询操作的日志审计
 // 新增操作审计记录
-func (re *AuditRecord) InsertOne() error {
-	tx := selfDB.conn.Begin()
-	// 避免携带默认值插入污染导出相关信息
-	result := selfDB.conn.Omit("IsExported", "ExportTime").Create(&re)
-	if result.Error != nil {
-		tx.Rollback()
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		tx.Rollback()
-		return utils.GenerateError("InsertAuditRecordError", "insert a query record failed")
-	}
-	tx.Commit()
+// func (re *AuditRecord) InsertOne() error {
+// 	tx := selfDB.conn.Begin()
+// 	// 避免携带默认值插入污染导出相关信息
+// 	result := selfDB.conn.Omit("IsExported", "ExportTime").Create(&re)
+// 	if result.Error != nil {
+// 		tx.Rollback()
+// 		return result.Error
+// 	}
+// 	if result.RowsAffected != 1 {
+// 		tx.Rollback()
+// 		return utils.GenerateError("InsertAuditRecordError", "insert a query record failed")
+// 	}
+// 	tx.Commit()
 
-	return nil
-}
+// 	return nil
+// }
 
-func (re *AuditRecord) UpdateExport() error {
-	tx := selfDB.conn.Begin()
-	result := selfDB.conn.Where("task_id = ?", re.TaskID).Where("user_id = ?", re.UserID).Updates(&re)
-	if result.Error != nil {
-		tx.Rollback()
-		return result.Error
-	}
-	if result.RowsAffected != 1 {
-		tx.Rollback()
-		return utils.GenerateError("RecordError", "update a query record failed")
-	}
-	tx.Commit()
-	return nil
-}
+// func (re *AuditRecord) UpdateExport() error {
+// 	tx := selfDB.conn.Begin()
+// 	result := selfDB.conn.Where("task_id = ?", re.TaskID).Where("user_id = ?", re.UserID).Updates(&re)
+// 	if result.Error != nil {
+// 		tx.Rollback()
+// 		return result.Error
+// 	}
+// 	if result.RowsAffected != 1 {
+// 		tx.Rollback()
+// 		return utils.GenerateError("RecordError", "update a query record failed")
+// 	}
+// 	tx.Commit()
+// 	return nil
+// }
 
 // func UpdateExportAuditRecord(record *AuditRecord) error {
 // 	tx := selfDB.conn.Begin()

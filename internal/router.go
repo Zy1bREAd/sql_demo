@@ -62,7 +62,6 @@ func InitRouter() {
 		fn(rgPublic, rgAuth)
 	}
 
-	// r.Run("localhost:21899")
 	// 优雅关闭：监听信号量的context，等待信号量出现进行cancel()；传入gin server进行关闭。
 	conf := conf.GetAppConf().GetBaseConfig()
 	srv := &http.Server{
@@ -75,9 +74,6 @@ func InitRouter() {
 		go func() {
 			fmt.Printf("Listening and serving HTTPS on %s\n", conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.TLSEnv.Port)
 			srv.ListenAndServeTLS(conf.WebSrvEnv.TLSEnv.Cert, conf.WebSrvEnv.TLSEnv.Key)
-			// if err != nil {
-			// 	panic(err)
-			// }
 		}()
 		// 将HTTP重定向到HTTPS
 		go func() {
@@ -103,9 +99,9 @@ func InitRouter() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		utils.GenerateError("ShutDown Server Failed", err.Error())
+		panic(utils.GenerateError("ShutDonwFailed", err.Error()))
 	} else {
-		log.Println("closed server!!")
+		utils.DebugPrint("ServerIsClosed", "Gin Server is closed,Bye Bye")
 	}
 
 }
@@ -149,7 +145,7 @@ func SQLExcuteTest(ctx *gin.Context) {
 		common.ErrorResp(ctx, "User not exist")
 		return
 	}
-	_, ok := val.(string)
+	usrIdStr, ok := val.(string)
 	if !ok {
 		common.ErrorResp(ctx, "convert type is failed")
 		return
@@ -184,10 +180,10 @@ func SQLExcuteTest(ctx *gin.Context) {
 		taskGroup = append(taskGroup, &qTask)
 	}
 	gid := utils.GenerateUUIDKey()
-	fmt.Println("gid===", gid)
 	qtg := &core.QTaskGroup{
 		GID:    gid,
 		QTasks: taskGroup,
+		UserId: utils.StrToUint(usrIdStr),
 		// DML:      content.DML,
 		Deadline: 300,
 	}
@@ -208,7 +204,7 @@ func SQLExcuteTest(ctx *gin.Context) {
 		return
 	}
 	if result, ok := res.(*dbo.SQLResultGroup); ok {
-		common.SuccessResp(ctx, result.ResGroup, "result ok!!!")
+		common.SuccessResp(ctx, result.ResGroup, "sql query excute is success")
 		fmt.Printf("响应数据，%s\n", time.Now().String())
 		return
 	}
@@ -488,7 +484,6 @@ func SSOCallBack(ctx *gin.Context) {
 		common.ErrorResp(ctx, "Failed to exchange token:"+err.Error())
 		return
 	}
-	// log.Println("DEBUG>>>", token)
 
 	// 通过获取身份提供商的token中的用户信息，构造我们application的token
 	oauthConf := auth.GetOAuthConfig()
@@ -791,6 +786,7 @@ func showTempQueryResult(ctx *gin.Context) {
 		// 日志审计插入v2
 		auditRecord.ID = 0
 		auditRecord.UserID = utils.StrToUint(userId)
+
 		err := auditRecord.InsertOne("RESULT_VIEW")
 		if err != nil {
 			utils.ErrorPrint("AuditRecordV2", err.Error())

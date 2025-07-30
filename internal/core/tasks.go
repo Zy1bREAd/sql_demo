@@ -99,7 +99,6 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 		ResGroup: make([]*dbo.SQLResult, 0),
 	}
 	for _, task := range qtg.QTasks {
-		fmt.Println("debug>>>", task)
 		var result dbo.SQLResult = dbo.SQLResult{
 			ID:   task.ID,
 			Stmt: task.Statement,

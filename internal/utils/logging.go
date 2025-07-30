@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"time"
 )
 
 const (
@@ -16,20 +15,10 @@ const (
 )
 
 var levelMap = map[int]string{
-	0: "ERROR",
-	1: "WARN",
-	2: "INFO",
-	3: "DEBUG",
-}
-
-func ErrorRecover() {
-	if err := recover(); err != nil {
-		// manger := newDBPoolManager()
-		// manger.CloseDBPool()
-		now := time.Now()
-		log.Printf("[%s][ERRRO] - %s", now.Format("2006-01-02T15:04:05"), err)
-		panic(err)
-	}
+	LogLevelError: "ERROR",
+	LogLevelWarn:  "WARN",
+	LogLevelInfo:  "INFO",
+	LogLevelDebug: "DEBUG",
 }
 
 func generateLog(level int, errorTitle string, msg string) string {
@@ -51,13 +40,13 @@ func GenerateError(errorTitle string, msg string) error {
 // 调试打印信息
 func DebugPrint(title string, msg any) {
 	if assertVal, ok := msg.(string); ok {
-		log.Println(generateLog(3, title, assertVal))
+		log.Println(generateLog(LogLevelDebug, title, assertVal))
 		return
 	} else if assertVal, ok := msg.(int); ok {
-		log.Println(generateLog(3, title, string(rune(assertVal))))
+		log.Println(generateLog(LogLevelDebug, title, string(rune(assertVal))))
 		return
 	} else if assertVal, ok := msg.(error); ok {
-		log.Println(generateLog(3, title, assertVal.Error()))
+		log.Println(generateLog(LogLevelDebug, title, assertVal.Error()))
 		return
 	}
 	log.Println(msg)
@@ -66,13 +55,13 @@ func DebugPrint(title string, msg any) {
 // 打印错误信息
 func ErrorPrint(title string, msg any) {
 	if assertVal, ok := msg.(string); ok {
-		log.Println(generateLog(0, title, assertVal))
+		log.Println(generateLog(LogLevelError, title, assertVal))
 		return
 	} else if assertVal, ok := msg.(int); ok {
-		log.Println(generateLog(0, title, string(rune(assertVal))))
+		log.Println(generateLog(LogLevelError, title, string(rune(assertVal))))
 		return
 	} else if assertVal, ok := msg.(error); ok {
-		log.Println(generateLog(0, title, assertVal.Error()))
+		log.Println(generateLog(LogLevelError, title, assertVal.Error()))
 		return
 	}
 	log.Println(msg)

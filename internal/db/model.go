@@ -62,8 +62,8 @@ type AuditRecordV2 struct {
 	TaskID    string    `gorm:"type:varchar(255);not null;index"` // 相当于链路ID
 	EventType string    `gorm:"type:varchar(64);not null"`
 	Payload   string    `gorm:""` // 记录审计的载体，以JSON格式
+	TaskType  int       `gorm:"type:smallint"`
 	CreatAt   time.Time `gorm:"type:datetime(0);autoCreateTime"`
-
 	// 关联User表
 	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
 	UserID uint
