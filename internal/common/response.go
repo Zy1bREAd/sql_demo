@@ -1,8 +1,9 @@
-package apis
+package common
 
 import (
 	"fmt"
 	"net/http"
+	"sql_demo/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -60,10 +61,11 @@ func FormatPrint(title, msg string) string {
 	return fmt.Sprintf("[%s] - %s", title, msg)
 }
 
+// 校验响应体
 func ValidateRespBody(reqMethodName string, resp *http.Response) error {
 	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
 		return nil
 	}
 	ErrMsg := fmt.Sprintf("response status=%s, status_code=%d", resp.Status, resp.StatusCode)
-	return GenerateError(reqMethodName, ErrMsg)
+	return utils.GenerateError(reqMethodName, ErrMsg)
 }

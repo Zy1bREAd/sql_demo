@@ -1,4 +1,4 @@
-package apis
+package core
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"log"
 	"regexp"
 	"slices"
+	"sql_demo/internal/utils"
 	"strconv"
 	"strings"
 
@@ -14,26 +15,26 @@ import (
 )
 
 type SQLParser struct {
-	action   string // 代表DML类型
+	Action   string // 代表DML类型
 	SafeStmt string // 经过语法检验的原生SQL
 }
 
 func signelParseV2(sqlRaw string) (SQLParser, error) {
 	// stmt, err := p.Parse(sqlRaw)
 	// if err != nil {
-	// 	return GenerateError("ParseStmtError", err.Error())
+	// 	return utils.GenerateError("ParseStmtError", err.Error())
 	// }
 	return SQLParser{}, nil
 }
 
-func parseV2(dbName, sqlRaw string) ([]SQLParser, error) {
+func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 	parseRes := make([]SQLParser, 0)
 	p, err := sqlparser.New(sqlparser.Options{
 		TruncateUILen:  512,
 		TruncateErrLen: 1024,
 	})
 	if err != nil {
-		return parseRes, GenerateError("NewParserError", err.Error())
+		return parseRes, utils.GenerateError("NewParserError", err.Error())
 	}
 	token := p.NewStringTokenizer(sqlRaw)
 	// 尝试解析多条SQL语句
@@ -44,7 +45,7 @@ func parseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 				// 已读取完所有SQL语句，跳出解析SQL的Loop
 				break
 			}
-			return parseRes, GenerateError("ParseStmtError", err.Error())
+			return parseRes, utils.GenerateError("ParseStmtError", err.Error())
 		}
 		parseBuf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(parseBuf)
@@ -63,47 +64,42 @@ func parseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 			}
 			// 判断是否完整的表名
 			if !validateFullTableNameV2(s.GetFrom()) {
-				fmt.Println("dbnameisnotfound")
-				return nil, GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
+				return nil, utils.GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
 			}
 			// 手动设置From并且重新生成SQL语句
 			// s.SetFrom(tableExprsList)
 			psr.SafeStmt = sqlparser.String(s)
-			psr.action = "select"
+			psr.Action = "select"
 
 		case *sqlparser.Update:
 			// 判断是否完整的表名
 			if !validateFullTableNameV2(s.GetFrom()) {
-				fmt.Println("dbnameisnotfound")
-				return nil, GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
+				return nil, utils.GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
 			}
 			// 手动设置From并且重新生成SQL语句
 			// s.SetFrom(tableExprsList)
 			psr.SafeStmt = sqlparser.String(s)
-			psr.action = "update"
+			psr.Action = "update"
 
 		case *sqlparser.Insert:
 			// 解析被操作的库和表
-			originalTable := s.Table.TableNameString()
+			// originalTable := s.Table.TableNameString()
 			table, err := s.Table.TableName()
 			if err != nil {
-				return parseRes, GenerateError("TableNameError", err.Error())
+				return parseRes, utils.GenerateError("TableNameError", err.Error())
 			}
 			// 判断是否携带数据库名
 			if table.Qualifier.IsEmpty() {
-				s.Table.Expr = sqlparser.NewTableNameWithQualifier(originalTable, dbName)
-				psr.SafeStmt = sqlparser.String(s)
+				return nil, utils.GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
+				// 先不修改，暂时直接抛出来
+				// s.Table.Expr = sqlparser.NewTableNameWithQualifier(originalTable, dbName)
+				// psr.SafeStmt = sqlparser.String(s)
 			}
-			// if !validateFullTableName(originalTable) {
-			// 	s.Table.Expr = sqlparser.NewTableNameWithQualifier(originalTable, dbName)
-			// 	parseBuf.Reset()
-			// 	parseBuf.WriteString(sqlparser.String(s))
-			// }
-			psr.action = "insert"
+			psr.Action = "insert"
 		case *sqlparser.Delete:
-			return nil, GenerateError("IllegalAction", "dml=DELETE action is not allow")
+			return nil, utils.GenerateError("IllegalAction", "dml=DELETE action is not allow")
 		default:
-			return nil, GenerateError("ActionNotSupprt", "Unknown Action")
+			return nil, utils.GenerateError("ActionNotSupprt", "Unknown Action")
 		}
 
 		parseRes = append(parseRes, psr)
@@ -115,7 +111,7 @@ func parseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 func validateLimit(limitExprs string) bool {
 	re, err := regexp.Compile(`\s+limit\s+([0-9]+$)`)
 	if err != nil {
-		DebugPrint("RegexpError", err.Error())
+		utils.DebugPrint("RegexpError", err.Error())
 		return false
 	}
 	limitList := re.FindStringSubmatch(limitExprs)
@@ -125,7 +121,7 @@ func validateLimit(limitExprs string) bool {
 	} else {
 		limitVal, err := strconv.ParseInt(limitList[1], 10, 64)
 		if err != nil {
-			DebugPrint("StrConvIntError", err.Error())
+			utils.DebugPrint("StrConvIntError", err.Error())
 			return false
 		}
 		if limitVal > 1000 {
@@ -153,7 +149,7 @@ func validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
 				case *sqlparser.Select:
 					return validateFullTableNameV2(subSelect.GetFrom())
 				default:
-					DebugPrint("UnknownSQL", "Unknown AsTableExpr sql parser,Oops")
+					utils.DebugPrint("UnknownSQL", "Unknown AsTableExpr sql parser,Oops")
 				}
 			default:
 				// 终止条件1：判断字符串是否为完整的表名
@@ -176,7 +172,7 @@ func validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
 			}
 			return true
 		default:
-			DebugPrint("UnknownSQL", "Unknown JoinTableExpr sql parser,Oops")
+			utils.DebugPrint("UnknownSQL", "Unknown JoinTableExpr sql parser,Oops")
 		}
 	}
 	return true
@@ -190,7 +186,7 @@ func validateTableIsFull(tableExprs string) bool {
 	}
 	reg, err := regexp.Compile(`([\d\w_]+)\.([\d\w_]+)`)
 	if err != nil {
-		DebugPrint("RegepError", err.Error())
+		utils.DebugPrint("RegepError", err.Error())
 		return false
 	}
 	findList := reg.FindStringSubmatch(tableExprs)
@@ -218,12 +214,12 @@ func parseWithVitess(statement string) (string, error) {
 // 解析SQL语句(根据DML类型)
 func ParseSQL(statement string, dml string) (string, error) {
 	if strings.Contains(dml, "delete") {
-		return "", GenerateError("IllegalDML", "dml(DELTE) is not allowed")
+		return "", utils.GenerateError("IllegalDML", "dml(DELTE) is not allowed")
 	}
 	var parse SQLParser
 	stmt, err := parseWithVitess(statement)
 	if err != nil {
-		return "", GenerateError("SQLParseError", err.Error())
+		return "", utils.GenerateError("SQLParseError", err.Error())
 	}
 	parse.SafeStmt = stmt + ";"
 	err = parse.validate()
@@ -236,14 +232,14 @@ func ParseSQL(statement string, dml string) (string, error) {
 
 func (p *SQLParser) validate() error {
 	// 不允许SELECT除外的操作
-	p.action = strings.Split(p.SafeStmt, " ")[0]
-	lowerStr := strings.ToLower(p.action)
+	p.Action = strings.Split(p.SafeStmt, " ")[0]
+	lowerStr := strings.ToLower(p.Action)
 	if lowerStr != "select" {
-		return GenerateError("SQL Validate Failed", "Only `SELECT` sql query is supported")
+		return utils.GenerateError("SQL Validate Failed", "Only `SELECT` sql query is supported")
 	}
 	// 暂时禁止?符号，疑似注入参数查询
 	if slices.Contains([]byte(p.SafeStmt), 63) {
-		return GenerateError("SQL Validate Failed", "The carrying of question marks is temporarily prohibited")
+		return utils.GenerateError("SQL Validate Failed", "The carrying of question marks is temporarily prohibited")
 	}
 
 	return nil

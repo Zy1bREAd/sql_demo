@@ -1,10 +1,12 @@
-package apis
+package api
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sql_demo/internal/conf"
+	"sql_demo/internal/utils"
 	"time"
 )
 
@@ -60,19 +62,19 @@ func InformRobot(content string) error {
 			Content: content,
 		},
 	}
-	informURL := GetAppConfig().WeixinEnv.InformWebhook
+	informURL := conf.GetAppConf().GetBaseConfig().WeixinEnv.InformWebhook
 	if informURL == "" {
-		return GenerateError("URLNull", "inform url is null")
+		return utils.GenerateError("URLNull", "inform url is null")
 	}
 	// 序列化数据
 	jsonData, err := json.Marshal(qwRobot)
 	if err != nil {
-		return GenerateError("JSONMarshal", err.Error())
+		return utils.GenerateError("JSONMarshal", err.Error())
 	}
 
 	req, err := http.NewRequest("POST", informURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return GenerateError("NewRequest", err.Error())
+		return utils.GenerateError("NewRequest", err.Error())
 	}
 	req.Header.Add("Content-Type", "application/json")
 	client := http.Client{
@@ -80,12 +82,12 @@ func InformRobot(content string) error {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return GenerateError("RequestError", err.Error())
+		return utils.GenerateError("RequestError", err.Error())
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		DebugPrint("RequestError", resp.Body)
-		return GenerateError("RequestError", resp.Status)
+		utils.DebugPrint("RequestError", resp.Body)
+		return utils.GenerateError("RequestError", resp.Status)
 	}
 
 	return nil

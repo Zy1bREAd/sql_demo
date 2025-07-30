@@ -1,4 +1,4 @@
-package apis
+package dbo
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"sql_demo/internal/conf"
+	"sql_demo/internal/utils"
 	"sync"
 	"time"
 
@@ -28,6 +30,29 @@ type MySQLConfig struct {
 	Port     string   `yaml:"port"`
 	DSN      string   `yaml:"dsn"`
 	Exclude  []string `yaml:"exclude"`
+}
+
+// type SQLError struct
+// 查询和执行SQL的结果集
+type SQLResult struct {
+	RowCount   int // 返回结果条数
+	LastId     int64
+	QueryTime  float64 // 查询花费的时间
+	HandleTime float64 // 处理结果集的时间
+	ID         string  // task id
+	Stmt       string  // 查询的原生SQL
+	Errrrr     error
+	ErrMsg     string           // 错误信息
+	Results    []map[string]any // 结果集列表
+}
+
+type ResultGroup interface {
+	GetGID() string
+}
+
+type SQLResultGroup struct {
+	GID      string
+	ResGroup []*SQLResult
 }
 
 // 读取配置，加载数据库池
@@ -131,11 +156,11 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 		}
 		defer func() {
 			if recoverErr := recover(); recoverErr != nil {
-				ErrorPrint("TransferExcute", "Transfer Excute Error -- "+taskId)
+				utils.ErrorPrint("TransferExcute", "Transfer Excute Error -- "+taskId)
 				tx.Rollback()
 				errVal, ok := recoverErr.(error)
 				if !ok {
-					errCh <- GenerateError("RollBackError", "Unknown Error")
+					errCh <- utils.GenerateError("RollBackError", "Unknown Error")
 				}
 				errCh <- errVal
 				return
@@ -146,7 +171,7 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 			panic(err)
 		}
 		if err := tx.Commit(); err != nil {
-			panic(GenerateError("TransferExcute", "Transfer Commit Error: "+err.Error()))
+			panic(utils.GenerateError("TransferExcute", "Transfer Commit Error: "+err.Error()))
 		}
 		end := time.Since(start)
 		res.QueryTime = end.Seconds()
@@ -157,11 +182,11 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 
 	select {
 	case <-ctx.Done():
-		res.errrr = GenerateError("TaskTimeOut", "excute sql task is timeout")
+		res.Errrrr = utils.GenerateError("TaskTimeOut", "excute sql task is timeout")
 	case err := <-errCh:
 		if err != nil {
-			res.errrr = err
-			res.ErrMsg = res.errrr.Error()
+			res.Errrrr = err
+			res.ErrMsg = res.Errrrr.Error()
 		}
 	}
 	return res
@@ -195,7 +220,7 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 		// 遍历结果集，逐行处理结果
 		for rows.Next() {
 			if rows.Err() != nil {
-				DebugPrint("RowError", "该行数据出现问题")
+				utils.DebugPrint("RowError", "该行数据出现问题")
 				break
 			}
 
@@ -207,7 +232,7 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 
 			// 获取结果集，填充进来
 			if err := rows.Scan(values...); err != nil {
-				errCh <- GenerateError("TaskResultError", err.Error())
+				errCh <- utils.GenerateError("TaskResultError", err.Error())
 				return
 			}
 			rowResultMap := make(map[string]any, 0) // 创建存储每行数据结果的容器（Map）
@@ -215,7 +240,7 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 				// 列名切片顺序和values顺序一致，断言结果类型，然后进行存储
 				if value, ok := values[i].(*sql.RawBytes); ok {
 					//! 数据处理（数据脱敏，过滤等）
-					rowResultMap[colName] = DataMaskHandle(colName, value)
+					rowResultMap[colName] = conf.DataMaskHandle(colName, value)
 				}
 			}
 			queryResult.Results = append(queryResult.Results, rowResultMap)
@@ -228,11 +253,11 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 
 	select {
 	case <-ctx.Done():
-		queryResult.errrr = GenerateError("Task TimeOut", "query sql task is failed ,query timeout")
+		queryResult.Errrrr = utils.GenerateError("Task TimeOut", "query sql task is failed ,query timeout")
 	case err := <-errCh:
 		if err != nil {
-			queryResult.errrr = err
-			queryResult.ErrMsg = queryResult.errrr.Error()
+			queryResult.Errrrr = err
+			queryResult.ErrMsg = queryResult.Errrrr.Error()
 		}
 	}
 	return queryResult
@@ -281,7 +306,7 @@ func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
 		for istName, dbConf := range dbList {
 			db, err := newDBInstance(dbConf.User, dbConf.Password, dbConf.Host, dbConf.Port, dbConf.MaxConn, dbConf.IdleTime)
 			if err != nil {
-				ErrorPrint("DBRegisterError", "database register is failed, "+err.Error())
+				utils.ErrorPrint("DBRegisterError", "database register is failed, "+err.Error())
 				continue
 			}
 			if manager.Pool[env] == nil {
@@ -301,7 +326,7 @@ func (manager *DBPoolManager) CloseDBPool() {
 		for _, ist := range istList {
 			err := ist.conn.Close()
 			if err != nil {
-				ErrorPrint("CloseDBError", fmt.Sprintf("[%s] close db %s connection is failed, %s", env, ist.name, err.Error()))
+				utils.ErrorPrint("CloseDBError", fmt.Sprintf("[%s] close db %s connection is failed, %s", env, ist.name, err.Error()))
 			}
 		}
 
@@ -325,15 +350,15 @@ func HaveDBIst(env, name, service string) (*DBInstance, error) {
 	globalDBPool.mu.RLock()
 	defer globalDBPool.mu.RUnlock()
 	if name == "" {
-		return nil, GenerateError("InstanceIsNull", "db instance name is null")
+		return nil, utils.GenerateError("InstanceIsNull", "db instance name is null")
 	} else if env == "" {
-		return nil, GenerateError("InstanceIsNull", "env name is null")
+		return nil, utils.GenerateError("InstanceIsNull", "env name is null")
 	}
 	if dbIstMap, ok := globalDBPool.Pool[env]; ok {
 		if dbIst, ok := dbIstMap[service]; ok {
 			return dbIst, nil
 		}
-		return nil, GenerateError("InstanceError", fmt.Sprintf("<%s> db instance is not exist", service))
+		return nil, utils.GenerateError("InstanceError", fmt.Sprintf("<%s> db instance is not exist", service))
 	}
-	return nil, GenerateError("InstanceError", fmt.Sprintf("<%s> env is not exist", env))
+	return nil, utils.GenerateError("InstanceError", fmt.Sprintf("<%s> env is not exist", env))
 }

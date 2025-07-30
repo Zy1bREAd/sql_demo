@@ -1,10 +1,11 @@
-package apis
+package conf
 
 import (
 	"database/sql"
 	"log"
 	"os"
 	"regexp"
+	"sql_demo/internal/utils"
 	"strings"
 
 	"slices"
@@ -12,8 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var dataMaskConfig *DataMaskConfig
-
+// 数据遮罩配置
 type DataMaskConfig struct {
 	RuleConfig map[string]RuleConfig `yaml:"data-mask"`
 	// valid      bool                  // 判断结构体是否有效
@@ -32,26 +32,18 @@ type RangeConfig struct {
 	End   int `yaml:"end"`
 }
 
-func InitDataMaskConfig() {
-	if dataMaskConfig == nil {
-		err := loadInRule()
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
-func loadInRule() error {
+func initDataMaskConfig(filePath string) (*DataMaskConfig, error) {
+	var dmConf DataMaskConfig
 	f, err := os.ReadFile("config/data_mask_rule.yaml")
 	if err != nil {
-		return GenerateError("LoadIn Failed", err.Error())
+		return nil, utils.GenerateError("LoadIn Failed", err.Error())
 	}
-	err = yaml.Unmarshal(f, &dataMaskConfig)
-	DebugPrint("DataMaskRule", dataMaskConfig.RuleConfig)
+	err = yaml.Unmarshal(f, &dmConf)
+	utils.DebugPrint("DataMaskRule", dmConf.RuleConfig)
 	if err != nil {
-		return GenerateError("LoadIn Failed", err.Error())
+		return nil, utils.GenerateError("LoadIn Failed", err.Error())
 	}
-	return nil
+	return &dmConf, nil
 }
 
 type Desensitizer interface {
@@ -127,7 +119,8 @@ func (p *PartialDesensitizer) Mask(col string, fieldVal []byte) (string, error) 
 
 // 数据遮罩处理
 func DataMaskHandle(col string, fieldVal *sql.RawBytes) string {
-	mode := GetAppConfig().DataMaskMode
+	appConf := GetAppConf()
+	mode := appConf.GetBaseConfig().DataMaskMode
 	// 根据你选择的mask模式返回接口实例，使用接口方法区执行dataMask操作。
 	er := getDesensitizer(mode)
 	if er == nil {
@@ -142,8 +135,10 @@ func DataMaskHandle(col string, fieldVal *sql.RawBytes) string {
 }
 
 func matchRuleConfig(mode string) []RuleConfig {
+	appConf := GetAppConf()
+	dmConf := appConf.GetDataMaskConfig()
 	ruleList := []RuleConfig{}
-	for _, ruleConfig := range dataMaskConfig.RuleConfig {
+	for _, ruleConfig := range dmConf.RuleConfig {
 		if mode == ruleConfig.Mode {
 			ruleList = append(ruleList, ruleConfig)
 		}

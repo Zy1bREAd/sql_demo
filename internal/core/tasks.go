@@ -1,4 +1,4 @@
-package apis
+package core
 
 import (
 	"context"
@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sync"
+	"sql_demo/internal/conf"
+	dbo "sql_demo/internal/db"
+	"sql_demo/internal/event"
+	"sql_demo/internal/utils"
 	"time"
 )
 
@@ -17,9 +20,6 @@ import (
 // var CleanQueue chan cleanTask = make(chan cleanTask, 30)
 // var HouseKeepQueue chan *ExportTask = make(chan *ExportTask, 30)
 // var ExportQueue chan *ExportTask = make(chan *ExportTask, 30)
-var QueryTaskMap *CachesMap = &CachesMap{cache: &sync.Map{}}   // 存储查询任务相关信息的映射表（任务 -> 详细QueryTask数据)
-var ExportWorkMap *CachesMap = &CachesMap{cache: &sync.Map{}}  //导出工作的映射表(任务 -> 结果)
-var GitLabIssueMap *CachesMap = &CachesMap{cache: &sync.Map{}} // GitLab Issue和Task Id的映射表(任务 -> GitLab Issue)
 
 type ExportResult struct {
 	Done     chan struct{}
@@ -41,14 +41,14 @@ type QueryTask struct {
 	Statement string
 	Env       string // 所执行环境
 	Service   string
-	deadline  int // 单个SQL的超时时间（单位为秒）
+	Deadline  int // 单个SQL的超时时间（单位为秒）
 	// UserID    uint // 关联执行用户id
 }
 type QTaskGroup struct {
 	GID      string
 	DML      string
 	QTasks   []*QueryTask
-	deadline int  //整个任务组的超时时间
+	Deadline int  //整个任务组的超时时间
 	UserId   uint // repeat
 }
 
@@ -90,56 +90,56 @@ type IssueQTask struct {
 func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 	log.Printf("task group_id=%s is working", qtg.GID)
 	//! 执行任务函数只当只关心任务处理逻辑本身
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(qtg.deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(qtg.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 	defer cancel()
 
-	ep := GetEventProducer()
-	rg := &SQLResultGroup{
+	ep := event.GetEventProducer()
+	rg := &dbo.SQLResultGroup{
 		GID:      qtg.GID,
-		resGroup: make([]*SQLResult, 0),
+		ResGroup: make([]*dbo.SQLResult, 0),
 	}
 	for _, task := range qtg.QTasks {
 		fmt.Println("debug>>>", task)
-		var result SQLResult = SQLResult{
+		var result dbo.SQLResult = dbo.SQLResult{
 			ID:   task.ID,
 			Stmt: task.Statement,
 		}
 		// if task.Action != qtg.DML {
 		// 	result.errrr = GenerateError("ActionNotMatch", "DML and Action is not match")
 		// 	result.ErrMsg = result.errrr.Error()
-		// 	rg.resGroup = append(rg.resGroup, &result)
+		// 	rg.ResGroup = append(rg.ResGroup, &result)
 		// 	break
 		// }
 		// 获取对应数据库实例进行SQL查询
-		op, err := HaveDBIst(task.Env, task.DBName, task.Service)
+		op, err := dbo.HaveDBIst(task.Env, task.DBName, task.Service)
 		if err != nil {
-			result.errrr = err
-			result.ErrMsg = result.errrr.Error()
-			rg.resGroup = append(rg.resGroup, &result)
+			result.Errrrr = err
+			result.ErrMsg = result.Errrrr.Error()
+			rg.ResGroup = append(rg.ResGroup, &result)
 			break
 		}
 		// 执行前健康检查DB
 		err = op.HealthCheck(timeoutCtx)
 		if err != nil {
-			result.errrr = GenerateError("HealthCheckFailed", err.Error())
-			result.ErrMsg = result.errrr.Error()
-			rg.resGroup = append(rg.resGroup, &result)
+			result.Errrrr = utils.GenerateError("HealthCheckFailed", err.Error())
+			result.ErrMsg = result.Errrrr.Error()
+			rg.ResGroup = append(rg.ResGroup, &result)
 			break
 		}
-		// 拥有细粒度超时控制的核心查询函数
+		// 主要分查询和执行，核心通过解析SQL语句的类型来实现对应的逻辑
 		if task.Action == "select" {
 			result = op.Query(timeoutCtx, task.Statement, task.ID)
 		} else {
 			result = op.Excute(timeoutCtx, task.Statement, task.ID)
 		}
 		log.Printf("task group_id=%s iid=%s is completed", rg.GID, task.ID)
-		rg.resGroup = append(rg.resGroup, &result)
+		rg.ResGroup = append(rg.ResGroup, &result)
 		// 如果该条SQL遇到ERROR立即中止后续执行
-		if result.errrr != nil {
+		if result.Errrrr != nil {
 			break
 		}
 	}
-	ep.Produce(Event{
+	ep.Produce(event.Event{
 		Type:    "save_result",
 		Payload: rg,
 	})
@@ -165,19 +165,19 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 func (task *QueryTask) ExcuteTask(ctx context.Context) {
 	log.Printf("task id=%s is working", task.ID)
 	//! 执行任务函数只当只关心任务处理逻辑本身
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 	defer cancel()
 
-	ep := GetEventProducer()
+	ep := event.GetEventProducer()
 	// 获取对应数据库实例进行SQL查询
-	op, err := HaveDBIst(task.Env, task.DBName, task.Service)
+	op, err := dbo.HaveDBIst(task.Env, task.DBName, task.Service)
 	if err != nil {
-		queryResult := &SQLResult{
+		queryResult := &dbo.SQLResult{
 			ID:      task.ID,
 			Results: nil,
-			errrr:   err,
+			Errrrr:  err,
 		}
-		ep.Produce(Event{
+		ep.Produce(event.Event{
 			Type:    "save_result",
 			Payload: queryResult,
 		})
@@ -186,12 +186,12 @@ func (task *QueryTask) ExcuteTask(ctx context.Context) {
 	// 执行前健康检查DB
 	err = op.HealthCheck(timeoutCtx)
 	if err != nil {
-		queryResult := &SQLResult{
+		queryResult := &dbo.SQLResult{
 			ID:      task.ID,
 			Results: nil,
-			errrr:   GenerateError("HealthCheckFailed", err.Error()),
+			Errrrr:  utils.GenerateError("HealthCheckFailed", err.Error()),
 		}
-		ep.Produce(Event{
+		ep.Produce(event.Event{
 			Type:    "save_result",
 			Payload: queryResult,
 		})
@@ -200,7 +200,7 @@ func (task *QueryTask) ExcuteTask(ctx context.Context) {
 	// 拥有细粒度超时控制的核心查询函数
 	result := op.Query(timeoutCtx, task.Statement, task.ID)
 	log.Printf("task id=%s is completed", task.ID)
-	ep.Produce(Event{
+	ep.Produce(event.Event{
 		Type:    "save_result",
 		Payload: result,
 	})
@@ -219,7 +219,7 @@ type ExportTask struct {
 // 导出任务入队
 func SubmitExportTask(id, exportType string, userId uint) *ExportTask {
 	today := time.Now().Format("20060102150405")
-	conf := GetAppConfig()
+	conf := conf.GetAppConf().GetBaseConfig()
 	filename := fmt.Sprintf("%s_%s.csv", id, today)
 	// 避免斜杠重复
 	filePath := conf.ExportEnv.FilePath + "/" + filename
@@ -240,8 +240,8 @@ func SubmitExportTask(id, exportType string, userId uint) *ExportTask {
 	}
 	ExportWorkMap.Set(task.ID, task.Result, 300, 3)
 	// ExportQueue <- task
-	ep := GetEventProducer()
-	ep.Produce(Event{
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
 		Type:    "export_result",
 		Payload: task,
 	})
@@ -250,9 +250,9 @@ func SubmitExportTask(id, exportType string, userId uint) *ExportTask {
 
 // 导出SQL查询结果
 func ExportSQLTask(ctx context.Context, task *ExportTask) error {
-	var cachesMapResult *SQLResult
+	var cachesMapResult *dbo.SQLResult
 	if task.ID == "" {
-		return GenerateError("TaskNotExist", "task id is not found")
+		return utils.GenerateError("TaskNotExist", "task id is not found")
 	}
 	// 检查结果集resultMap还是否存在当前task的result
 	mapVal, resultExist := ResultMap.Get(task.ID)
@@ -260,7 +260,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 		// 从QueryTaskMap中找对应task id的任务信息，重新执行查询任务来获取结果
 		taskMap, taskExist := QueryTaskMap.Get(task.ID)
 		if !taskExist {
-			return GenerateError("QueryTaskError", "query task id is not exist,please re-excute sql query")
+			return utils.GenerateError("QueryTaskError", "query task id is not exist,please re-excute sql query")
 		}
 		switch t := taskMap.(type) {
 		case *QueryTask:
@@ -268,16 +268,16 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 		case *QTaskGroup:
 			t.ExcuteTask(ctx)
 		default:
-			return GenerateError("QueryTaskError", "query task object type not match")
+			return utils.GenerateError("QueryTaskError", "query task object type not match")
 		}
 		// 同步方式每秒检测是否查询任务完成，来获取结果集
 		for i := 0; i <= task.deadline; i++ {
 			time.Sleep(1 * time.Second)
 			mapVal, ok := ResultMap.Get(task.ID)
 			if ok {
-				assertVal, ok := mapVal.(*SQLResult)
+				assertVal, ok := mapVal.(*dbo.SQLResult)
 				if !ok {
-					return GenerateError("QueryResultError", "query result data type is incorrect")
+					return utils.GenerateError("QueryResultError", "query result data type is incorrect")
 				}
 				log.Println("[Re-Excute] re-excute sql task completed")
 				cachesMapResult = assertVal
@@ -285,13 +285,13 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 			}
 		}
 	} else {
-		assertVal, ok := mapVal.(*SQLResult)
+		assertVal, ok := mapVal.(*dbo.SQLResult)
 		if !ok {
 			return errors.New("resultData is incorrect type")
 		}
 		cachesMapResult = assertVal
 	}
-	conf := GetAppConfig()
+	conf := conf.GetAppConf().GetBaseConfig()
 	switch {
 	case task.Type == "csv":
 		err := convertCSVFile(conf.ExportEnv.FilePath, task.FileName, cachesMapResult.Results)
@@ -300,15 +300,15 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 		}
 		time.AfterFunc(time.Second*time.Duration(conf.ExportEnv.HouseKeeping), func() {
 			// HouseKeepQueue <- task
-			ep := GetEventProducer()
-			ep.Produce(Event{
+			ep := event.GetEventProducer()
+			ep.Produce(event.Event{
 				Type:    "file_housekeeping",
 				Payload: task,
 			})
 		})
 	default:
 		log.Println("[WARN] 暂不支持其他方式导出")
-		return GenerateError("TypeError", "export type is unknown")
+		return utils.GenerateError("TypeError", "export type is unknown")
 	}
 	// 假装导出要耗时10s
 	// time.Sleep(2 * time.Second)
@@ -320,7 +320,7 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 // 转换成CSV文件并存储在本地
 func convertCSVFile(base, filename string, data []map[string]any) error {
 	if len(data) <= 0 {
-		return GenerateError("ConvertError", "data length is zero")
+		return utils.GenerateError("ConvertError", "data length is zero")
 	}
 	// 创建文件，不存在目录则创建
 	_, err := os.Stat(base)

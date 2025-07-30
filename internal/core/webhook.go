@@ -1,10 +1,15 @@
-package apis
+package core
 
 import (
 	"errors"
 	"fmt"
 	"log"
 	"slices"
+	"sql_demo/api"
+	"sql_demo/internal/conf"
+	dbo "sql_demo/internal/db"
+	"sql_demo/internal/event"
+	"sql_demo/internal/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
@@ -56,19 +61,19 @@ type CommentContent struct {
 
 // 关于Callback的请求预检
 func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
-	gitlabConfig := GetAppConfig()
+	baseConf := conf.GetAppConf().GetBaseConfig()
 	// 校验请求，避免伪造
 	event := ctx.GetHeader("X-Gitlab-Event")
 	if event != gitlabEvent {
-		return GenerateError("RequestHeaderError", "event is not match")
+		return utils.GenerateError("RequestHeaderError", "event is not match")
 	}
 	instance := ctx.GetHeader("X-Gitlab-Instance")
-	if instance != gitlabConfig.GitLabEnv.URL {
-		return GenerateError("RequestHeaderError", "source instance is invalid")
+	if instance != baseConf.GitLabEnv.URL {
+		return utils.GenerateError("RequestHeaderError", "source instance is invalid")
 	}
 	secret := ctx.GetHeader("X-Gitlab-Token")
-	if secret != gitlabConfig.GitLabEnv.WebhookEnv.SceretToken {
-		return GenerateError("RequestHeaderError", "source instance is invalid")
+	if secret != baseConf.GitLabEnv.WebhookEnv.SceretToken {
+		return utils.GenerateError("RequestHeaderError", "source instance is invalid")
 	}
 	return nil
 }
@@ -77,7 +82,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 	var content SQLIssueTemplate
 	err := json.Unmarshal([]byte(i.ObjectAttr.Description), &content)
 	if err != nil {
-		DebugPrint("JSONError", err.Error())
+		utils.DebugPrint("JSONError", err.Error())
 		return err
 	}
 	if len(i.ObjectAttr.Assigneers) == 0 {
@@ -87,8 +92,8 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 	// 区分Issue是open还是update操作,企业微信通知,发送消息通知至企业微信机器人
 	switch i.ObjectAttr.Action {
 	case "open":
-		DebugPrint("OpenIssueHandle", "open open open")
-		informBody := &TicketInformBody{
+		utils.DebugPrint("OpenIssueHandle", "open open open")
+		informBody := &api.TicketInformBody{
 			Action:   "Create",
 			Title:    i.ObjectAttr.Title,
 			DueDate:  i.ObjectAttr.DueDate,
@@ -96,14 +101,14 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			Link:     i.ObjectAttr.URL,
 			UserName: i.User.Username,
 		}
-		_ = InformRobot(informBody.Fill())
+		_ = api.InformRobot(informBody.Fill())
 	case "update":
-		DebugPrint("UpdateIssueHandle", "update issue")
+		utils.DebugPrint("UpdateIssueHandle", "update issue")
 		desc, exist := i.Changes["description"]
 		if exist {
 			if _, ok := desc.Current.(string); ok {
 				// 是否需要强制不能query转excute呢？？
-				informBody := &TicketInformBody{
+				informBody := &api.TicketInformBody{
 					Action:   "Update",
 					DueDate:  i.ObjectAttr.DueDate,
 					Title:    i.ObjectAttr.Title,
@@ -111,7 +116,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 					Link:     i.ObjectAttr.URL,
 					UserName: i.User.Username,
 				}
-				_ = InformRobot(informBody.Fill())
+				_ = api.InformRobot(informBody.Fill())
 			}
 		}
 	default:
@@ -127,48 +132,42 @@ func (sqlt *SQLIssueTemplate) queryHandle(userId uint, issue *Issue, stmtList []
 	taskGroup := make([]*QueryTask, 0)
 	for _, s := range stmtList {
 		qTask := QueryTask{
-			ID:        GenerateUUIDKey(),
+			ID:        utils.GenerateUUIDKey(),
 			DBName:    sqlt.DBName,
 			Statement: s.SafeStmt,
 			Env:       sqlt.Env,
 			Service:   sqlt.Service,
-			deadline:  sqlt.Deadline,
-			Action:    s.action,
+			Deadline:  sqlt.Deadline,
+			Action:    s.Action,
 		}
 		taskGroup = append(taskGroup, &qTask)
 	}
-	gid := GenerateUUIDKey()
-	ep := GetEventProducer()
-	ep.Produce(Event{
+	gid := utils.GenerateUUIDKey()
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
 		Type: "sql_query",
 		Payload: &IssueQTask{
 			QTG: &QTaskGroup{
 				GID:      gid,
 				DML:      sqlt.Action,
 				QTasks:   taskGroup,
-				deadline: len(taskGroup) * int(sqlt.Deadline),
+				Deadline: len(taskGroup) * int(sqlt.Deadline),
 				UserId:   userId,
 			},
 			QIssue: issue,
 		},
 	})
-	DebugPrint("TaskEnqueue", fmt.Sprintf("task id=%s is enqueue", gid))
-}
-
-// 执行SQL
-func excuteHandle(statement, dbName string, userId uint) error {
-	DebugPrint("not supported", "not supported excute sql")
-	return nil
+	utils.DebugPrint("TaskEnqueue", fmt.Sprintf("task id=%s is enqueue", gid))
 }
 
 // 解析Issue描述详情
-func parseIssueDesc(desc string) (*SQLIssueTemplate, error) {
+func ParseIssueDesc(desc string) (*SQLIssueTemplate, error) {
 	var content SQLIssueTemplate
 	err := json.Unmarshal([]byte(desc), &content)
 	if err != nil {
 		var syntaxErr *json.SyntaxError
 		if errors.As(err, &syntaxErr) {
-			return nil, GenerateError("JSONParseError", "issue decription syntax error")
+			return nil, utils.GenerateError("JSONParseError", "issue decription syntax error")
 		}
 		return nil, err
 	}
@@ -179,39 +178,39 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	// 同意申请
 	glab := InitGitLabAPI()
 	// 检查审批人是否合法
-	approvalUserMap := GetAppConfig().ApprovalMap
+	approvalUserMap := conf.GetAppConf().GetBaseConfig().ApprovalMap
 	v, exist := approvalUserMap[c.User.Name]
 	if !exist {
-		return GenerateError("ApprovalUserNotExist", "该用户不是审批人")
+		return utils.GenerateError("ApprovalUserNotExist", "该用户不是审批人")
 	}
 	if v != c.User.ID {
 		// error: 不相同的userid
-		return GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
+		return utils.GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
 	}
 	// 确认签派给SQL Handle User
-	gitlabConfig := GetAppConfig().GitLabEnv
+	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
 	if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
 		robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
 		err := glab.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
 		if err != nil {
 			log.Println(err.Error())
 		}
-		return GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
+		return utils.GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
 	}
 	// 解析指定Issue
 	iss, err := glab.IssueView(c.Project.ID, c.Issue.IID)
 	if err != nil {
-		DebugPrint("GitLabAPIError", err.Error())
+		utils.DebugPrint("GitLabAPIError", err.Error())
 		return err
 	}
 	// 检查issue状态是否关闭
 	if iss.State == "closed" {
-		return GenerateError("IsClosed", "The issue was closed")
+		return utils.GenerateError("IsClosed", "The issue was closed")
 	}
 	// 解析Issue详情
-	issContent, err := parseIssueDesc(iss.Description)
+	issContent, err := ParseIssueDesc(iss.Description)
 	if err != nil {
-		DebugPrint("ParseError", err.Error())
+		utils.DebugPrint("ParseError", err.Error())
 		return err
 	}
 	//设置默认超时时间
@@ -219,46 +218,49 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 		issContent.Deadline = 60
 	}
 	//! 解析Issue中SQL语法与约束
-	stmtList, err := parseV2(issContent.DBName, issContent.Statement)
+	stmtList, err := ParseV2(issContent.DBName, issContent.Statement)
 	if err != nil {
 		return err
 	}
 	// 执行SQL逻辑
-	userId := GetUserId(iss.Author.ID)
+	user := dbo.User{
+		GitLabIdentity: iss.Author.ID,
+	}
+	userId := user.GetGitLabUserId()
 	issContent.queryHandle(userId, iss, stmtList)
 	return nil
 }
 
 func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 	// 检查审批人是否合法
-	approvalUserMap := GetAppConfig().ApprovalMap
+	approvalUserMap := conf.GetAppConf().GetBaseConfig().ApprovalMap
 	v, exist := approvalUserMap[c.User.Name]
 	if !exist {
-		return GenerateError("ApprovalUserNotExist", "该用户不是审批人")
+		return utils.GenerateError("ApprovalUserNotExist", "该用户不是审批人")
 	}
 	if v != c.User.ID {
 		// error: 不相同的userid
-		return GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
+		return utils.GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
 	}
 	glab := InitGitLabAPI()
 	// 驳回
 	err := glab.CommentCreate(c.Project.ID, c.Issue.IID, "【审批不通过】驳回该SQL执行, 原因:"+reason)
 	if err != nil {
-		return GenerateError("CommentError", err.Error())
+		return utils.GenerateError("CommentError", err.Error())
 	}
 	//  发送驳回通知给企业微信机器人
 	issueAuthor, err := glab.UserView(c.Issue.AuthorID)
 	if err != nil {
-		return GenerateError("GitLabAPIError", err.Error())
+		return utils.GenerateError("GitLabAPIError", err.Error())
 	}
-	informBody := &RejectInformBody{
+	informBody := &api.RejectInformBody{
 		Action:   "Reject",
 		Link:     c.Issue.URL,
 		UserName: issueAuthor.Username,
 		Reason:   reason,
 		Approver: c.User.Username,
 	}
-	err = InformRobot(informBody.Fill())
+	err = api.InformRobot(informBody.Fill())
 	if err != nil {
 		log.Println(err.Error())
 	}
@@ -269,7 +271,7 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	var content CommentContent
 	err := json.Unmarshal([]byte(c.ObjectAttr.Note), &content)
 	if err != nil {
-		DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string. "+c.ObjectAttr.Note)
+		utils.DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string. "+c.ObjectAttr.Note)
 		return nil
 	}
 	switch content.Approval {
@@ -278,6 +280,6 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	case ApprovalStatusRejected:
 		return c.handleApprovalRejected(content.Reason)
 	default:
-		return GenerateError("ApprovalError", "Unknown Approval Status")
+		return utils.GenerateError("ApprovalError", "Unknown Approval Status")
 	}
 }

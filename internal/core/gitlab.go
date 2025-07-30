@@ -1,10 +1,13 @@
-package apis
+package core
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sql_demo/internal/common"
+	"sql_demo/internal/conf"
+	"sql_demo/internal/utils"
 )
 
 const (
@@ -19,7 +22,7 @@ type GitLabAPI struct {
 }
 
 func InitGitLabAPI() *GitLabAPI {
-	gitlabConfig := GetAppConfig().GitLabEnv
+	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
 	return &GitLabAPI{
 		URL:         gitlabConfig.URL,
 		AccessToken: gitlabConfig.AccessToken,
@@ -81,12 +84,12 @@ func (gitlab *GitLabAPI) CommentCreate(projectId, issueIId uint, content string)
 	}
 	jsonData, err := json.Marshal(&reqBody)
 	if err != nil {
-		return GenerateError("JSONError", err.Error())
+		return utils.GenerateError("JSONError", err.Error())
 	}
 	commentCreateURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d/notes", projectId, issueIId)
 	req, err := http.NewRequest("POST", commentCreateURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return GenerateError("CommentCreateError", err.Error())
+		return utils.GenerateError("CommentCreateError", err.Error())
 	}
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
 	// 设置请求头，携带JSON形式的POST请求体
@@ -94,10 +97,10 @@ func (gitlab *GitLabAPI) CommentCreate(projectId, issueIId uint, content string)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return GenerateError("CommentCreateError", err.Error())
+		return utils.GenerateError("CommentCreateError", err.Error())
 	}
 	defer resp.Body.Close()
-	return ValidateRespBody("CommentCreateError", resp)
+	return common.ValidateRespBody("CommentCreateError", resp)
 }
 
 // 获取某个项目下的Issue详情
@@ -105,16 +108,16 @@ func (gitlab *GitLabAPI) IssueView(projectId, issueIId uint) (*Issue, error) {
 	signalIssueURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d", projectId, issueIId)
 	req, err := http.NewRequest("GET", signalIssueURL, nil)
 	if err != nil {
-		return nil, GenerateError("IssueViewError", err.Error())
+		return nil, utils.GenerateError("IssueViewError", err.Error())
 	}
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, GenerateError("IssueViewError", err.Error())
+		return nil, utils.GenerateError("IssueViewError", err.Error())
 	}
 	defer resp.Body.Close()
-	err = ValidateRespBody("IssueViewError", resp)
+	err = common.ValidateRespBody("IssueViewError", resp)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +125,7 @@ func (gitlab *GitLabAPI) IssueView(projectId, issueIId uint) (*Issue, error) {
 	var i Issue
 	err = json.NewDecoder(resp.Body).Decode(&i)
 	if err != nil {
-		return nil, GenerateError("IssueViewError", err.Error())
+		return nil, utils.GenerateError("IssueViewError", err.Error())
 	}
 	return &i, nil
 }
@@ -137,11 +140,11 @@ func (gitlab *GitLabAPI) IssueClose(projectId, issueIid uint) error {
 	}
 	jsonData, err := json.Marshal(&reqBody)
 	if err != nil {
-		return GenerateError("JSONError", err.Error())
+		return utils.GenerateError("JSONError", err.Error())
 	}
 	req, err := http.NewRequest("PUT", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return GenerateError("IssueCloseError", err.Error())
+		return utils.GenerateError("IssueCloseError", err.Error())
 	}
 	// 设置请求头，携带JSON形式的POST请求体
 	req.Header.Set("Content-Type", "application/json")
@@ -149,10 +152,10 @@ func (gitlab *GitLabAPI) IssueClose(projectId, issueIid uint) error {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return GenerateError("IssueCloseError", err.Error())
+		return utils.GenerateError("IssueCloseError", err.Error())
 	}
 	defer resp.Body.Close()
-	return ValidateRespBody("IssueCloseError", resp)
+	return common.ValidateRespBody("IssueCloseError", resp)
 }
 
 // 获取单个用户
@@ -160,16 +163,16 @@ func (gitlab *GitLabAPI) UserView(userId uint) (*GUser, error) {
 	apiURL := gitlab.URL + fmt.Sprintf("/api/v4/users/%d", userId)
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
-		return nil, GenerateError("UserViewError", err.Error())
+		return nil, utils.GenerateError("UserViewError", err.Error())
 	}
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, GenerateError("UserViewError", err.Error())
+		return nil, utils.GenerateError("UserViewError", err.Error())
 	}
 	defer resp.Body.Close()
-	err = ValidateRespBody("UserViewError", resp)
+	err = common.ValidateRespBody("UserViewError", resp)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +180,7 @@ func (gitlab *GitLabAPI) UserView(userId uint) (*GUser, error) {
 	var u GUser
 	err = json.NewDecoder(resp.Body).Decode(&u)
 	if err != nil {
-		return nil, GenerateError("UserViewError", err.Error())
+		return nil, utils.GenerateError("UserViewError", err.Error())
 	}
 	return &u, nil
 }
@@ -187,17 +190,17 @@ func (gitlab *GitLabAPI) UserList() ([]GUser, error) {
 	apiURL := gitlab.URL + "/api/v4/users"
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
-		return nil, GenerateError("UserListError", err.Error())
+		return nil, utils.GenerateError("UserListError", err.Error())
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, GenerateError("UserListError", err.Error())
+		return nil, utils.GenerateError("UserListError", err.Error())
 	}
 	defer resp.Body.Close()
-	err = ValidateRespBody("IssueCloseError", resp)
+	err = common.ValidateRespBody("IssueCloseError", resp)
 	if err != nil {
 		return nil, err
 	}
@@ -205,15 +208,15 @@ func (gitlab *GitLabAPI) UserList() ([]GUser, error) {
 	var userList []GUser
 	err = json.NewDecoder(resp.Body).Decode(&userList)
 	if err != nil {
-		return nil, GenerateError("UserViewError", err.Error())
+		return nil, utils.GenerateError("UserViewError", err.Error())
 	}
 	return userList, nil
 }
 
 // 生成临时链接
 func NewHashTempLink() (string, string) {
-	appConfig := GetAppConfig()
-	uuKey := GenerateUUIDKey()
+	appConfig := conf.GetAppConf().GetBaseConfig()
+	uuKey := utils.GenerateUUIDKey()
 	// 导出链接组成
 	tempResultURL := fmt.Sprintf("http://%s/result/temp-view/%s", appConfig.WebSrvEnv.HostName, uuKey)
 	return uuKey, tempResultURL

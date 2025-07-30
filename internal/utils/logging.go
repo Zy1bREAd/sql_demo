@@ -1,4 +1,4 @@
-package apis
+package utils
 
 import (
 	"fmt"
@@ -6,6 +6,13 @@ import (
 	"log"
 	"os"
 	"time"
+)
+
+const (
+	LogLevelError = 0
+	LogLevelWarn  = 1
+	LogLevelInfo  = 2
+	LogLevelDebug = 3
 )
 
 var levelMap = map[int]string{
@@ -17,20 +24,10 @@ var levelMap = map[int]string{
 
 func ErrorRecover() {
 	if err := recover(); err != nil {
-		manger := newDBPoolManager()
-		manger.CloseDBPool()
+		// manger := newDBPoolManager()
+		// manger.CloseDBPool()
 		now := time.Now()
 		log.Printf("[%s][ERRRO] - %s", now.Format("2006-01-02T15:04:05"), err)
-		// 打印goroutine堆栈信息
-		// buf := make([]byte, 1024)
-		// for {
-		// 	n := runtime.Stack(buf, false)
-		// 	if n < len(buf) {
-		// 		buf = buf[:n]
-		// 		runtime.Breakpoint()
-		// 	}
-		// 	buf = make([]byte, 2*len(buf))
-		// }
 		panic(err)
 	}
 }
@@ -44,12 +41,14 @@ func generateLog(level int, errorTitle string, msg string) string {
 	return formatMsg
 }
 
+// 生成自定义错误
 func GenerateError(errorTitle string, msg string) error {
 	DebugPrint(errorTitle, msg)
 	newErr := fmt.Errorf("[%s] %s", errorTitle, msg)
 	return newErr
 }
 
+// 调试打印信息
 func DebugPrint(title string, msg any) {
 	if assertVal, ok := msg.(string); ok {
 		log.Println(generateLog(3, title, assertVal))
@@ -64,6 +63,7 @@ func DebugPrint(title string, msg any) {
 	log.Println(msg)
 }
 
+// 打印错误信息
 func ErrorPrint(title string, msg any) {
 	if assertVal, ok := msg.(string); ok {
 		log.Println(generateLog(0, title, assertVal))
@@ -78,6 +78,7 @@ func ErrorPrint(title string, msg any) {
 	log.Println(msg)
 }
 
+// 日志文件记录
 func StartFileLogging() *os.File {
 	filePath := "logs"
 	fileName := "sql_demo.log"
@@ -105,16 +106,4 @@ func StartFileLogging() *os.File {
 	multiWriter := io.MultiWriter(logFile, os.Stdout)
 	log.SetOutput(multiWriter)
 	return logFile
-}
-
-//! 工具类的函数
-
-func Str2TimeObj(t string) time.Time {
-	newT, err := time.Parse(time.DateTime, t)
-	if err != nil {
-		DebugPrint("FormatTimeError", err.Error())
-		// 出现则返回1970的时间段！
-		return time.Unix(0, 0)
-	}
-	return newT
 }

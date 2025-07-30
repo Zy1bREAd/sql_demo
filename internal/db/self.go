@@ -1,9 +1,11 @@
 // 仅限SQL DEMO应用所使用的数据库操作
-package apis
+package dbo
 
 import (
 	"errors"
 	"fmt"
+	"sql_demo/internal/conf"
+	"sql_demo/internal/utils"
 	"strings"
 	"time"
 
@@ -24,16 +26,19 @@ func HaveSelfDB() *SelfDatabase {
 	}
 	return nil
 }
+func (db *SelfDatabase) GetConn() *gorm.DB {
+	return db.conn
+}
 
 func connect(dsn string, maxIdle, maxConn int) error {
 	if selfDB == nil {
 		gdb, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 		if err != nil {
-			return GenerateError("DB Connect Failed", "sql demo self db unable to connect")
+			return utils.GenerateError("DB Connect Failed", "sql demo self db unable to connect")
 		}
 		dbPool, err := gdb.DB()
 		if err != nil {
-			return GenerateError("DB Connect Failed", "db conn pool init failed")
+			return utils.GenerateError("DB Connect Failed", "db conn pool init failed")
 		}
 		dbPool.SetConnMaxIdleTime(time.Duration(maxIdle))
 		dbPool.SetMaxOpenConns(maxConn)
@@ -46,25 +51,26 @@ func connect(dsn string, maxIdle, maxConn int) error {
 	return selfDB.healthCheck()
 }
 
+// 初始化自身数据库连接配置
 func InitSelfDB() *SelfDatabase {
-	config := GetAppConfig()
+	config := conf.GetAppConf().GetBaseConfig()
 	for driver, conf := range config.DBEnv {
 		// 判断不同数据库驱动选择不同的连接方式
 		switch {
 		case strings.ToLower(driver) == "mysql":
 			err := connect(conf.DSN, conf.IdleTime, conf.MaxConn)
 			if err != nil {
-				panic(GenerateError("????", err.Error()))
+				panic(utils.GenerateError("????", err.Error()))
 			}
 		default:
-			panic(GenerateError("DB Driver Not Found", "driver not found"))
+			panic(utils.GenerateError("DB Driver Not Found", "driver not found"))
 		}
 	}
 
 	// auto迁移表
 	err := selfDB.autoMigrator()
 	if err != nil {
-		newErr := GenerateError("AutoMigratorFailed", err.Error())
+		newErr := utils.GenerateError("AutoMigratorFailed", err.Error())
 		panic(newErr)
 	}
 	return selfDB
@@ -85,34 +91,34 @@ func (db *SelfDatabase) healthCheck() error {
 
 func (db *SelfDatabase) autoMigrator() error {
 	if db == nil {
-		return GenerateError("Migrator Failed", "self db is not init")
+		return utils.GenerateError("Migrator Failed", "self db is not init")
 	}
 	// 表多的话要以注册的方式注册进来，避免手动一个个输入
 	return db.conn.AutoMigrate(&User{}, &AuditRecord{}, &TempResultMap{}, &AuditRecordV2{})
 }
 
 // 创建用户逻辑
-func CreateUser(name, pass, email string) error {
+func (usr *User) Create() error {
 	// 事务开启
-	var isExistUser User
-	result := selfDB.conn.Where("email = ?", email).First(&isExistUser)
+	dbConn := HaveSelfDB().GetConn()
+	result := dbConn.Where("email = ?", usr.Email).First(&usr)
 	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		// 注册用户：用户是否被注册
-		return GenerateError("UserExist", "user has been registerd")
+		return utils.GenerateError("UserExist", "user has been registerd")
 	}
-	tx := selfDB.conn.Begin()
+	tx := dbConn.Begin()
 	// 创建User(避免明文传入)
-	salt := GenerateSalt()
+	salt := utils.GenerateSalt()
 	user := &User{
-		Name:     name,
-		Email:    email,
-		Password: EncryptWithSaltMd5(salt, pass),
+		Name:     usr.Name,
+		Email:    usr.Email,
+		Password: utils.EncryptWithSaltMd5(salt, usr.Password),
 		CreateAt: time.Now(),
 	}
 	if err := tx.Create(user).Error; err != nil {
 		tx.Rollback()
 		errMsg := fmt.Sprintln("create user is failed, ", err.Error())
-		return GenerateError("Insert Failed", errMsg)
+		return utils.GenerateError("Insert Failed", errMsg)
 	}
 
 	//提交事务
@@ -121,38 +127,37 @@ func CreateUser(name, pass, email string) error {
 }
 
 // 登录(Basic)
-func BasicLogin(email, pass string) (*UserResp, error) {
+func (usr *User) BasicLogin(inputPwd string) (*UserResp, error) {
 	// 使用该用户相同的salt，对用户密码进行加密验证，与数据库的加密密码进行对比
-	var user User
-	result := selfDB.conn.Where("email = ?", email).Where("user_type = ?", 0).First(&user)
+	dbConn := HaveSelfDB().GetConn()
+	result := dbConn.Where("email = ?", usr.Email).Where("user_type = ?", 0).First(&usr)
 	if result.Error != nil {
 		// 判断记录是否不存在
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			errMsg := fmt.Sprintf("the account=%s is not exist", email)
-			return nil, GenerateError("UserNotExist", errMsg)
+			errMsg := fmt.Sprintf("the account=%s is not exist", usr.Email)
+			return nil, utils.GenerateError("UserNotExist", errMsg)
 		}
 		return nil, result.Error
 	}
 	// 校验用户密码
-	if ok := ValidateValueWithMd5(pass, user.Password); !ok {
-		return nil, GenerateError("LoginFailed", "the user account or password is incorrect")
+	if ok := utils.ValidateValueWithMd5(inputPwd, usr.Password); !ok {
+		return nil, utils.GenerateError("LoginFailed", "the user account or password is incorrect")
 	}
 	// 登录成功
 	// 过滤隐私关键字段（将结构体映射成专用响应结构体）
-	userResp := user.ToUserResp()
+	userResp := usr.ToUserResp()
 	return &userResp, nil
 }
 
 // 登录（SSO gitlab）,最终返回用户id
-func SSOLogin(username, email string) (uint, error) {
-	var ssoUser User
-	result := selfDB.conn.Where("name = ?", username).Where("email = ?", email).Where("user_type = ?", 2).First(&ssoUser)
+func (usr *User) SSOLogin() (uint, error) {
+	result := selfDB.conn.Where("name = ?", usr.Name).Where("email = ?", usr.Email).Where("user_type = ?", 2).First(&usr)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			// 首次注册进入DB
 			newSSOUser := &User{
-				Name:     username,
-				Email:    email,
+				Name:     usr.Name,
+				Email:    usr.Email,
 				UserType: 2,
 				CreateAt: time.Now(),
 			}
@@ -160,7 +165,7 @@ func SSOLogin(username, email string) (uint, error) {
 			if err := tx.Create(newSSOUser).Error; err != nil {
 				tx.Rollback()
 				errMsg := fmt.Sprintln("create sso user is failed, ", err.Error())
-				return 0, GenerateError("SSOUserError", errMsg)
+				return 0, utils.GenerateError("SSOUserError", errMsg)
 			}
 			//提交事务
 			tx.Commit()
@@ -168,7 +173,7 @@ func SSOLogin(username, email string) (uint, error) {
 		return 0, result.Error
 	}
 	// 用户登录日志插槽
-	return ssoUser.ID, nil
+	return usr.ID, nil
 }
 
 // 查询操作的日志审计
@@ -183,7 +188,7 @@ func (re *AuditRecord) InsertOne() error {
 	}
 	if result.RowsAffected != 1 {
 		tx.Rollback()
-		return GenerateError("InsertAuditRecordError", "insert a query record failed")
+		return utils.GenerateError("InsertAuditRecordError", "insert a query record failed")
 	}
 	tx.Commit()
 
@@ -199,7 +204,7 @@ func (re *AuditRecord) UpdateExport() error {
 	}
 	if result.RowsAffected != 1 {
 		tx.Rollback()
-		return GenerateError("RecordError", "update a query record failed")
+		return utils.GenerateError("RecordError", "update a query record failed")
 	}
 	tx.Commit()
 	return nil
@@ -214,7 +219,7 @@ func (re *AuditRecord) UpdateExport() error {
 // 	}
 // 	if result.RowsAffected != 1 {
 // 		tx.Rollback()
-// 		return GenerateError("RecordError", "update a query record failed")
+// 		return utils.GenerateError("RecordError", "update a query record failed")
 // 	}
 // 	tx.Commit()
 // 	return nil
@@ -248,11 +253,11 @@ func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
 			Desc: true,
 		}).Limit(10).Find(&auditRecords)
 	if res.Error != nil {
-		DebugPrint("AuditRecordError", res.Error.Error())
+		utils.DebugPrint("AuditRecordError", res.Error.Error())
 		return nil, errors.New("<DBQueryFailed>" + res.Error.Error())
 	}
 	if res.RowsAffected == 0 {
-		DebugPrint("AuditRecordError", "audit records is null")
+		utils.DebugPrint("AuditRecordError", "audit records is null")
 		return []UserAuditRecord{}, nil
 	}
 	// Convert DTO Object
@@ -286,11 +291,11 @@ func SaveTempResult(uukey, taskId string, expireTime uint, allowExport bool) err
 	time.AfterFunc(time.Duration(expireTime)*time.Second, func() {
 		res := selfDB.conn.Model(&TempResultMap{}).Where("uu_key = ?", uukey).Where("task_id = ?", taskId).Update("is_deleted", 1)
 		if res.Error != nil {
-			DebugPrint("DelTempResultError", "delete temp result link is failed "+res.Error.Error())
+			utils.DebugPrint("DelTempResultError", "delete temp result link is failed "+res.Error.Error())
 			return
 		}
 		if res.RowsAffected == 0 {
-			DebugPrint("DelTempResultError", "RowsAffected is zero")
+			utils.DebugPrint("DelTempResultError", "RowsAffected is zero")
 			return
 		}
 
@@ -330,12 +335,30 @@ func AllowResultExport(taskId string) bool {
 	return tempData.IsAllowExport
 }
 
-func GetUserId(gUserId uint) uint {
-	var u User
-	res := selfDB.conn.Where("git_lab_identity = ?", gUserId).First(&u)
+func (usr *User) GetGitLabUserId() uint {
+	res := selfDB.conn.Where("git_lab_identity = ?", usr.GitLabIdentity).First(&usr)
 	if res.Error != nil {
-		DebugPrint("DBAPIError", "get user id is failed")
+		utils.DebugPrint("DBAPIError", "get user id is failed")
 		return 0
 	}
-	return u.ID
+	return usr.ID
+}
+
+func (v2 *AuditRecordV2) InsertOne(e string) error {
+	v2.EventType = e
+	db := HaveSelfDB()
+	tx := db.conn.Begin()
+	// 避免携带默认值插入污染导出相关信息
+	result := selfDB.conn.Create(&v2)
+	if result.Error != nil {
+		tx.Rollback()
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("InsertRecordError", "insert audit record is failed")
+	}
+	tx.Commit()
+
+	return nil
 }

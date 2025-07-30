@@ -1,9 +1,10 @@
-package apis
+package utils
 
 import (
 	"crypto/md5"
 	"encoding/hex"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -34,6 +35,16 @@ func ValidateValueWithMd5(inputVal, encryptVal string) bool {
 	salt := strings.Split(encryptVal, "$")[0]
 	encryptInputVal := EncryptWithSaltMd5(salt, inputVal)
 	return encryptInputVal == encryptVal
+}
+
+func Str2TimeObj(t string) time.Time {
+	newT, err := time.Parse(time.DateTime, t)
+	if err != nil {
+		DebugPrint("FormatTimeError", err.Error())
+		// 出现则返回1970的时间段！
+		return time.Unix(0, 0)
+	}
+	return newT
 }
 
 // func GenerateSignedURI(taskId string) string {

@@ -1,8 +1,11 @@
-package apis
+package auth
 
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
+	"sql_demo/internal/utils"
 	"sync"
 
 	"golang.org/x/oauth2"
@@ -10,9 +13,6 @@ import (
 
 var oauthConf *oauth2.Config
 var oauthOnce sync.Once
-
-// 存储State参数的Map
-var SessionMap *CachesMap = &CachesMap{cache: &sync.Map{}}
 
 // 生成安全的随机State参数
 func generateSSOState() (string, error) {
@@ -25,7 +25,7 @@ func generateSSOState() (string, error) {
 }
 
 func InitOAuth2() {
-	conf := GetAppConfig()
+	conf := conf.GetAppConf().GetBaseConfig()
 	oauthOnce.Do(func() {
 		oauthConf = &oauth2.Config{
 			ClientID:     conf.SSOEnv.ClientEnv.ID,
@@ -42,7 +42,7 @@ func InitOAuth2() {
 
 func GetOAuthConfig() *oauth2.Config {
 	if oauthConf == nil {
-		InitOAuth2()
+		panic(utils.GenerateError("OAuthConfigNotInit", "oauth config object is not inited"))
 	}
 	return oauthConf
 }
@@ -52,6 +52,6 @@ func SetState() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	SessionMap.Set(state, struct{}{}, 300, 2)
+	core.SessionMap.Set(state, struct{}{}, 300, 2)
 	return state, nil
 }

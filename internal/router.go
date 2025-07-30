@@ -1,4 +1,4 @@
-package apis
+package internal
 
 import (
 	"context"
@@ -9,6 +9,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sql_demo/internal/auth"
+	"sql_demo/internal/common"
+	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
+	dbo "sql_demo/internal/db"
+	"sql_demo/internal/event"
+	"sql_demo/internal/utils"
 	"strings"
 	"syscall"
 	"time"
@@ -57,7 +64,7 @@ func InitRouter() {
 
 	// r.Run("localhost:21899")
 	// 优雅关闭：监听信号量的context，等待信号量出现进行cancel()；传入gin server进行关闭。
-	conf := GetAppConfig()
+	conf := conf.GetAppConf().GetBaseConfig()
 	srv := &http.Server{
 		// Addr:    address,
 		Handler: r,
@@ -96,7 +103,7 @@ func InitRouter() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		GenerateError("ShutDown Server Failed", err.Error())
+		utils.GenerateError("ShutDown Server Failed", err.Error())
 	} else {
 		log.Println("closed server!!")
 	}
@@ -139,124 +146,124 @@ func SQLExcuteTest(ctx *gin.Context) {
 	fmt.Printf("处理用户请求，%s\n", time.Now().String())
 	val, exist := ctx.Get("user_id")
 	if !exist {
-		ErrorResp(ctx, "User not exist")
+		common.ErrorResp(ctx, "User not exist")
 		return
 	}
 	_, ok := val.(string)
 	if !ok {
-		ErrorResp(ctx, "convert type is failed")
+		common.ErrorResp(ctx, "convert type is failed")
 		return
 	}
-	var content SQLIssueTemplate
+	var content core.SQLIssueTemplate
 	err := ctx.ShouldBindJSON(&content)
 	if err != nil {
-		ErrorResp(ctx, err.Error())
+		common.ErrorResp(ctx, err.Error())
 		return
 	}
 	fmt.Printf("完成请求信息搜集，%s\n", time.Now().String())
 
-	stmtList, err := parseV2(content.DBName, content.Statement)
+	stmtList, err := core.ParseV2(content.DBName, content.Statement)
 	if err != nil {
-		ErrorResp(ctx, err.Error())
+		common.ErrorResp(ctx, err.Error())
 		return
 	}
 	fmt.Printf("完成SQL语句解析，%s\n", time.Now().String())
 
-	taskGroup := make([]*QueryTask, 0)
+	taskGroup := make([]*core.QueryTask, 0)
 	for _, s := range stmtList {
-		qTask := QueryTask{
-			ID:        GenerateUUIDKey(),
+		qTask := core.QueryTask{
+			ID:        utils.GenerateUUIDKey(),
 			DBName:    content.DBName,
 			Statement: s.SafeStmt,
 			Env:       content.Env,
 			Service:   content.Service,
-			deadline:  30,
+			Deadline:  30,
 			// UserID:    StrToUint(userId),
-			Action: s.action,
+			Action: s.Action,
 		}
 		taskGroup = append(taskGroup, &qTask)
 	}
-	gid := GenerateUUIDKey()
+	gid := utils.GenerateUUIDKey()
 	fmt.Println("gid===", gid)
-	qtg := &QTaskGroup{
+	qtg := &core.QTaskGroup{
 		GID:    gid,
 		QTasks: taskGroup,
 		// DML:      content.DML,
-		deadline: 300,
+		Deadline: 300,
 	}
 	// 事件驱动：封装成Event推送到事件通道(v2.0)
-	ep := GetEventProducer()
-	ep.Produce(Event{
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
 		Type:    "sql_query",
 		Payload: qtg,
 	})
 	fmt.Printf("生产SQL查询消息的事件，%s\n", time.Now().String())
 
 	// 同步等待获取结果
-	<-testCh
+	<-core.TestCh
 	fmt.Printf("完成SQL查询的消费事件，%s\n", time.Now().String())
-	res, exist := ResultMap.Get(qtg.GID)
+	res, exist := core.ResultMap.Get(qtg.GID)
 	if !exist {
-		ErrorResp(ctx, "Not found result")
+		common.ErrorResp(ctx, "Not found result")
 		return
 	}
-	if result, ok := res.(*SQLResultGroup); ok {
-		SuccessResp(ctx, result.resGroup, "result ok!!!")
+	if result, ok := res.(*dbo.SQLResultGroup); ok {
+		common.SuccessResp(ctx, result.ResGroup, "result ok!!!")
 		fmt.Printf("响应数据，%s\n", time.Now().String())
 		return
 	}
-	ErrorResp(ctx, "result is null")
+	common.ErrorResp(ctx, "result is null")
 	fmt.Printf("响应数据，%s\n", time.Now().String())
 }
 
 func IssueCallBack(ctx *gin.Context) {
-	err := PreCheckCallback(ctx, "Issue Hook")
+	err := core.PreCheckCallback(ctx, "Issue Hook")
 	if err != nil {
-		NotAuthResp(ctx, err.Error()) // ERROR：401
+		common.NotAuthResp(ctx, err.Error()) // ERROR：401
 		return
 	}
 	//！ callback 核心逻辑
 	// 获取并解析请求体
-	var reqBody IssueWebhook
+	var reqBody core.IssueWebhook
 	err = ctx.ShouldBind(&reqBody)
 	if err != nil {
-		ErrorResp(ctx, FormatPrint("BindError", err.Error()))
+		common.ErrorResp(ctx, common.FormatPrint("BindError", err.Error()))
 		return
 	}
 	err = reqBody.OpenIssueHandle()
 	if err != nil {
-		ErrorResp(ctx, FormatPrint("IssueHandleError", err.Error()))
+		common.ErrorResp(ctx, common.FormatPrint("IssueHandleError", err.Error()))
 		return
 	}
-	// utils.Str2TimeObj(reqBody.ObjectAttr.CreateAt)
-	SuccessResp(ctx, nil, "Success gitlab issue callback")
+	// common.Str2TimeObj(reqBody.ObjectAttr.CreateAt)
+	common.SuccessResp(ctx, nil, "Success gitlab issue callback")
 }
 
 func CommentCallBack(ctx *gin.Context) {
-	err := PreCheckCallback(ctx, "Note Hook")
+	err := core.PreCheckCallback(ctx, "Note Hook")
 	if err != nil {
-		NotAuthResp(ctx, err.Error()) // ERROR：401
+		common.NotAuthResp(ctx, err.Error()) // ERROR：401
 		return
 	}
 	// 评论事件触发的逻辑
-	var reqBody CommentWebhook
+	var reqBody core.CommentWebhook
 	err = ctx.ShouldBind(&reqBody)
 	if err != nil {
-		ErrorResp(ctx, FormatPrint("BindError", err.Error()))
+		common.ErrorResp(ctx, common.FormatPrint("BindError", err.Error()))
 		return
 	}
 	err = reqBody.CommentIssueHandle()
 	if err != nil {
-		api := InitGitLabAPI()
-		commentErr := api.CommentCreate(reqBody.Project.ID, reqBody.Issue.IID, err.Error())
+		glab := core.InitGitLabAPI()
+		commentErr := glab.CommentCreate(reqBody.Project.ID, reqBody.Issue.IID, err.Error())
 		if commentErr != nil {
-			ErrorResp(ctx, FormatPrint("CommnetError", err.Error()))
+			common.ErrorResp(ctx, common.FormatPrint("CommnetError", err.Error()))
 			return
 		}
-		ErrorResp(ctx, FormatPrint("CommentHandleError", err.Error()))
+		common.ErrorResp(ctx, common.FormatPrint("CommentHandleError", err.Error()))
 		return
 	}
-	SuccessResp(ctx, nil, "Success gitlab comment callback")
+	common.SuccessResp(ctx, nil, "Success gitlab comment callback")
 }
 
 type UserQuery struct {
@@ -291,13 +298,13 @@ func AuthMiddleware() gin.HandlerFunc {
 		reqToken := ctx.Request.Header.Get("Authorization")
 		tokenList := strings.Split(reqToken, " ")
 		if len(tokenList) != 2 || !strings.HasPrefix(tokenList[0], "Bearer") {
-			// ErrorResp(ctx, "Jwt token not exist")
+			// common.ErrorResp(ctx, "Jwt token not exist")
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token is invalid,please check"})
 			return
 		}
-		userClaim, err := ParseJWT(tokenList[1])
+		userClaim, err := utils.ParseJWT(tokenList[1])
 		if err != nil {
-			// ErrorResp(ctx, err.Error())
+			// common.ErrorResp(ctx, err.Error())
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
@@ -309,14 +316,13 @@ func AuthMiddleware() gin.HandlerFunc {
 
 func DBList(ctx *gin.Context) {
 	// 获取环境变量
-	envName, exist := ctx.Params.Get("env")
+	_, exist := ctx.Params.Get("env")
 	if !exist {
-		DefaultResp(ctx, 11, nil, "Env Name is not exist")
+		common.DefaultResp(ctx, 11, nil, "Env Name is not exist")
 		return
 	}
-	pool := newDBPoolManager()
-	list := pool.getDBList(envName)
-	SuccessResp(ctx, list, "get db list success")
+	// pool := dbo.newDBPoolManager()
+	common.SuccessResp(ctx, nil, "get db list success")
 }
 
 // /api/v1/query
@@ -324,7 +330,7 @@ func DBList(ctx *gin.Context) {
 // 	// 防止伪造jwt请求
 // 	userID, exist := ctx.Get("user_id")
 // 	if !exist {
-// 		ErrorResp(ctx, "User not exist")
+// 		common.ErrorResp(ctx, "User not exist")
 // 		return
 // 	}
 // 	var q UserQuery
@@ -334,7 +340,7 @@ func DBList(ctx *gin.Context) {
 // 	// SQL语法解析并校验（v2.0)  - 格式化SQL查询语句（确保规范化）
 // 	sqlRaw, err := ParseSQL(q.Statement, "select")
 // 	if err != nil {
-// 		DefaultResp(ctx, 1, nil, err.Error())
+// 		common.DefaultResp(ctx, 1, nil, err.Error())
 // 		return
 // 	}
 // 	// 提交异步任务入队(v1.0)
@@ -347,7 +353,7 @@ func DBList(ctx *gin.Context) {
 // 		Type:    "sql_query",
 // 		Payload: task,
 // 	})
-// 	SuccessResp(ctx, map[string]string{
+// 	common.SuccessResp(ctx, map[string]string{
 // 		"task_id": task.ID,
 // 	}, "submit sql_query event success")
 // }
@@ -356,21 +362,21 @@ func DBList(ctx *gin.Context) {
 func getQueryResult(ctx *gin.Context) {
 	taskID := ctx.Param("taskId")
 	if taskID == "" {
-		ErrorResp(ctx, "taskID is null")
+		common.ErrorResp(ctx, "taskID is null")
 		return
 	}
-	userResult, exist := ResultMap.Get(taskID)
+	userResult, exist := core.ResultMap.Get(taskID)
 	// 仅获取不到key的时候重新获取
 	if !exist {
-		DefaultResp(ctx, -1, nil, "SQL查询中.......")
+		common.DefaultResp(ctx, -1, nil, "SQL查询中.......")
 		return
 	}
-	if val, ok := userResult.(*SQLResult); ok {
-		if val.errrr != nil {
-			DefaultResp(ctx, 1, "", val.errrr.Error())
+	if val, ok := userResult.(*dbo.SQLResult); ok {
+		if val.Errrrr != nil {
+			common.DefaultResp(ctx, 1, "", val.Errrrr.Error())
 			return
 		}
-		SuccessResp(ctx, gin.H{
+		common.SuccessResp(ctx, gin.H{
 			"result":     val.Results,
 			"rows_count": val.RowCount,
 			"query_time": val.QueryTime,
@@ -380,9 +386,9 @@ func getQueryResult(ctx *gin.Context) {
 }
 
 func getMapKeys(ctx *gin.Context) {
-	userResult := ResultMap.Keys()
+	userResult := core.ResultMap.Keys()
 	log.Println(userResult)
-	SuccessResp(ctx, userResult, "Get resultMap all keys success")
+	common.SuccessResp(ctx, userResult, "Get resultMap all keys success")
 }
 
 // User obj
@@ -395,12 +401,17 @@ type UserInfo struct {
 func userCreate(ctx *gin.Context) {
 	var userInfo UserInfo
 	ctx.ShouldBind(&userInfo)
-	err := CreateUser(userInfo.Name, userInfo.Password, userInfo.Email)
+	user := dbo.User{
+		Name:     userInfo.Name,
+		Password: userInfo.Password,
+		Email:    userInfo.Email,
+	}
+	err := user.Create()
 	if err != nil {
-		DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, 1, nil, err.Error())
 	}
 	// 返回创建信息
-	SuccessResp(ctx, "token=...", "Get resultMap all keys success")
+	common.SuccessResp(ctx, "token=...", "Get resultMap all keys success")
 }
 
 // 用户登录（鉴权）
@@ -408,43 +419,46 @@ func userLogin(ctx *gin.Context) {
 	var loginInfo UserInfo
 	ctx.ShouldBind(&loginInfo)
 	// 通过数据库验证
-	user, err := BasicLogin(loginInfo.Email, loginInfo.Password)
+	user := dbo.User{
+		Email: loginInfo.Email,
+	}
+	userInfo, err := user.BasicLogin(loginInfo.Password)
 	if err != nil {
-		DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
-	token, err := GenerateJWT(user.ID, user.Name, user.Email)
+	token, err := utils.GenerateJWT(userInfo.ID, userInfo.Name, userInfo.Email)
 	if err != nil {
-		DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, 1, nil, err.Error())
 	}
-	SuccessResp(ctx, gin.H{
+	common.SuccessResp(ctx, gin.H{
 		"user_token": token,
-		"user":       user.Name,
+		"user":       userInfo.Name,
 	}, "user login success")
 }
 
 func getQueryRecords(ctx *gin.Context) {
-	err := AllAuditRecords()
+	err := dbo.AllAuditRecords()
 	if err != nil {
-		DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
-	SuccessResp(ctx, "test ok", "Get query result success")
+	common.SuccessResp(ctx, "test ok", "Get query result success")
 }
 
 // 处理gitlab SSO登录
 func userSSOLogin(ctx *gin.Context) {
-	oa2 := GetOAuthConfig()
-	state, err := SetState()
+	oa2 := auth.GetOAuthConfig()
+	state, err := auth.SetState()
 	if err != nil {
-		DefaultResp(ctx, 1, nil, GenerateError("NoStateValue", err.Error()).Error())
+		common.DefaultResp(ctx, 1, nil, utils.GenerateError("NoStateValue", err.Error()).Error())
 		return
 	}
 	authURL := oa2.AuthCodeURL(state)
 	log.Println("构造后的auth url:", authURL)
 	// ctx.Redirect(http.StatusFound, authURL)
 	// 构造authURL，由前端去跳转。
-	SuccessResp(ctx, map[string]any{
+	common.SuccessResp(ctx, map[string]any{
 		"redirect_url": authURL,
 		"state":        state,
 	}, "redirect to gitlab oauth")
@@ -455,33 +469,34 @@ func SSOCallBack(ctx *gin.Context) {
 	// 防御CSRF攻击（确保请求state参数一致）
 	reqState := ctx.Request.URL.Query().Get("state")
 	if reqState == "" {
-		DefaultResp(ctx, http.StatusBadRequest, nil, "Missing state parameter")
+		common.DefaultResp(ctx, http.StatusBadRequest, nil, "Missing state parameter")
 		return
 	}
-	_, exist := SessionMap.Get(reqState)
+	_, exist := core.SessionMap.Get(reqState)
 	if !exist {
-		DefaultResp(ctx, http.StatusBadRequest, nil, "Invaild state parameter")
+		common.DefaultResp(ctx, http.StatusBadRequest, nil, "Invaild state parameter")
 		return
 	}
 	// 清理缓存
-	SessionMap.Del(reqState)
+	core.SessionMap.Del(reqState)
 
 	// 获取授权码
-	oa2 := GetOAuthConfig()
+	oa2 := auth.GetOAuthConfig()
 	code := ctx.Request.URL.Query().Get("code")
 	token, err := oa2.Exchange(context.Background(), code)
 	if err != nil {
-		ErrorResp(ctx, "Failed to exchange token:"+err.Error())
+		common.ErrorResp(ctx, "Failed to exchange token:"+err.Error())
 		return
 	}
 	// log.Println("DEBUG>>>", token)
 
 	// 通过获取身份提供商的token中的用户信息，构造我们application的token
+	oauthConf := auth.GetOAuthConfig()
 	client := oauthConf.Client(context.Background(), token)
-	appConf := GetAppConfig()
+	appConf := conf.GetAppConf().GetBaseConfig()
 	resp, err := client.Get(appConf.SSOEnv.ClientAPI)
 	if err != nil {
-		ErrorResp(ctx, "Failed to get user info:"+err.Error())
+		common.ErrorResp(ctx, "Failed to get user info:"+err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -494,21 +509,25 @@ func SSOCallBack(ctx *gin.Context) {
 	}
 	err = json.NewDecoder(resp.Body).Decode(&gitlabUserInfo)
 	if err != nil {
-		ErrorResp(ctx, "decode user info is failed, "+err.Error())
+		common.ErrorResp(ctx, "decode user info is failed, "+err.Error())
 		return
 	}
 	// 完成数据库相关的逻辑
-	userId, err := SSOLogin(gitlabUserInfo.Name, gitlabUserInfo.Email)
+	user := dbo.User{
+		Name:  gitlabUserInfo.Name,
+		Email: gitlabUserInfo.Email,
+	}
+	userId, err := user.SSOLogin()
 	if err != nil {
-		ErrorResp(ctx, "sso login failed, "+err.Error())
+		common.ErrorResp(ctx, "sso login failed, "+err.Error())
 		return
 	}
 	// log.Println(gitlabUserInfo)
-	appToken, err := GenerateJWT(userId, gitlabUserInfo.Name, gitlabUserInfo.Email)
+	appToken, err := utils.GenerateJWT(userId, gitlabUserInfo.Name, gitlabUserInfo.Email)
 	if err != nil {
-		DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, 1, nil, err.Error())
 	}
-	SuccessResp(ctx, gin.H{
+	common.SuccessResp(ctx, gin.H{
 		"user_token": appToken,
 		"user":       gitlabUserInfo.Name,
 	}, "sso login success")
@@ -518,14 +537,14 @@ func SSOCallBack(ctx *gin.Context) {
 func ResultExport(ctx *gin.Context) {
 	userId, exist := ctx.Get("user_id")
 	if !exist {
-		ErrorResp(ctx, "User not exist")
+		common.ErrorResp(ctx, "User not exist")
 		return
 	}
-	var reqBody ExportTask
+	var reqBody core.ExportTask
 	ctx.ShouldBindJSON(&reqBody)
-	export := SubmitExportTask(reqBody.ID, reqBody.Type, StrToUint(userId.(string)))
+	export := core.SubmitExportTask(reqBody.ID, reqBody.Type, utils.StrToUint(userId.(string)))
 
-	SuccessResp(ctx, gin.H{
+	common.SuccessResp(ctx, gin.H{
 		"task_id":  export.ID,
 		"filename": export.FileName,
 	}, "export file task start...")
@@ -535,7 +554,7 @@ func DownloadFile(ctx *gin.Context) {
 	taskId := ctx.Query("task_id")
 	if taskId == "" {
 		log.Println("debug: >> task id is null, invaild")
-		DefaultResp(ctx, 1, nil, "param taskid is invalid")
+		common.DefaultResp(ctx, 1, nil, "param taskid is invalid")
 		return
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*25)
@@ -546,51 +565,51 @@ func DownloadFile(ctx *gin.Context) {
 		// 获取UserId
 		val, exist := ctx.Get("user_id")
 		if !exist {
-			ErrorResp(ctx, "User not exist")
+			common.ErrorResp(ctx, "User not exist")
 			return
 		}
 		userId, ok := val.(string)
 		if !ok {
-			ErrorResp(ctx, "convert type is failed")
+			common.ErrorResp(ctx, "convert type is failed")
 			return
 		}
 		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
-		var auditRecord AuditRecordV2
-		db := HaveSelfDB()
-		res := db.conn.Where("task_id = ?", taskId).First(&auditRecord)
+		var auditRecord dbo.AuditRecordV2
+		dbConn := dbo.HaveSelfDB().GetConn()
+		res := dbConn.Where("task_id = ?", taskId).First(&auditRecord)
 		if res.Error != nil {
 			cancel()
-			ErrorPrint("DBAPIError", res.Error.Error())
+			utils.ErrorPrint("DBAPIError", res.Error.Error())
 			return
 		}
 		if res.RowsAffected != 1 {
 			cancel()
-			ErrorPrint("DBAPIError", "rows is zero")
+			utils.ErrorPrint("DBAPIError", "rows is zero")
 			return
 		}
 		// 日志审计插入v2
 		auditRecord.ID = 0
-		auditRecord.UserID = StrToUint(userId)
+		auditRecord.UserID = utils.StrToUint(userId)
 		err := auditRecord.InsertOne("RESULT_EXPORT")
 		if err != nil {
-			ErrorPrint("AuditRecordV2", err.Error())
+			utils.ErrorPrint("AuditRecordV2", err.Error())
 		}
 		time.Sleep(30 * time.Second)
 		auditChan <- struct{}{}
 	}()
-	if !AllowResultExport(taskId) {
-		DefaultResp(ctx, 1, nil, "result file is not allow to export")
+	if !dbo.AllowResultExport(taskId) {
+		common.DefaultResp(ctx, 1, nil, "result file is not allow to export")
 		return
 	}
 	// 获取文件路径并下载
-	mapVal, exist := ExportWorkMap.Get(taskId)
+	mapVal, exist := core.ExportWorkMap.Get(taskId)
 	if !exist {
-		DefaultResp(ctx, 4, nil, "result file is not exist,may be cleaned")
+		common.DefaultResp(ctx, 4, nil, "result file is not exist,may be cleaned")
 		return
 	}
-	exportResult, ok := mapVal.(*ExportResult)
+	exportResult, ok := mapVal.(*core.ExportResult)
 	if !ok {
-		DefaultResp(ctx, 4, nil, "result file type not match")
+		common.DefaultResp(ctx, 4, nil, "result file type not match")
 		return
 	}
 	if _, err := os.Stat(exportResult.FilePath); err != nil {
@@ -603,7 +622,7 @@ func DownloadFile(ctx *gin.Context) {
 	// 等待审计记录的完成
 	select {
 	case <-timeoutCtx.Done():
-		ErrorResp(ctx, "handle timeout")
+		common.ErrorResp(ctx, "handle timeout")
 		return
 	case <-auditChan:
 		return
@@ -618,7 +637,7 @@ func SSEHandle(ctx *gin.Context) {
 
 	_, exist := ctx.Get("user_id")
 	if !exist {
-		ErrorResp(ctx, "User not exist")
+		common.ErrorResp(ctx, "User not exist")
 		return
 	}
 	// 从Parmas山获取taskId
@@ -632,12 +651,12 @@ func SSEHandle(ctx *gin.Context) {
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 	defer cancel()
 	// 获取对应taskId的<导出对象>信息
-	mapVal, exist := ExportWorkMap.Get(taskId)
+	mapVal, exist := core.ExportWorkMap.Get(taskId)
 	if !exist {
 		log.Println("[NotExist] export result not exist,exit(1)")
 		return
 	}
-	exportJob, ok := mapVal.(*ExportResult)
+	exportJob, ok := mapVal.(*core.ExportResult)
 	if !ok {
 		log.Println("[TypeNotMatch] export result type is not match,exit(1)")
 		return
@@ -713,29 +732,29 @@ func SSEMsgOnSend(ctx *gin.Context, event *sseEvent) {
 func getUserAuditRecordHandler(ctx *gin.Context) {
 	val, exist := ctx.Get("user_id")
 	if !exist {
-		ErrorResp(ctx, "server parse user is failed")
+		common.ErrorResp(ctx, "server parse user is failed")
 		return
 	}
 	userId, ok := val.(string)
 	if !ok {
-		ErrorResp(ctx, "convert type is failed")
+		common.ErrorResp(ctx, "convert type is failed")
 		return
 	}
-	recordData, err := GetAuditRecordByUserID(userId)
+	recordData, err := dbo.GetAuditRecordByUserID(userId)
 	if err != nil {
-		ErrorResp(ctx, err.Error())
+		common.ErrorResp(ctx, err.Error())
 		return
 	}
-	SuccessResp(ctx, recordData, "get audit records by userid")
+	common.SuccessResp(ctx, recordData, "get audit records by userid")
 }
 
 // 外链形式展示ticket任务执行结果
 func showTempQueryResult(ctx *gin.Context) {
 	uuKey := ctx.Param("identifier")
 	// 校验链接是否过期
-	dbRes, err := GetTempResult(uuKey)
+	dbRes, err := dbo.GetTempResult(uuKey)
 	if err != nil {
-		DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
 	// 插入审计日志的超时控制
@@ -747,51 +766,51 @@ func showTempQueryResult(ctx *gin.Context) {
 		// 获取UserId
 		val, exist := ctx.Get("user_id")
 		if !exist {
-			ErrorResp(ctx, "User not exist")
+			common.ErrorResp(ctx, "User not exist")
 			return
 		}
 		userId, ok := val.(string)
 		if !ok {
-			ErrorResp(ctx, "convert type is failed")
+			common.ErrorResp(ctx, "convert type is failed")
 			return
 		}
 		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
-		var auditRecord AuditRecordV2
-		db := HaveSelfDB()
-		res := db.conn.Where("task_id = ?", dbRes.TaskId).First(&auditRecord)
+		var auditRecord dbo.AuditRecordV2
+		dbConn := dbo.HaveSelfDB().GetConn()
+		res := dbConn.Where("task_id = ?", dbRes.TaskId).First(&auditRecord)
 		if res.Error != nil {
 			cancel()
-			ErrorPrint("DBAPIError", res.Error.Error())
+			utils.ErrorPrint("DBAPIError", res.Error.Error())
 			return
 		}
 		if res.RowsAffected != 1 {
 			cancel()
-			ErrorPrint("DBAPIError", "rows is zero")
+			utils.ErrorPrint("DBAPIError", "rows is zero")
 			return
 		}
 		// 日志审计插入v2
 		auditRecord.ID = 0
-		auditRecord.UserID = StrToUint(userId)
+		auditRecord.UserID = utils.StrToUint(userId)
 		err := auditRecord.InsertOne("RESULT_VIEW")
 		if err != nil {
-			ErrorPrint("AuditRecordV2", err.Error())
+			utils.ErrorPrint("AuditRecordV2", err.Error())
 		}
 		auditChan <- struct{}{}
 	}()
 	// 结果集是否存在
-	userResult, exist := ResultMap.Get(dbRes.TaskId)
+	userResult, exist := core.ResultMap.Get(dbRes.TaskId)
 	if !exist {
-		DefaultResp(ctx, 1, nil, "SQL Query result is not exist")
+		common.DefaultResp(ctx, 1, nil, "SQL Query result is not exist")
 		return
 	}
-	if val, ok := userResult.(*SQLResultGroup); ok {
+	if val, ok := userResult.(*dbo.SQLResultGroup); ok {
 		// if val.resGroup != nil {
-		// 	DefaultResp(ctx, 1, nil, val.errrr.Error())
+		// 	common.DefaultResp(ctx, 1, nil, val.errrr.Error())
 		// 	return
 		// }
 		// QueryTaskMap.Get(val.ID)
-		SuccessResp(ctx, gin.H{
-			"result":    val.resGroup,
+		common.SuccessResp(ctx, gin.H{
+			"result":    val.ResGroup,
 			"is_export": dbRes.IsAllowExport,
 			"task_id":   val.GID,
 		}, "SUCCESS")
@@ -799,7 +818,7 @@ func showTempQueryResult(ctx *gin.Context) {
 	// 等待审计记录的完成
 	select {
 	case <-timeoutCtx.Done():
-		ErrorResp(ctx, "handle timeout")
+		common.ErrorResp(ctx, "handle timeout")
 		return
 	case <-auditChan:
 		return
@@ -807,33 +826,34 @@ func showTempQueryResult(ctx *gin.Context) {
 }
 
 func UpdateGitLabUsers(ctx *gin.Context) {
-	api := InitGitLabAPI()
+	api := core.InitGitLabAPI()
 	users, err := api.UserList()
 	if err != nil {
-		DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, 1, nil, err.Error())
 		return
 	}
 	for _, gu := range users {
 		if gu.State != "active" {
 			continue
 		}
-		var u User
-		err := selfDB.conn.Where("git_lab_identity = ?", gu.ID).First(&u).Error
+		var u dbo.User
+		dbConn := dbo.HaveSelfDB().GetConn()
+		err := dbConn.Where("git_lab_identity = ?", gu.ID).First(&u).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				// 如果该用户不存在，则新建用户
-				u := User{
+				u := dbo.User{
 					Name:           gu.Name,
 					UserName:       gu.Username,
 					GitLabIdentity: gu.ID,
 					Email:          gu.Email,
 					UserType:       2,
 				}
-				selfDB.conn.Create(&u)
+				dbConn.Create(&u)
 				continue
 			}
 		}
-		err = selfDB.conn.Model(&u).Updates(User{
+		err = dbConn.Model(&u).Updates(dbo.User{
 			ID:             u.ID,
 			Name:           gu.Name,
 			UserName:       gu.Username,
@@ -842,9 +862,9 @@ func UpdateGitLabUsers(ctx *gin.Context) {
 			UserType:       2,
 		}).Error
 		if err != nil {
-			DebugPrint("UpdateGitLabUser", "update gitlab user is failed")
+			utils.DebugPrint("UpdateGitLabUser", "update gitlab user is failed")
 			continue
 		}
 	}
-	SuccessResp(ctx, users, "get users")
+	common.SuccessResp(ctx, users, "get users")
 }

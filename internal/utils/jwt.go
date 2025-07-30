@@ -1,4 +1,4 @@
-package apis
+package utils
 
 import (
 	"strconv"
@@ -94,20 +94,20 @@ func ValidateJWTToken(tokenStr string) (bool, error) {
 		return false, err
 	}
 	// 对自定义字段进行校验
-	id, err := strconv.ParseUint(tokenClaim.UserID, 10, 32)
+	_, err = strconv.ParseUint(tokenClaim.UserID, 10, 32)
 	if err != nil {
 		return false, GenerateError("StringToUintError", err.Error())
 	}
-	convId := uint(id)
-	var user User
-	result := selfDB.conn.Where(&User{ID: convId, Email: tokenClaim.Email}).First(&user)
-	if result.Error != nil {
-		return false, GenerateError("ValidateJWTFailed", result.Error.Error())
-	}
-	if result.RowsAffected == 0 {
-		// 无法找到该用户则校验失败（断定为用户伪造的jwt）
-		return false, GenerateError("ValidateJWTFailed", "not found user")
-	}
+	// convId := uint(id)
+	// var user User
+	// result := selfDB.conn.Where(&User{ID: convId, Email: tokenClaim.Email}).First(&user)
+	// if result.Error != nil {
+	// 	return false, GenerateError("ValidateJWTFailed", result.Error.Error())
+	// }
+	// if result.RowsAffected == 0 {
+	// 	// 无法找到该用户则校验失败（断定为用户伪造的jwt）
+	// 	return false, GenerateError("ValidateJWTFailed", "not found user")
+	// }
 
 	return true, nil
 }
