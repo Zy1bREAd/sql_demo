@@ -53,6 +53,7 @@ type ResultGroup interface {
 type SQLResultGroup struct {
 	GID      string
 	ResGroup []*SQLResult
+	Errrr    error
 }
 
 // 读取配置，加载数据库池
@@ -156,11 +157,12 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 		}
 		defer func() {
 			if recoverErr := recover(); recoverErr != nil {
-				utils.ErrorPrint("TransferExcute", "Transfer Excute Error -- "+taskId)
+				fmt.Println(recoverErr)
+				utils.ErrorPrint("TransferExcute", "Transfer Excute Error::"+taskId)
 				tx.Rollback()
 				errVal, ok := recoverErr.(error)
 				if !ok {
-					errCh <- utils.GenerateError("RollBackError", "Unknown Error")
+					errCh <- utils.GenerateError("RollBackError", "Unknown Error::"+taskId)
 				}
 				errCh <- errVal
 				return
@@ -182,7 +184,7 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 
 	select {
 	case <-ctx.Done():
-		res.Errrrr = utils.GenerateError("TaskTimeOut", "excute sql task is timeout")
+		res.Errrrr = utils.GenerateError("TaskTimeOut", "excute sql task is timeout"+taskId)
 	case err := <-errCh:
 		if err != nil {
 			res.Errrrr = err
@@ -262,10 +264,6 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 	}
 	return queryResult
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
-}
-
-func (ist *DBInstance) Healthz(ctx context.Context) error {
-	return ist.conn.PingContext(ctx)
 }
 
 // 初始化数据库池管理者（全局一次）

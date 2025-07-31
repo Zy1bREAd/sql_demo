@@ -2,10 +2,12 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"reflect"
 	api "sql_demo/api"
+	glbapi "sql_demo/api/gitlab"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
@@ -34,6 +36,7 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 			"clean_task":        NewCleanEventHandler,
 			"export_result":     NewExportEventHandler,
 			"file_housekeeping": NewHousekeepingEventHandler,
+			"gitlab_webhook":    NewGitLabEventHandler,
 		}
 		for k, handler := range registerMap {
 			err := ed.RegisterHandler(k, handler(), 3)
@@ -69,26 +72,56 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	switch t := e.Payload.(type) {
 	case *QueryTask:
 		utils.DebugPrint("不再支持该类型SQL", t.ID)
-		// QueryTaskMap.Set(t.ID, t, 300, 1) // 存储查询任务信息
-		// t.ExcuteTask(ctx)
-		// 日志审计插入v2（不支持）
 
 	case *QTaskGroup: // 支持多SQL
 		utils.DebugPrint("SQL查询Group事件消费", t.GID)
 		QueryTaskMap.Set(t.GID, t, 300, 1)
+		// 解析SQL语法V2
+		stmtList, err := ParseV2(t.DBName, t.StmtRaw)
+		if err != nil {
+			commentMsg := fmt.Sprintf("TaskId=%s is failed, %s", t.GID, err.Error())
+			rg := &dbo.SQLResultGroup{
+				GID:      t.GID,
+				ResGroup: make([]*dbo.SQLResult, 0),
+				Errrr:    utils.GenerateError("SQLSyntaxError", commentMsg),
+			}
+			ep := event.GetEventProducer()
+			ep.Produce(event.Event{
+				Type:    "save_result",
+				Payload: rg,
+			})
+			return nil
+		}
+		// 构造任务组
+		taskGroup := make([]*QueryTask, 0)
+		for _, s := range stmtList {
+			qTask := QueryTask{
+				ID:        utils.GenerateUUIDKey(),
+				Statement: s.SafeStmt,
+				Deadline:  t.Deadline,
+				Action:    s.Action,
+			}
+			taskGroup = append(taskGroup, &qTask)
+		}
+		t.QTasks = taskGroup
+		t.Deadline = len(taskGroup) * t.Deadline
 		t.ExcuteTask(ctx)
 		// 日志审计插入v2
-		stmtAll := ""
-		for _, t := range t.QTasks {
-			stmtAll = stmtAll + t.Statement + ";"
+		// stmtAll := ""
+		// for _, t := range t.QTasks {
+		// 	stmtAll = stmtAll + t.Statement + ";"
+		// }
+		jsonBytes, err := json.Marshal(taskGroup)
+		if err != nil {
+			utils.ErrorPrint("AuditRecordV2", err.Error())
 		}
 		audit := dbo.AuditRecordV2{
 			TaskID:   t.GID,
-			UserID:   t.UserId,
-			Payload:  stmtAll,
+			UserID:   t.UserID,
+			Payload:  string(jsonBytes),
 			TaskType: QTaskGroupType,
 		}
-		err := audit.InsertOne("SQL_QUERY")
+		err = audit.InsertOne("SQL_QUERY")
 		if err != nil {
 			utils.ErrorPrint("AuditRecordV2", err.Error())
 		}
@@ -96,21 +129,44 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		utils.DebugPrint("GItlab Issue SQL查询事件消费", t.QTG.GID)
 		QueryTaskMap.Set(t.QTG.GID, t, 300, 1) // 存储查询任务信息
 		// Issue评论情况更新并开始执行任务
-		glab := InitGitLabAPI()
+		glab := glbapi.InitGitLabAPI()
 		updateMsg := fmt.Sprintf("TaskId=%s is start work...", t.QTG.GID)
-		glab.CommentCreate(t.QIssue.ProjectID, t.QIssue.IID, updateMsg)
-
+		glab.CommentCreate(t.IssProjectID, t.IssIID, updateMsg)
+		// 解析SQL语法V2
+		stmtList, err := ParseV2(t.QTG.DBName, t.QTG.StmtRaw)
+		if err != nil {
+			commentMsg := fmt.Sprintf("TaskId=%s is failed, %s", t.QTG.GID, err.Error())
+			glab.CommentCreate(t.IssProjectID, t.IssIID, commentMsg)
+			return err
+		}
+		// 构造任务组(缺少对deadline的默认设置)
+		taskGroup := make([]*QueryTask, 0)
+		for _, s := range stmtList {
+			qTask := QueryTask{
+				ID:        utils.GenerateUUIDKey(),
+				Statement: s.SafeStmt,
+				Deadline:  t.QTG.Deadline,
+				Action:    s.Action,
+			}
+			taskGroup = append(taskGroup, &qTask)
+		}
+		t.QTG.QTasks = taskGroup
+		t.QTG.Deadline = len(taskGroup) * t.QTG.Deadline
 		t.QTG.ExcuteTask(ctx)
 		// 日志审计插入v2
+		jsonBytes, err := json.Marshal(taskGroup)
+		if err != nil {
+			utils.ErrorPrint("AuditRecordV2", err.Error())
+		}
 		audit := dbo.AuditRecordV2{
 			TaskID:    t.QTG.GID,
-			UserID:    t.QTG.UserId,
-			Payload:   t.QIssue.Description,
-			ProjectID: t.QIssue.ProjectID,
-			IssueID:   t.QIssue.IID,
+			UserID:    t.QTG.UserID,
+			Payload:   string(jsonBytes),
+			ProjectID: t.IssProjectID,
+			IssueID:   t.IssIID,
 			TaskType:  IssueQTaskType,
 		}
-		err := audit.InsertOne("SQL_QUERY")
+		err = audit.InsertOne("SQL_QUERY")
 		if err != nil {
 			utils.ErrorPrint("AuditRecordV2", err.Error())
 		}
@@ -153,13 +209,13 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			return nil
 		}
 		// Issue评论情况更新
-		glab := InitGitLabAPI()
+		glab := glbapi.InitGitLabAPI()
 		updateMsg := fmt.Sprintf("TaskGId=%s is completed", res.GID)
-		glab.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, updateMsg)
+		glab.CommentCreate(v.IssProjectID, v.IssIID, updateMsg)
 		for _, result := range res.ResGroup {
 			if result.Errrrr != nil {
 				errMsg := fmt.Sprintf("- TaskGId=%s\n- IID=%s\n- TaskError=%s", res.GID, result.ID, result.ErrMsg)
-				err := glab.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, errMsg)
+				err := glab.CommentCreate(v.IssProjectID, v.IssIID, errMsg)
 				if err != nil {
 					utils.DebugPrint("CommentError", "query task result comment is failed"+err.Error())
 				}
@@ -168,37 +224,36 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 		}
 		// 存储结果、输出结果临时链接
-		issContent, err := ParseIssueDesc(v.QIssue.Description)
-		if err != nil {
-			glab.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, "export result file is failed, "+err.Error())
-		}
-		uuKey, tempURL := NewHashTempLink()
-		err = dbo.SaveTempResult(uuKey, res.GID, 300, issContent.IsExport)
+		uuKey, tempURL := glbapi.NewHashTempLink()
+		err := dbo.SaveTempResult(uuKey, res.GID, 300, v.QTG.IsExport)
 		if err != nil {
 			utils.DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
 		}
-		glab.CommentCreate(v.QIssue.ProjectID, v.QIssue.IID, tempURL)
+		glab.CommentCreate(v.IssProjectID, v.IssIID, tempURL)
 		// 导出结果(同步)
-		if issContent.IsExport {
-			exportTask := SubmitExportTask(res.GID, "csv", v.QIssue.Author.ID)
+		if v.QTG.IsExport {
+			exportTask := SubmitExportTask(res.GID, "csv", v.IssAuthorID)
 			<-exportTask.Result.Done
 		}
 		// 自动关闭issue（表示完成）
-		err = glab.IssueClose(v.QIssue.ProjectID, v.QIssue.IID)
+		err = glab.IssueClose(v.IssProjectID, v.IssIID)
 		if err != nil {
 			utils.DebugPrint("GitLabAPIError", err.Error())
 		}
 		// 完成通知
-		iss, err := glab.IssueView(v.QIssue.ProjectID, v.QIssue.IID)
+		iss, err := glab.IssueView(v.IssProjectID, v.IssIID)
 		if err != nil {
 			utils.DebugPrint("GitLabAPIError", err.Error())
 		}
-		informBody := api.InformTemplate{
-			UserName: v.QIssue.Author.Name,
+		rob := api.NewRobotNotice(&api.InformTemplate{
+			UserName: v.IssAuthorName,
 			Action:   "Completed",
 			Link:     iss.WebURL,
+		})
+		err = rob.InformRobot()
+		if err != nil {
+			utils.DebugPrint("InformError", err.Error())
 		}
-		_ = api.InformRobot(informBody.Fill())
 	default:
 		typeName := reflect.TypeOf(e.Payload)
 		log.Println("没有匹配到的结果集类型", typeName)
@@ -301,5 +356,50 @@ func (eh *HousekeepingEventHandler) Work(ctx context.Context, e event.Event) err
 	utils.DebugPrint("文件清理事件消费", body.ID)
 	//! 后期核心处理结果集的代码逻辑块
 	FileClean(body.Result.FilePath)
+	return nil
+}
+
+type GitLabEventHandler struct {
+}
+
+func NewGitLabEventHandler() event.EventHandler {
+
+	return &GitLabEventHandler{}
+}
+
+func (eg *GitLabEventHandler) Name() string {
+	return "GitLab事件处理者"
+}
+
+func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
+	body, ok := e.Payload.(*glbapi.GitLabWebhook)
+	if !ok {
+		return utils.GenerateError("TypeError", "event payload type is incrroect")
+	}
+	sqlt := body.Desc //  获取SQLIssueTemplate
+
+	gid := utils.GenerateUUIDKey()
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
+		Type: "sql_query",
+		Payload: &IssueQTask{
+			QTG: &QTaskGroup{
+				GID:      gid,
+				DML:      sqlt.Action,
+				UserID:   body.UserId,
+				DBName:   body.Desc.DBName,
+				Env:      body.Desc.Env,
+				Service:  body.Desc.Service,
+				StmtRaw:  body.Desc.Statement,
+				IsExport: body.Desc.IsExport,
+				Deadline: body.Desc.Deadline,
+			},
+			IssProjectID:  body.Issue.ProjectID,
+			IssIID:        body.Issue.IID,
+			IssAuthorID:   body.Issue.AuthorID,
+			IssAuthorName: body.Issue.Author.Name,
+		},
+	})
+	utils.DebugPrint("TaskEnqueue", fmt.Sprintf("task id=%s is enqueue", gid))
 	return nil
 }

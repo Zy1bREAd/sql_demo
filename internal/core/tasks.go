@@ -14,17 +14,19 @@ import (
 	"time"
 )
 
-// 维护全局变量
-// var TaskQueue chan *QueryTask = make(chan *QueryTask, 30) // 预分配空间
-// var ResultQueue chan *QueryResult = make(chan *QueryResult, 30)
-// var CleanQueue chan cleanTask = make(chan cleanTask, 30)
-// var HouseKeepQueue chan *ExportTask = make(chan *ExportTask, 30)
-// var ExportQueue chan *ExportTask = make(chan *ExportTask, 30)
-
 type ExportResult struct {
 	Done     chan struct{}
 	FilePath string
 	Error    error
+}
+
+type ExportTask struct {
+	ID       string `json:"task_id"`
+	Type     string `json:"export_type"`
+	FileName string
+	UserID   uint
+	deadline int // task timeout
+	Result   *ExportResult
 }
 
 // var HouseKeepingQueue chan string = make(chan string, 30) // 针对结果集读取后的housekeeping
@@ -34,28 +36,38 @@ type cleanTask struct {
 	ID   string
 }
 
+type QTasker interface {
+	Execute()
+}
+
 type QueryTask struct {
 	ID        string
-	DBName    string
 	Action    string // 表示SQL执行的DML
 	Statement string
-	Env       string // 所执行环境
-	Service   string
 	Deadline  int // 单个SQL的超时时间（单位为秒）
-	// UserID    uint // 关联执行用户id
+
 }
 type QTaskGroup struct {
+	UserID   uint // 关联执行用户id
+	Deadline int  //整个任务组的超时时间
 	GID      string
 	DML      string
+	Env      string // 所执行环境
+	DBName   string
+	Service  string
+	StmtRaw  string // 原生的SQL语句
+	IsExport bool
 	QTasks   []*QueryTask
-	Deadline int  //整个任务组的超时时间
-	UserId   uint // repeat
 }
 
 // 封装QueryTask 结合GitLab Issue
 type IssueQTask struct {
-	QTG    *QTaskGroup
-	QIssue *Issue
+	QTG           *QTaskGroup
+	IssProjectID  uint
+	IssIID        uint
+	IssAuthorID   uint
+	IssAuthorName string
+	// IssDesc       *gapi.SQLIssueTemplate
 }
 
 // 提交SQL查询任务入队(v1.0)
@@ -103,14 +115,8 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 			ID:   task.ID,
 			Stmt: task.Statement,
 		}
-		// if task.Action != qtg.DML {
-		// 	result.errrr = GenerateError("ActionNotMatch", "DML and Action is not match")
-		// 	result.ErrMsg = result.errrr.Error()
-		// 	rg.ResGroup = append(rg.ResGroup, &result)
-		// 	break
-		// }
 		// 获取对应数据库实例进行SQL查询
-		op, err := dbo.HaveDBIst(task.Env, task.DBName, task.Service)
+		op, err := dbo.HaveDBIst(qtg.Env, qtg.DBName, qtg.Service)
 		if err != nil {
 			result.Errrrr = err
 			result.ErrMsg = result.Errrrr.Error()
@@ -142,77 +148,6 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 		Type:    "save_result",
 		Payload: rg,
 	})
-}
-
-// func CreateSQLQueryTaskWithIssue(statement, database string, userId uint, issue *Issue) *IssueQueryTask {
-// 	//! context控制超时
-// 	issueTask := IssueQueryTask{
-// 		QTask: &QueryTask{
-// 			ID:        GenerateUUIDKey(),
-// 			DBName:    database,
-// 			Statement: statement,
-// 			deadline:  30,
-// 			UserID:    userId,
-// 			Env: ,
-// 		},
-// 		QIssue: issue,
-// 	}
-
-// 	return &issueTask
-// }
-
-func (task *QueryTask) ExcuteTask(ctx context.Context) {
-	log.Printf("task id=%s is working", task.ID)
-	//! 执行任务函数只当只关心任务处理逻辑本身
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
-	defer cancel()
-
-	ep := event.GetEventProducer()
-	// 获取对应数据库实例进行SQL查询
-	op, err := dbo.HaveDBIst(task.Env, task.DBName, task.Service)
-	if err != nil {
-		queryResult := &dbo.SQLResult{
-			ID:      task.ID,
-			Results: nil,
-			Errrrr:  err,
-		}
-		ep.Produce(event.Event{
-			Type:    "save_result",
-			Payload: queryResult,
-		})
-		return
-	}
-	// 执行前健康检查DB
-	err = op.HealthCheck(timeoutCtx)
-	if err != nil {
-		queryResult := &dbo.SQLResult{
-			ID:      task.ID,
-			Results: nil,
-			Errrrr:  utils.GenerateError("HealthCheckFailed", err.Error()),
-		}
-		ep.Produce(event.Event{
-			Type:    "save_result",
-			Payload: queryResult,
-		})
-		return
-	}
-	// 拥有细粒度超时控制的核心查询函数
-	result := op.Query(timeoutCtx, task.Statement, task.ID)
-	log.Printf("task id=%s is completed", task.ID)
-	ep.Produce(event.Event{
-		Type:    "save_result",
-		Payload: result,
-	})
-
-}
-
-type ExportTask struct {
-	ID       string `json:"task_id"`
-	Type     string `json:"export_type"`
-	FileName string
-	UserID   uint
-	deadline int // task timeout
-	Result   *ExportResult
 }
 
 // 导出任务入队
@@ -263,7 +198,8 @@ func ExportSQLTask(ctx context.Context, task *ExportTask) error {
 		}
 		switch t := taskMap.(type) {
 		case *QueryTask:
-			t.ExcuteTask(ctx)
+			// t.ExcuteTask(ctx)
+			utils.ErrorPrint("NotSupprt", "the QueryTask is not supported.")
 		case *QTaskGroup:
 			t.ExcuteTask(ctx)
 		default:

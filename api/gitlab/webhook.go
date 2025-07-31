@@ -1,7 +1,6 @@
-package core
+package api
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"slices"
@@ -40,19 +39,6 @@ type CommentWebhook struct {
 	Issue      Issue   `json:"issue"`
 }
 
-// 问题内容
-type SQLIssueTemplate struct {
-	Action    string `json:"action"`
-	Remark    string `json:"remark,omitempty"`
-	Env       string `json:"env"`
-	Statement string `json:"statement"`
-	DBName    string `json:"db_name"`
-	Service   string `json:"service"`
-	// DML       string `json:"dml"`
-	Deadline int  `json:"deadline,omitempty"`
-	IsExport bool `json:"is_export"`
-}
-
 // 评论内容
 type CommentContent struct {
 	Approval uint   `json:"approval"`
@@ -79,44 +65,50 @@ func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
 }
 
 func (i *IssueWebhook) OpenIssueHandle() error {
-	var content SQLIssueTemplate
-	err := json.Unmarshal([]byte(i.ObjectAttr.Description), &content)
-	if err != nil {
-		utils.DebugPrint("JSONError", err.Error())
-		return err
-	}
-	if len(i.ObjectAttr.Assigneers) == 0 {
-		// 没有签派给robot，因此跳过
-		return nil
-	}
+	// var content SQLIssueTemplate
+	// err := json.Unmarshal([]byte(i.ObjectAttr.Description), &content)
+	// if err != nil {
+	// 	utils.DebugPrint("JSONError", err.Error())
+	// 	return err
+	// }
+	// if len(i.ObjectAttr.Assigneers) == 0 {
+	// 	// 没有签派给robot，因此跳过
+	// 	return nil
+	// }
 	// 区分Issue是open还是update操作,企业微信通知,发送消息通知至企业微信机器人
 	switch i.ObjectAttr.Action {
 	case "open":
 		utils.DebugPrint("OpenIssueHandle", "open open open")
-		informBody := &api.TicketInformBody{
+		rob := api.NewRobotNotice(&api.TicketInformBody{
 			Action:   "Create",
 			Title:    i.ObjectAttr.Title,
 			DueDate:  i.ObjectAttr.DueDate,
 			Desc:     i.ObjectAttr.Description,
 			Link:     i.ObjectAttr.URL,
 			UserName: i.User.Username,
+		})
+		err := rob.InformRobot()
+		if err != nil {
+			utils.DebugPrint("InformError", err.Error())
 		}
-		_ = api.InformRobot(informBody.Fill())
 	case "update":
 		utils.DebugPrint("UpdateIssueHandle", "update issue")
 		desc, exist := i.Changes["description"]
 		if exist {
 			if _, ok := desc.Current.(string); ok {
 				// 是否需要强制不能query转excute呢？？
-				informBody := &api.TicketInformBody{
-					Action:   "Update",
-					DueDate:  i.ObjectAttr.DueDate,
+				rob := api.NewRobotNotice(&api.TicketInformBody{
+					Action:   "Create",
 					Title:    i.ObjectAttr.Title,
+					DueDate:  i.ObjectAttr.DueDate,
 					Desc:     i.ObjectAttr.Description,
 					Link:     i.ObjectAttr.URL,
 					UserName: i.User.Username,
+				})
+				err := rob.InformRobot()
+				if err != nil {
+					utils.DebugPrint("InformError", err.Error())
 				}
-				_ = api.InformRobot(informBody.Fill())
 			}
 		}
 	default:
@@ -125,53 +117,6 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 	}
 	// 存储DB？？
 	return nil
-}
-
-// 执行SQL
-func (sqlt *SQLIssueTemplate) queryHandle(userId uint, issue *Issue, stmtList []SQLParser) {
-	taskGroup := make([]*QueryTask, 0)
-	for _, s := range stmtList {
-		qTask := QueryTask{
-			ID:        utils.GenerateUUIDKey(),
-			DBName:    sqlt.DBName,
-			Statement: s.SafeStmt,
-			Env:       sqlt.Env,
-			Service:   sqlt.Service,
-			Deadline:  sqlt.Deadline,
-			Action:    s.Action,
-		}
-		taskGroup = append(taskGroup, &qTask)
-	}
-	gid := utils.GenerateUUIDKey()
-	ep := event.GetEventProducer()
-	ep.Produce(event.Event{
-		Type: "sql_query",
-		Payload: &IssueQTask{
-			QTG: &QTaskGroup{
-				GID:      gid,
-				DML:      sqlt.Action,
-				QTasks:   taskGroup,
-				Deadline: len(taskGroup) * int(sqlt.Deadline),
-				UserId:   userId,
-			},
-			QIssue: issue,
-		},
-	})
-	utils.DebugPrint("TaskEnqueue", fmt.Sprintf("task id=%s is enqueue", gid))
-}
-
-// 解析Issue描述详情
-func ParseIssueDesc(desc string) (*SQLIssueTemplate, error) {
-	var content SQLIssueTemplate
-	err := json.Unmarshal([]byte(desc), &content)
-	if err != nil {
-		var syntaxErr *json.SyntaxError
-		if errors.As(err, &syntaxErr) {
-			return nil, utils.GenerateError("JSONParseError", "issue decription syntax error")
-		}
-		return nil, err
-	}
-	return &content, nil
 }
 
 func (c *CommentWebhook) handleApprovalPassed() error {
@@ -217,18 +162,24 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	if issContent.Deadline == 0 {
 		issContent.Deadline = 60
 	}
-	//! 解析Issue中SQL语法与约束
-	stmtList, err := ParseV2(issContent.DBName, issContent.Statement)
-	if err != nil {
-		return err
-	}
+
 	// 执行SQL逻辑
 	user := dbo.User{
 		GitLabIdentity: iss.Author.ID,
 	}
 	userId := user.GetGitLabUserId()
-	issContent.queryHandle(userId, iss, stmtList)
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
+		Type: "gitlab_webhook",
+		Payload: &GitLabWebhook{
+			WebhookType: "comment",
+			UserId:      userId,
+			Issue:       iss,
+			Desc:        issContent,
+		},
+	})
 	return nil
+	// return issContent.queryHandle(userId, iss, issContent.Statement)
 }
 
 func (c *CommentWebhook) handleApprovalRejected(reason string) error {
@@ -253,16 +204,16 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 	if err != nil {
 		return utils.GenerateError("GitLabAPIError", err.Error())
 	}
-	informBody := &api.RejectInformBody{
+	rob := api.NewRobotNotice(&api.RejectInformBody{
 		Action:   "Reject",
 		Link:     c.Issue.URL,
 		UserName: issueAuthor.Username,
 		Reason:   reason,
 		Approver: c.User.Username,
-	}
-	err = api.InformRobot(informBody.Fill())
+	})
+	err = rob.InformRobot()
 	if err != nil {
-		log.Println(err.Error())
+		utils.DebugPrint("InformError", err.Error())
 	}
 	return nil
 }
@@ -282,4 +233,24 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	default:
 		return utils.GenerateError("ApprovalError", "Unknown Approval Status")
 	}
+}
+
+// 问题内容
+type SQLIssueTemplate struct {
+	Action    string `json:"action"`
+	Remark    string `json:"remark,omitempty"`
+	Env       string `json:"env"`
+	Statement string `json:"statement"`
+	DBName    string `json:"db_name"`
+	Service   string `json:"service"`
+	// DML       string `json:"dml"`
+	Deadline int  `json:"deadline,omitempty"`
+	IsExport bool `json:"is_export"`
+}
+
+type GitLabWebhook struct {
+	WebhookType string
+	Issue       *Issue
+	Desc        *SQLIssueTemplate
+	UserId      uint
 }

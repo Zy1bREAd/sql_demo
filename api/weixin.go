@@ -19,6 +19,20 @@ type MarkdownMsg struct {
 	Content string `json:"content"`
 }
 
+func NewRobotNotice(i Informer) *RobotNotice {
+	return &RobotNotice{
+		MsgType: "markdown",
+		Markdown: MarkdownMsg{
+			Content: i.Fill(),
+		},
+	}
+}
+
+// 接口抽象
+type Informer interface {
+	Fill() string
+}
+
 // 考虑不同场景下的机器人通知模板, 包装结构体来传入通知消息的参数
 type InformTemplate struct {
 	UserName string
@@ -55,19 +69,14 @@ func (body *RejectInformBody) Fill() string {
 	return fmt.Sprintf("**【Ticket %s】**\n>**User:** %s\n>**Reason:** %s\n>**Approver:** %s\n>**Link:** [%s](%s)", body.Action, body.UserName, body.Reason, body.Approver, body.Link, body.Link)
 }
 
-func InformRobot(content string) error {
-	qwRobot := RobotNotice{
-		MsgType: "markdown",
-		Markdown: MarkdownMsg{
-			Content: content,
-		},
-	}
+// 通知企业微信机器人
+func (robot *RobotNotice) InformRobot() error {
 	informURL := conf.GetAppConf().GetBaseConfig().WeixinEnv.InformWebhook
 	if informURL == "" {
 		return utils.GenerateError("URLNull", "inform url is null")
 	}
 	// 序列化数据
-	jsonData, err := json.Marshal(qwRobot)
+	jsonData, err := json.Marshal(robot)
 	if err != nil {
 		return utils.GenerateError("JSONMarshal", err.Error())
 	}

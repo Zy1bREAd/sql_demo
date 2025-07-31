@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	api "sql_demo/api/gitlab"
 	"sql_demo/internal/auth"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
@@ -150,7 +151,7 @@ func SQLExcuteTest(ctx *gin.Context) {
 		common.ErrorResp(ctx, "convert type is failed")
 		return
 	}
-	var content core.SQLIssueTemplate
+	var content api.SQLIssueTemplate
 	err := ctx.ShouldBindJSON(&content)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
@@ -158,33 +159,22 @@ func SQLExcuteTest(ctx *gin.Context) {
 	}
 	fmt.Printf("完成请求信息搜集，%s\n", time.Now().String())
 
-	stmtList, err := core.ParseV2(content.DBName, content.Statement)
-	if err != nil {
-		common.ErrorResp(ctx, err.Error())
-		return
-	}
-	fmt.Printf("完成SQL语句解析，%s\n", time.Now().String())
+	// stmtList, err := core.ParseV2(content.DBName, content.Statement)
+	// if err != nil {
+	// 	common.ErrorResp(ctx, err.Error())
+	// 	return
+	// }
+	// fmt.Printf("完成SQL语句解析，%s\n", time.Now().String())
 
-	taskGroup := make([]*core.QueryTask, 0)
-	for _, s := range stmtList {
-		qTask := core.QueryTask{
-			ID:        utils.GenerateUUIDKey(),
-			DBName:    content.DBName,
-			Statement: s.SafeStmt,
-			Env:       content.Env,
-			Service:   content.Service,
-			Deadline:  30,
-			// UserID:    StrToUint(userId),
-			Action: s.Action,
-		}
-		taskGroup = append(taskGroup, &qTask)
-	}
 	gid := utils.GenerateUUIDKey()
 	qtg := &core.QTaskGroup{
-		GID:    gid,
-		QTasks: taskGroup,
-		UserId: utils.StrToUint(usrIdStr),
-		// DML:      content.DML,
+		GID:      gid,
+		StmtRaw:  content.Statement,
+		UserID:   utils.StrToUint(usrIdStr),
+		DBName:   content.DBName,
+		Env:      content.Env,
+		Service:  content.Service,
+		IsExport: content.IsExport,
 		Deadline: 300,
 	}
 	// 事件驱动：封装成Event推送到事件通道(v2.0)
@@ -204,6 +194,10 @@ func SQLExcuteTest(ctx *gin.Context) {
 		return
 	}
 	if result, ok := res.(*dbo.SQLResultGroup); ok {
+		if result.Errrr != nil {
+			common.ErrorResp(ctx, result.Errrr.Error())
+			return
+		}
 		common.SuccessResp(ctx, result.ResGroup, "sql query excute is success")
 		fmt.Printf("响应数据，%s\n", time.Now().String())
 		return
@@ -213,14 +207,14 @@ func SQLExcuteTest(ctx *gin.Context) {
 }
 
 func IssueCallBack(ctx *gin.Context) {
-	err := core.PreCheckCallback(ctx, "Issue Hook")
+	err := api.PreCheckCallback(ctx, "Issue Hook")
 	if err != nil {
 		common.NotAuthResp(ctx, err.Error()) // ERROR：401
 		return
 	}
 	//！ callback 核心逻辑
 	// 获取并解析请求体
-	var reqBody core.IssueWebhook
+	var reqBody api.IssueWebhook
 	err = ctx.ShouldBind(&reqBody)
 	if err != nil {
 		common.ErrorResp(ctx, common.FormatPrint("BindError", err.Error()))
@@ -236,13 +230,13 @@ func IssueCallBack(ctx *gin.Context) {
 }
 
 func CommentCallBack(ctx *gin.Context) {
-	err := core.PreCheckCallback(ctx, "Note Hook")
+	err := api.PreCheckCallback(ctx, "Note Hook")
 	if err != nil {
 		common.NotAuthResp(ctx, err.Error()) // ERROR：401
 		return
 	}
 	// 评论事件触发的逻辑
-	var reqBody core.CommentWebhook
+	var reqBody api.CommentWebhook
 	err = ctx.ShouldBind(&reqBody)
 	if err != nil {
 		common.ErrorResp(ctx, common.FormatPrint("BindError", err.Error()))
@@ -250,7 +244,7 @@ func CommentCallBack(ctx *gin.Context) {
 	}
 	err = reqBody.CommentIssueHandle()
 	if err != nil {
-		glab := core.InitGitLabAPI()
+		glab := api.InitGitLabAPI()
 		commentErr := glab.CommentCreate(reqBody.Project.ID, reqBody.Issue.IID, err.Error())
 		if commentErr != nil {
 			common.ErrorResp(ctx, common.FormatPrint("CommnetError", err.Error()))
@@ -548,7 +542,6 @@ func ResultExport(ctx *gin.Context) {
 func DownloadFile(ctx *gin.Context) {
 	taskId := ctx.Query("task_id")
 	if taskId == "" {
-		log.Println("debug: >> task id is null, invaild")
 		common.DefaultResp(ctx, 1, nil, "param taskid is invalid")
 		return
 	}
@@ -822,7 +815,7 @@ func showTempQueryResult(ctx *gin.Context) {
 }
 
 func UpdateGitLabUsers(ctx *gin.Context) {
-	api := core.InitGitLabAPI()
+	api := api.InitGitLabAPI()
 	users, err := api.UserList()
 	if err != nil {
 		common.DefaultResp(ctx, 1, nil, err.Error())

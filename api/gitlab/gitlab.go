@@ -1,10 +1,12 @@
-package core
+package api
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/utils"
@@ -220,4 +222,24 @@ func NewHashTempLink() (string, string) {
 	// 导出链接组成
 	tempResultURL := fmt.Sprintf("http://%s/result/temp-view/%s", appConfig.WebSrvEnv.HostName, uuKey)
 	return uuKey, tempResultURL
+}
+
+// 解析Issue描述详情
+func ParseIssueDesc(desc string) (*SQLIssueTemplate, error) {
+	// 解析并替换换行符
+	reg, err := regexp.Compile("\n")
+	if err != nil {
+		return nil, err
+	}
+	regResult := reg.ReplaceAll([]byte(desc), []byte(""))
+	var content SQLIssueTemplate
+	err = json.Unmarshal(regResult, &content)
+	if err != nil {
+		var syntaxErr *json.SyntaxError
+		if errors.As(err, &syntaxErr) {
+			return nil, utils.GenerateError("JSONParseError", "issue decription syntax error:::"+err.Error())
+		}
+		return nil, err
+	}
+	return &content, nil
 }

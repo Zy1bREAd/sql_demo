@@ -64,7 +64,8 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 			}
 			// 判断是否完整的表名
 			if !validateFullTableNameV2(s.GetFrom()) {
-				return nil, utils.GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
+				errMsg := fmt.Sprintf("DB name for your SQL TableExpr is not included.\n> %s\n", sqlparser.String(s))
+				return nil, utils.GenerateError("DBNameIsNotFound", errMsg)
 			}
 			// 手动设置From并且重新生成SQL语句
 			// s.SetFrom(tableExprsList)
@@ -74,7 +75,8 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 		case *sqlparser.Update:
 			// 判断是否完整的表名
 			if !validateFullTableNameV2(s.GetFrom()) {
-				return nil, utils.GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
+				errMsg := fmt.Sprintf("DB name for your SQL TableExpr is not included.\n> %s\n", sqlparser.String(s))
+				return nil, utils.GenerateError("DBNameIsNotFound", errMsg)
 			}
 			// 手动设置From并且重新生成SQL语句
 			// s.SetFrom(tableExprsList)
@@ -90,7 +92,8 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 			}
 			// 判断是否携带数据库名
 			if table.Qualifier.IsEmpty() {
-				return nil, utils.GenerateError("DBNameIsNotFound", "database name for your SQL TableExpr is not included, "+sqlparser.String(s))
+				errMsg := fmt.Sprintf("DB name for your SQL TableExpr is not included.\n> %s\n", sqlparser.String(s))
+				return nil, utils.GenerateError("DBNameIsNotFound", errMsg)
 				// 先不修改，暂时直接抛出来
 				// s.Table.Expr = sqlparser.NewTableNameWithQualifier(originalTable, dbName)
 				// psr.SafeStmt = sqlparser.String(s)

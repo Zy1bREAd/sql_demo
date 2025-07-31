@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+
 	defer func() {
 		if err := recover(); err != nil {
 			utils.DebugPrint("PrintGoroutineNumber2", runtime.NumGoroutine())
