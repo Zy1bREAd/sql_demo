@@ -17,6 +17,7 @@ import (
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -135,7 +136,10 @@ func InitBaseRoutes() {
 		rgPublic.POST("/comment/callback", CommentCallBack)
 		// 测试专用路由
 		rgAuth.POST("/sql/excute", SQLExcuteTest)
-		// rgPublic.POST("/issue/comment/update")
+		rgAuth.POST("/db/info/create", CreateDBInfo)
+		rgAuth.POST("/env/info/create", CreateEnvInfo)
+		rgAuth.GET("/query/env/list", QueryEnvInfo)
+		rgAuth.PUT("/env/:id/update", UpdateEnvInfo)
 	})
 }
 
@@ -856,4 +860,66 @@ func UpdateGitLabUsers(ctx *gin.Context) {
 		}
 	}
 	common.SuccessResp(ctx, users, "get users")
+}
+
+// 创建数据库连接信息
+func CreateDBInfo(ctx *gin.Context) {
+	var dbInfo core.QueryDataBaseDTO
+	err := ctx.ShouldBindJSON(&dbInfo)
+	if err != nil {
+		common.DefaultResp(ctx, 555, nil, err.Error())
+		return
+	}
+	fmt.Println("debug print - 0 ", dbInfo)
+	err = dbInfo.Create()
+	if err != nil {
+		common.DefaultResp(ctx, 555, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, nil, "create success")
+}
+
+// 创建数据库连接信息
+func CreateEnvInfo(ctx *gin.Context) {
+	var envInfo core.QueryEnvDTO
+	err := ctx.ShouldBindJSON(&envInfo)
+	if err != nil {
+		common.DefaultResp(ctx, 555, nil, err.Error())
+		return
+	}
+	err = envInfo.Create()
+	if err != nil {
+		common.DefaultResp(ctx, 555, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, nil, "create success")
+}
+
+// 获取全部Env信息
+func QueryEnvInfo(ctx *gin.Context) {
+	_, exist := ctx.GetQuery("env")
+	if !exist {
+		common.DefaultResp(ctx, 555, nil, "EnvKey is not exist")
+		return
+	}
+	result := core.AllEnvInfo()
+	common.SuccessResp(ctx, result, "get success")
+}
+
+func UpdateEnvInfo(ctx *gin.Context) {
+	envParam := ctx.Param("id")
+	envId, err := strconv.Atoi(envParam)
+	if err != nil {
+		common.DefaultResp(ctx, 555, nil, "Invalid Env ID")
+		return
+	}
+	// 解析用户数据体
+	var envInfo core.QueryEnvDTO
+	err = ctx.ShouldBindJSON(&envInfo)
+	if err != nil {
+		common.DefaultResp(ctx, 555, nil, "request body is error: "+err.Error())
+		return
+	}
+	result := envInfo.UpdateEnvInfo(envId)
+	common.SuccessResp(ctx, result, "get success")
 }

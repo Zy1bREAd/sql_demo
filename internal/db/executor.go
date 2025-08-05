@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"slices"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/utils"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,12 +17,13 @@ import (
 
 // 业务数据库配置（从特定源读取）
 type AllEnvDBConfig struct {
-	Databases map[string]map[string]MySQLConfig `yaml:"databases"`
+	Databases map[string]map[string]MySQLConfig `yaml:"databases"` // env -> service -> db_config
 }
 
 type MySQLConfig struct {
 	MaxConn  int      `yaml:"max_conn"`
 	IdleTime int      `yaml:"idle_time"`
+	TLS      bool     `yaml:"tls"`
 	Name     string   `yaml:"name"`
 	Host     string   `yaml:"host"`
 	Password string   `yaml:"password"`
@@ -57,24 +58,81 @@ type SQLResultGroup struct {
 }
 
 // 读取配置，加载数据库池
-func LoadInDB() {
+func LoadInDB(isReload bool) {
 	var config AllEnvDBConfig
-	// 从YAML方式读取
-	Fieldata, err := os.ReadFile("config/db.yaml")
-	if err != nil {
-		panic(err)
+	readMode := "db"
+	switch readMode {
+	case "db":
+		// 新增读取数据库加载到内存中
+		var envORM QueryEnv = QueryEnv{}
+		var dbORM QueryDataBase = QueryDataBase{}
+		envList, err := envORM.LoadAll()
+		if err != nil {
+			panic(err)
+		}
+		dbList, err := dbORM.LoadAll()
+		if err != nil {
+			panic(err)
+		}
+		dbsConf := make(map[string]map[string]MySQLConfig, len(envList))
+		for _, env := range envList {
+			if dbsConf[env.Name] == nil {
+				dbsConf[env.Name] = make(map[string]MySQLConfig, 1) //! 此处涉及到Map的扩容
+			}
+			for _, dbConf := range dbList {
+				// 当EnvID匹配的时候才会加入dbsConf
+				if env.ID != dbConf.EnvID {
+					continue
+				}
+				// 处理Exclude列表
+				excludeList := strings.Split(dbConf.Exclude, ",")
+				pwd, err := utils.DecryptAES256([]byte(dbConf.Password), dbConf.Salt)
+				if err != nil {
+					utils.ErrorPrint("DecrptPwdErr", err.Error())
+					continue
+				}
+				istCfg := MySQLConfig{
+					MaxConn:  dbConf.MaxConn,
+					IdleTime: dbConf.IdleTime,
+					Name:     dbConf.Name, // 这个仅仅代表该db连接的名字
+					Host:     dbConf.Host,
+					Password: pwd,
+					User:     dbConf.User,
+					Port:     dbConf.Port,
+					Exclude:  excludeList,
+					TLS:      dbConf.TLS,
+				}
+				dbsConf[env.Name][dbConf.Service] = istCfg
+			}
+		}
+		config.Databases = dbsConf
+	case "yaml":
+		// 从YAML方式读取
+		Fieldata, err := os.ReadFile("config/db.yaml")
+		if err != nil {
+			panic(err)
+		}
+		err = yaml.Unmarshal(Fieldata, &config)
+		if err != nil {
+			panic(err)
+		}
 	}
-	err = yaml.Unmarshal(Fieldata, &config)
-	if err != nil {
-		panic(err)
-	}
-
 	// 注册DB实例进入池子
-	pool := newDBPoolManager()
-	err = pool.register(&config)
+	err := registerPool(isReload, &config)
 	if err != nil {
 		panic(err)
 	}
+}
+
+func registerPool(isReload bool, configData *AllEnvDBConfig) error {
+	pm := GetDBPoolManager()
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	if isReload {
+		// 热加载，因此清空原先的数据库池中配置
+		pm.Pool = make(map[string]map[string]*DBInstance)
+	}
+	return pm.register(configData)
 }
 
 // 数据库SQL执行器（抽象层）
@@ -87,7 +145,7 @@ type SQLExecutor interface {
 
 // ! 多数据库实例连接
 var once sync.Once
-var globalDBPool *DBPoolManager
+var dbPool *DBPoolManager
 
 // 多数据库连接的新实例
 type DBInstance struct {
@@ -267,13 +325,13 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 }
 
 // 初始化数据库池管理者（全局一次）
-func newDBPoolManager() *DBPoolManager {
+func GetDBPoolManager() *DBPoolManager {
 	once.Do(func() {
-		globalDBPool = &DBPoolManager{
+		dbPool = &DBPoolManager{
 			Pool: make(map[string]map[string]*DBInstance),
 		}
 	})
-	return globalDBPool
+	return dbPool
 }
 
 // 打开数据库实例连接
@@ -298,18 +356,18 @@ func newDBInstance(usr, pwd, host, port string, maxConn, idleTime int) (*DBInsta
 
 // 解析配置并注册
 func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
+	fmt.Println("debug print -1", configData.Databases)
 	for env, dbList := range configData.Databases {
+		if manager.Pool[env] == nil {
+			manager.Pool[env] = make(map[string]*DBInstance, len(dbList))
+		}
 		for istName, dbConf := range dbList {
 			db, err := newDBInstance(dbConf.User, dbConf.Password, dbConf.Host, dbConf.Port, dbConf.MaxConn, dbConf.IdleTime)
 			if err != nil {
-				utils.ErrorPrint("DBRegisterError", "database register is failed, "+err.Error())
+				utils.ErrorPrint("DBRegisterError", istName+" database register is failed, "+err.Error())
 				continue
 			}
-			if manager.Pool[env] == nil {
-				manager.Pool[env] = make(map[string]*DBInstance)
-			}
+			fmt.Println("debug print -3", istName, dbConf, db)
 			db.name = istName
 			manager.Pool[env][istName] = db
 		}
@@ -331,28 +389,16 @@ func (manager *DBPoolManager) CloseDBPool() {
 	}
 }
 
-// 获取指定环境下所有db实例
-func (manager *DBPoolManager) getDBList(env string) []string {
-	istNameList := []string{}
-	for istName, _ := range manager.Pool[env] {
-		// istNameList = append(istNameList, dbIst.name)
-		istNameList = append(istNameList, istName)
-	}
-	// 新增排序功能
-	slices.Sort(istNameList)
-	return istNameList
-}
-
 // 获取指定db实例
 func HaveDBIst(env, name, service string) (*DBInstance, error) {
-	globalDBPool.mu.RLock()
-	defer globalDBPool.mu.RUnlock()
+	dbPool.mu.RLock()
+	defer dbPool.mu.RUnlock()
 	if name == "" {
 		return nil, utils.GenerateError("InstanceIsNull", "db instance name is null")
 	} else if env == "" {
 		return nil, utils.GenerateError("InstanceIsNull", "env name is null")
 	}
-	if dbIstMap, ok := globalDBPool.Pool[env]; ok {
+	if dbIstMap, ok := dbPool.Pool[env]; ok {
 		if dbIst, ok := dbIstMap[service]; ok {
 			return dbIst, nil
 		}

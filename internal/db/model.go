@@ -15,7 +15,7 @@ type User struct {
 	// 权限？
 
 	// 关联
-	QueryAuditLogs []AuditRecord `gorm:"foreignKey:UserID"`
+	QueryAuditLogs []AuditRecordV2 `gorm:"foreignKey:UserID"`
 }
 
 func (u *User) ToUserResp() UserResp {
@@ -33,29 +33,29 @@ type UserResp struct {
 	Email string `json:"email"`
 }
 
-type AuditRecord struct {
-	ID     uint   `gorm:"primaryKey"`
-	TaskID string `gorm:"type:varchar(255);not null;uniqueIndex"`
-	// DML          string    `gorm:"type:char(64);"`
-	SQLStatement string    `gorm:"not null"`
-	DBName       string    `gorm:"type:varchar(255)"`
-	TimeStamp    time.Time `gorm:"type:datetime(0);autoCreateTime"`
-	IsExported   uint8     `gorm:"default:0;type:smallint;"`
-	ExportTime   time.Time `gorm:"type:datetime(0);"`
-	// 查询的环境
-	Env string `gorm:"type:char(64)"`
-	// 关联表
-	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
-	UserID uint
+// type AuditRecord struct {
+// 	ID     uint   `gorm:"primaryKey"`
+// 	TaskID string `gorm:"type:varchar(255);not null;uniqueIndex"`
+// 	// DML          string    `gorm:"type:char(64);"`
+// 	SQLStatement string    `gorm:"not null"`
+// 	DBName       string    `gorm:"type:varchar(255)"`
+// 	TimeStamp    time.Time `gorm:"type:datetime(0);autoCreateTime"`
+// 	IsExported   uint8     `gorm:"default:0;type:smallint;"`
+// 	ExportTime   time.Time `gorm:"type:datetime(0);"`
+// 	// 查询的环境
+// 	Env string `gorm:"type:char(64)"`
+// 	// 关联表
+// 	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
+// 	UserID uint
 
-	// 关联GitLab
-	// ProjectID uint `gorm:"type:int"`
-	// IssueID   uint `gorm:"type:int"`
-}
+// 	// 关联GitLab
+// 	// ProjectID uint `gorm:"type:int"`
+// 	// IssueID   uint `gorm:"type:int"`
+// }
 
-func (audit *AuditRecord) TableName() string {
-	return "query_audit_logs"
-}
+// func (audit *AuditRecord) TableName() string {
+// 	return "query_audit_logs"
+// }
 
 type AuditRecordV2 struct {
 	ID        uint      `gorm:"primaryKey"`
@@ -65,7 +65,7 @@ type AuditRecordV2 struct {
 	TaskType  int       `gorm:"type:smallint"`
 	CreatAt   time.Time `gorm:"type:datetime(0);autoCreateTime"`
 	// 关联User表
-	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
+	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user_v2"`
 	UserID uint
 
 	// 关联GitLab
@@ -88,4 +88,49 @@ type TempResultMap struct {
 
 func (temp *TempResultMap) TableName() string {
 	return "temp_results"
+}
+
+// 存储管理员的数据库执行环境
+type QueryEnv struct {
+	ID       uint      `gorm:"primaryKey"`
+	Name     string    `gorm:"type:varchar(255);not null;uniqueIndex"`
+	Tag      string    `gorm:"type:varchar(128)"`
+	Desc     string    `gorm:"type:varchar(255)"`
+	IsWrite  bool      `gorm:"default:false"`
+	CreateAt time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	UpdateAt time.Time `gorm:"type:datetime(0);autoCreateTime"`
+
+	// 一对多
+	// QueryDataBases []QueryDataBase `gorm:"foreignKey:EnvID"`
+}
+
+func (temp *QueryEnv) TableName() string {
+	return "query_env_info"
+}
+
+// 存储管理员的数据库执行环境
+type QueryDataBase struct {
+	ID       uint      `gorm:"primaryKey"`
+	MaxConn  int       `gorm:"default:10"`
+	IdleTime int       `gorm:"default:60"`
+	IsWrite  bool      `gorm:"default:false"`
+	TLS      bool      `gorm:"default:false"`
+	Name     string    `gorm:"type:varchar(128);not null;"`
+	Host     string    `gorm:"type:varchar(128);default:localhost"`
+	Service  string    `gorm:"type:varchar(128);not null;uniqueIndex:idx_env_app"`
+	Desc     string    `gorm:"type:varchar(255)"`
+	User     string    `grom:"type:varchar(128);deafult:root;"`
+	Password string    `gorm:"type:varchar(128);not null;"`
+	Port     string    `gorm:"type:varchar(64);default:3306;"`
+	Exclude  string    // 排除的数据库名
+	Salt     []byte    `gorm:"type:blob"`
+	UpdateAt time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	CreateAt time.Time `gorm:"type:datetime(0);autoCreateTime"`
+
+	EnvID     uint     `gorm:"not null;uniqueIndex:idx_env_app"`
+	EnvForKey QueryEnv `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:EnvID;references:ID"`
+}
+
+func (temp *QueryDataBase) TableName() string {
+	return "query_db_info"
 }

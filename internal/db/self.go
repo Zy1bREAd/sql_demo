@@ -94,7 +94,7 @@ func (db *SelfDatabase) autoMigrator() error {
 		return utils.GenerateError("Migrator Failed", "self db is not init")
 	}
 	// 表多的话要以注册的方式注册进来，避免手动一个个输入
-	return db.conn.AutoMigrate(&User{}, &AuditRecord{}, &TempResultMap{}, &AuditRecordV2{})
+	return db.conn.AutoMigrate(&User{}, &TempResultMap{}, &AuditRecordV2{}, &QueryDataBase{}, &QueryEnv{})
 }
 
 // 创建用户逻辑
@@ -176,57 +176,8 @@ func (usr *User) SSOLogin() (uint, error) {
 	return usr.ID, nil
 }
 
-// 查询操作的日志审计
-// 新增操作审计记录
-// func (re *AuditRecord) InsertOne() error {
-// 	tx := selfDB.conn.Begin()
-// 	// 避免携带默认值插入污染导出相关信息
-// 	result := selfDB.conn.Omit("IsExported", "ExportTime").Create(&re)
-// 	if result.Error != nil {
-// 		tx.Rollback()
-// 		return result.Error
-// 	}
-// 	if result.RowsAffected != 1 {
-// 		tx.Rollback()
-// 		return utils.GenerateError("InsertAuditRecordError", "insert a query record failed")
-// 	}
-// 	tx.Commit()
-
-// 	return nil
-// }
-
-// func (re *AuditRecord) UpdateExport() error {
-// 	tx := selfDB.conn.Begin()
-// 	result := selfDB.conn.Where("task_id = ?", re.TaskID).Where("user_id = ?", re.UserID).Updates(&re)
-// 	if result.Error != nil {
-// 		tx.Rollback()
-// 		return result.Error
-// 	}
-// 	if result.RowsAffected != 1 {
-// 		tx.Rollback()
-// 		return utils.GenerateError("RecordError", "update a query record failed")
-// 	}
-// 	tx.Commit()
-// 	return nil
-// }
-
-// func UpdateExportAuditRecord(record *AuditRecord) error {
-// 	tx := selfDB.conn.Begin()
-// 	result := selfDB.conn.Where("task_id = ?", record.TaskID).Where("user_id = ?", record.UserID).Updates(&record)
-// 	if result.Error != nil {
-// 		tx.Rollback()
-// 		return result.Error
-// 	}
-// 	if result.RowsAffected != 1 {
-// 		tx.Rollback()
-// 		return utils.GenerateError("RecordError", "update a query record failed")
-// 	}
-// 	tx.Commit()
-// 	return nil
-// }
-
 func AllAuditRecords() error {
-	auditRecords := AuditRecord{}
+	auditRecords := AuditRecordV2{}
 	result := selfDB.conn.Find(&auditRecords)
 	if result.Error != nil {
 		return result.Error
@@ -244,7 +195,7 @@ type UserAuditRecord struct {
 }
 
 func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
-	auditRecords := []AuditRecord{}
+	auditRecords := []AuditRecordV2{}
 	res := selfDB.conn.Where("user_id = ?", userId).Order(
 		clause.OrderByColumn{
 			Column: clause.Column{
@@ -262,14 +213,11 @@ func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
 	}
 	// Convert DTO Object
 	userRecords := make([]UserAuditRecord, 0, 10)
-	for _, record := range auditRecords {
-		userRecords = append(userRecords, UserAuditRecord{
-			Env:          record.Env,
-			DBName:       record.DBName,
-			SQLStatement: record.SQLStatement,
-			ExcuteTime:   record.TimeStamp,
-		})
-	}
+	// for _, record := range auditRecords {
+	// 	userRecords = append(userRecords, UserAuditRecord{
+	// 		// DBName: record.,?
+	// 	})
+	// }
 	// DebugPrint("resultRows", auditRecords)
 	return userRecords, nil
 }
@@ -360,5 +308,135 @@ func (v2 *AuditRecordV2) InsertOne(e string) error {
 	}
 	tx.Commit()
 
+	return nil
+}
+
+func (dbInfo *QueryDataBase) CreateOne() error {
+	db := HaveSelfDB().GetConn()
+
+	dbIst := dbInfo.Service
+	envId := dbInfo.EnvID
+	// 不存在则创建，反之不创建
+	findRes := db.Where("env_id = ? AND service = ?", envId, dbIst).First(&dbInfo)
+	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
+		return utils.GenerateError("FindError", findRes.Error.Error())
+	}
+	if findRes.RowsAffected == 1 {
+		return utils.GenerateError("CreateError", "the db instance is exist")
+	}
+	tx := db.Begin()
+	insertRes := db.Create(&dbInfo)
+	if insertRes.Error != nil {
+		tx.Rollback()
+		return utils.GenerateError("CreateError", insertRes.Error.Error())
+	}
+	if insertRes.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("CreateError", "insert data rows is error")
+	}
+	tx.Commit()
+	return nil
+}
+
+func (env *QueryEnv) CreateOne() error {
+	db := HaveSelfDB().GetConn()
+
+	envName := env.Name
+	// 不存在则创建，反之不创建
+	findRes := db.Where("name = ?", envName).First(&env)
+	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
+		return utils.GenerateError("CreateError", findRes.Error.Error())
+	}
+	if findRes.RowsAffected == 1 {
+		return utils.GenerateError("CreateError", "the env is exist")
+	}
+	tx := db.Begin()
+	insertRes := db.Create(&env)
+	if insertRes.Error != nil {
+		tx.Rollback()
+		return utils.GenerateError("CreateError", insertRes.Error.Error())
+	}
+	if insertRes.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("CreateError", "insert data rows is error")
+	}
+	tx.Commit()
+	return nil
+}
+
+func (env *QueryEnv) LoadAll() ([]QueryEnv, error) {
+	var envList []QueryEnv
+	db := HaveSelfDB().GetConn()
+	findRes := db.Find(&envList)
+	if findRes.Error != nil {
+		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+	}
+	// resultList := make([]QueryEnv, findRes.RowsAffected+1)
+	return envList, nil
+}
+
+func (env *QueryDataBase) LoadAll() ([]QueryDataBase, error) {
+	var dbList []QueryDataBase
+	db := HaveSelfDB().GetConn()
+	findRes := db.Find(&dbList)
+	if findRes.Error != nil {
+		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+	}
+	// resultList := make([]QueryEnv, findRes.RowsAffected+1)
+	return dbList, nil
+}
+
+func (env *QueryEnv) UpdateOne(updateEnv *QueryEnv) error {
+	db := HaveSelfDB().GetConn()
+	// var originEnv QueryEnv
+	findRes := db.Where("id = ?", env.Name).First(&env)
+	if findRes.Error != nil {
+		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
+			return utils.GenerateError("UpdateFailed", "the env record is not exist:"+findRes.Error.Error())
+		}
+		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+	}
+	updateEnv.ID = env.ID
+	updateRes := db.Model(&env).Updates(updateEnv)
+	if updateRes.Error != nil {
+		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+	}
+	if updateRes.RowsAffected != 1 {
+		return utils.GenerateError("LoadAllEnv", "update error is unkonwn")
+	}
+	return nil
+}
+
+func (env *QueryEnv) FindById(id int) (*QueryEnv, error) {
+	db := HaveSelfDB().GetConn()
+	findRes := db.Where("id = ?", id).First(&env)
+	if findRes.Error != nil {
+		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
+			return nil, utils.GenerateError("UpdateFailed", "the env record is not exist:"+findRes.Error.Error())
+		}
+		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+	}
+	return env, nil
+}
+
+func (dbInfo *QueryDataBase) UpdateOne(updateDB QueryDataBase) error {
+	db := HaveSelfDB().GetConn()
+	// 要事先确定外键ID，确保唯一性。
+	findRes := db.Where("name = ? AND env_id = ?", dbInfo.Name, dbInfo.EnvID).First(&dbInfo)
+	if findRes.Error != nil {
+		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
+			return utils.GenerateError("UpdateFailed", "the db record is not exist:"+findRes.Error.Error())
+		}
+		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+	}
+	updateDB.ID = dbInfo.ID
+	updateDB.EnvID = dbInfo.EnvID
+	updateRes := db.Model(&dbInfo).Updates(updateDB)
+	if updateRes.Error != nil {
+		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+	}
+	if updateRes.RowsAffected != 1 {
+		return utils.GenerateError("LoadAllEnv", "update error is unkonwn")
+	}
 	return nil
 }

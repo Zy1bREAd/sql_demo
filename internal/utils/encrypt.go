@@ -1,8 +1,15 @@
 package utils
 
 import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/md5"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
+	"errors"
+	"io"
 	"strings"
 	"time"
 
@@ -47,17 +54,83 @@ func Str2TimeObj(t string) time.Time {
 	return newT
 }
 
-// func GenerateSignedURI(taskId string) string {
-// 	secret := "sekorm"
-// 	expireTime := time.Now().Add(10 * time.Minute).Unix()
-// 	sign := hmac.New(sha256.New, []byte(secret))
-// 	sign.Write([]byte(fmt.Sprintf("%s:%d", taskId, expireTime)))
-// 	signStr := base64.URLEncoding.EncodeToString(sign.Sum(nil))
-// 	signURI := fmt.Sprintf("%s?token=%s&expire=%d", taskId, signStr, expireTime)
-// 	log.Println("debug>>>> signStr", signURI)
-// 	return signURI
-// }
+// ! 对称加密算法AES-256
+func EncryptAES256(plaintext, key []byte) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	// 填充明文（AES 要求明文长度为块大小的整数倍）
+	blockSize := block.BlockSize()
+	plaintext = pkcs7Pad(plaintext, blockSize)
+	// 生成随机 IV（初始化向量）
+	iv := make([]byte, blockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return "", err
+	}
 
-// func ValidateSignedURI() {
+	// 加密
+	ciphertext := make([]byte, len(plaintext))
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(ciphertext, plaintext)
 
-// }
+	// 合并 IV 和密文（IV 需随密文存储，解密时使用）
+	return base64.StdEncoding.EncodeToString(append(iv, ciphertext...)), nil
+}
+
+// AES 解密（密钥需与加密时一致）
+func DecryptAES256(ciphertextBase64, key []byte) (string, error) {
+	ciphertext, err := base64.StdEncoding.DecodeString(string(ciphertextBase64))
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	// 分离 IV 和密文
+	blockSize := block.BlockSize()
+	if len(ciphertext) < blockSize {
+		return "", errors.New("ciphertext too short")
+	}
+	iv := ciphertext[:blockSize]
+	ciphertext = ciphertext[blockSize:]
+
+	// 解密
+	mode := cipher.NewCBCDecrypter(block, iv)
+	mode.CryptBlocks(ciphertext, ciphertext)
+
+	// 去除填充
+	plaintext, err := pkcs7Unpad(ciphertext, blockSize)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
+}
+
+// PKCS7 填充（AES 要求）
+func pkcs7Pad(data []byte, blockSize int) []byte {
+	pad := blockSize - (len(data) % blockSize)
+	padding := bytes.Repeat([]byte{byte(pad)}, pad)
+	return append(data, padding...)
+}
+
+// PKCS7 去填充
+func pkcs7Unpad(data []byte, blockSize int) ([]byte, error) {
+	if len(data)%blockSize != 0 {
+		return nil, errors.New("data is not block-aligned")
+	}
+	pad := int(data[len(data)-1])
+	if pad < 1 || pad > blockSize {
+		return nil, errors.New("invalid padding")
+	}
+	for i := len(data) - pad; i < len(data); i++ {
+		if data[i] != byte(pad) {
+			return nil, errors.New("invalid padding")
+		}
+	}
+	return data[:len(data)-pad], nil
+}
