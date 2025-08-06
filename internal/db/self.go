@@ -127,7 +127,7 @@ func (usr *User) Create() error {
 }
 
 // 登录(Basic)
-func (usr *User) BasicLogin(inputPwd string) (*UserResp, error) {
+func (usr *User) BasicLogin(inputPwd string) error {
 	// 使用该用户相同的salt，对用户密码进行加密验证，与数据库的加密密码进行对比
 	dbConn := HaveSelfDB().GetConn()
 	result := dbConn.Where("email = ?", usr.Email).Where("user_type = ?", 0).First(&usr)
@@ -135,18 +135,17 @@ func (usr *User) BasicLogin(inputPwd string) (*UserResp, error) {
 		// 判断记录是否不存在
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			errMsg := fmt.Sprintf("the account=%s is not exist", usr.Email)
-			return nil, utils.GenerateError("UserNotExist", errMsg)
+			return utils.GenerateError("UserNotExist", errMsg)
 		}
-		return nil, result.Error
+		return result.Error
 	}
 	// 校验用户密码
 	if ok := utils.ValidateValueWithMd5(inputPwd, usr.Password); !ok {
-		return nil, utils.GenerateError("LoginFailed", "the user account or password is incorrect")
+		return utils.GenerateError("LoginFailed", "the user account or password is incorrect")
 	}
 	// 登录成功
 	// 过滤隐私关键字段（将结构体映射成专用响应结构体）
-	userResp := usr.ToUserResp()
-	return &userResp, nil
+	return nil
 }
 
 // 登录（SSO gitlab）,最终返回用户id
@@ -388,55 +387,97 @@ func (env *QueryDataBase) LoadAll() ([]QueryDataBase, error) {
 
 func (env *QueryEnv) UpdateOne(updateEnv *QueryEnv) error {
 	db := HaveSelfDB().GetConn()
-	// var originEnv QueryEnv
-	findRes := db.Where("id = ?", env.Name).First(&env)
+	findRes := db.Where("uid = ?", env.UID).First(&env)
 	if findRes.Error != nil {
 		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 			return utils.GenerateError("UpdateFailed", "the env record is not exist:"+findRes.Error.Error())
 		}
-		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+		return utils.GenerateError("UpdateFailed", findRes.Error.Error())
 	}
+	tx := db.Begin()
 	updateEnv.ID = env.ID
+	updateEnv.UpdateAt = time.Now()
 	updateRes := db.Model(&env).Updates(updateEnv)
 	if updateRes.Error != nil {
-		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+		tx.Rollback()
+		return utils.GenerateError("UpdateFailed", findRes.Error.Error())
 	}
 	if updateRes.RowsAffected != 1 {
-		return utils.GenerateError("LoadAllEnv", "update error is unkonwn")
+		tx.Rollback()
+		return utils.GenerateError("UpdateFailed", "update error is unkonwn")
 	}
+	tx.Commit()
 	return nil
 }
 
-func (env *QueryEnv) FindById(id int) (*QueryEnv, error) {
+// 按照指定ID查找环境
+func (env *QueryEnv) FindById(uid string) (*QueryEnv, error) {
 	db := HaveSelfDB().GetConn()
-	findRes := db.Where("id = ?", id).First(&env)
+	findRes := db.Where("uid = ?", uid).First(&env)
 	if findRes.Error != nil {
 		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 			return nil, utils.GenerateError("UpdateFailed", "the env record is not exist:"+findRes.Error.Error())
 		}
-		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+		return nil, utils.GenerateError("FindDataErr", findRes.Error.Error())
 	}
 	return env, nil
 }
 
-func (dbInfo *QueryDataBase) UpdateOne(updateDB QueryDataBase) error {
+func (dbInfo *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
 	db := HaveSelfDB().GetConn()
 	// 要事先确定外键ID，确保唯一性。
-	findRes := db.Where("name = ? AND env_id = ?", dbInfo.Name, dbInfo.EnvID).First(&dbInfo)
+	findRes := db.Where("uid = ?", dbInfo.UID).First(&dbInfo)
 	if findRes.Error != nil {
 		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 			return utils.GenerateError("UpdateFailed", "the db record is not exist:"+findRes.Error.Error())
 		}
 		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
+	tx := db.Begin()
 	updateDB.ID = dbInfo.ID
-	updateDB.EnvID = dbInfo.EnvID
+	updateDB.UpdateAt = time.Now()
+	fmt.Println("uuuuupdate", updateDB.Password)
 	updateRes := db.Model(&dbInfo).Updates(updateDB)
 	if updateRes.Error != nil {
+		tx.Rollback()
 		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
 	if updateRes.RowsAffected != 1 {
+		tx.Rollback()
 		return utils.GenerateError("LoadAllEnv", "update error is unkonwn")
 	}
+	tx.Commit()
+	return nil
+}
+
+func (env *QueryEnv) DeleteOne() error {
+	db := HaveSelfDB().GetConn()
+	tx := db.Begin()
+	res := db.Where("uid = ?", env.UID).Delete(&env)
+	if res.Error != nil {
+		tx.Rollback()
+		return utils.GenerateError("DeleteError", res.Error.Error())
+	}
+	if res.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("DeleteError", "delete row error")
+	}
+	tx.Commit()
+	return nil
+}
+
+func (qdb *QueryDataBase) DeleteOne() error {
+	db := HaveSelfDB().GetConn()
+	tx := db.Begin()
+	res := db.Where("uid = ?", qdb.UID).Delete(&qdb)
+	if res.Error != nil {
+		tx.Rollback()
+		return utils.GenerateError("DeleteError", res.Error.Error())
+	}
+	if res.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("DeleteError", "delete row error")
+	}
+	tx.Commit()
 	return nil
 }

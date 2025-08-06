@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto/rand"
-	"fmt"
 	"slices"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
@@ -23,15 +22,17 @@ type QueryDataBaseDTO struct {
 	IdleTime   int         `json:"idle_time"`
 	IsWrite    bool        `json:"is_write"`
 	Name       string      `json:"name"`
+	UID        string      `json:"uid"`
 	EnvName    string      `json:"env_name"`
 	Service    string      `json:"service"`
 	Desc       string      `json:"description,omitempty"`
 	UpdateAt   time.Time   `json:"-"`
-	Exclude    []string    `json:"exclude"` // 排除的数据库名
-	Connection ConnectInfo `json:"connection"`
+	Exclude    []string    `json:"exclude"`    // 排除的数据库名
+	Connection ConnectInfo `json:"connection"` // 连接信息
 }
 
 type QueryEnvDTO struct {
+	UID     string `json:"uid"`
 	Name    string `json:"name"`
 	Tag     string `json:"tag"`
 	Desc    string `json:"description"`
@@ -40,6 +41,7 @@ type QueryEnvDTO struct {
 
 func (env *QueryEnvDTO) toORMData() *dbo.QueryEnv {
 	return &dbo.QueryEnv{
+		UID:     env.UID,
 		Name:    env.Name,
 		Tag:     env.Tag,
 		Desc:    env.Desc,
@@ -50,21 +52,25 @@ func (env *QueryEnvDTO) toORMData() *dbo.QueryEnv {
 func (qdb *QueryDataBaseDTO) toORMData() *dbo.QueryDataBase {
 	var excludeStr string
 	for _, v := range qdb.Exclude {
-		excludeStr += v + "|"
+		excludeStr += v + ","
 	}
-	// 密码加密(AES256)
+	var pwd string
 	secretKey := make([]byte, 32)
-	_, err := rand.Read(secretKey)
-	if err != nil {
-		return nil
-	}
-	pwd, err := utils.EncryptAES256([]byte(qdb.Connection.Password), secretKey)
-	if err != nil {
-		utils.DebugPrint("EncryptPWDErr", err.Error())
-		return nil
+	if qdb.Connection.Password != "" {
+		// 密码加密(AES256)
+		_, err := rand.Read(secretKey)
+		if err != nil {
+			return nil
+		}
+		pwd, err = utils.EncryptAES256([]byte(qdb.Connection.Password), secretKey)
+		if err != nil {
+			utils.DebugPrint("EncryptPWDErr", err.Error())
+			return nil
+		}
 	}
 	return &dbo.QueryDataBase{
 		EnvID:    qdb.EnvID,
+		UID:      qdb.UID,
 		MaxConn:  qdb.MaxConn,
 		IdleTime: qdb.IdleTime,
 		IsWrite:  qdb.IsWrite,
@@ -82,34 +88,39 @@ func (qdb *QueryDataBaseDTO) toORMData() *dbo.QueryDataBase {
 	}
 }
 
-func (qdb *QueryDataBaseDTO) Create() error {
-
+func hotReloadDBCfg(f func() error) error {
+	okCh := make(chan struct{}, 1)
 	defer func() {
-		// 触发热加载配置
-		dbo.LoadInDB(true)
+		select {
+		case <-okCh:
+			utils.DebugPrint("HotReload", "hot reload config")
+			dbo.LoadInDB(true) // 触发热加载配置
+		default:
+		}
+
 	}()
-	//数据转换到db model中
-	orm := qdb.toORMData()
-	fmt.Println(&orm, orm)
-	err := orm.CreateOne()
+	err := f()
 	if err != nil {
 		return err
 	}
+	okCh <- struct{}{}
 	return nil
 }
 
+func (qdb *QueryDataBaseDTO) Create() error {
+	return hotReloadDBCfg(func() error {
+		orm := qdb.toORMData()
+		orm.UID = utils.GenerateUUIDKey()
+		return orm.CreateOne()
+	})
+}
+
 func (env *QueryEnvDTO) Create() error {
-	defer func() {
-		// 触发热加载配置
-		dbo.LoadInDB(true)
-	}()
-	//数据转换到db model中
-	orm := env.toORMData()
-	err := orm.CreateOne()
-	if err != nil {
-		return err
-	}
-	return nil
+	return hotReloadDBCfg(func() error {
+		orm := env.toORMData()
+		orm.UID = utils.GenerateUUIDKey()
+		return orm.CreateOne()
+	})
 }
 
 // 获取指定环境下所有db实例
@@ -154,21 +165,36 @@ func AllEnvInfo() map[string][]string {
 	return temp
 }
 
-func (env *QueryEnvDTO) UpdateEnvInfo(id int) error {
-	updateData := env.toORMData()
-	var temp dbo.QueryEnv
-	envId := uint(id)
-	envData, err := temp.FindById(id)
-	if err != nil {
-		return err
-	}
-	if envData.ID != envId {
-		return utils.GenerateError("EnvIdError", "EnvId is not match")
-	}
-	updateData.ID = envId
-	err = envData.UpdateOne(updateData)
-	if err != nil {
-		return err
-	}
-	return nil
+func (env *QueryEnvDTO) UpdateEnvInfo() error {
+	return hotReloadDBCfg(func() error {
+		updateData := env.toORMData()
+		tmpEnv := dbo.QueryEnv{UID: env.UID}
+		return tmpEnv.UpdateOne(updateData)
+	})
+}
+
+func (qdb *QueryDataBaseDTO) UpdateDBInfo() error {
+	return hotReloadDBCfg(func() error {
+		updateData := qdb.toORMData()
+		tmpDB := dbo.QueryDataBase{UID: qdb.UID}
+		return tmpDB.UpdateOne(updateData)
+	})
+}
+
+func (env *QueryEnvDTO) DeleteEnvInfo() error {
+	return hotReloadDBCfg(func() error {
+		temp := dbo.QueryEnv{
+			UID: env.UID,
+		}
+		return temp.DeleteOne()
+	})
+}
+
+func (qdb *QueryDataBaseDTO) DeleteDBInfo() error {
+	return hotReloadDBCfg(func() error {
+		temp := dbo.QueryDataBase{
+			UID: qdb.UID,
+		}
+		return temp.DeleteOne()
+	})
 }

@@ -17,7 +17,6 @@ import (
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -112,11 +111,10 @@ func InitRouter() {
 func InitBaseRoutes() {
 	RegisterRoute(func(rgPublic, rgAuth *gin.RouterGroup) {
 		rgPublic.POST("/register", userCreate)
-		rgPublic.POST("/login", userLogin)
+		// rgPublic.POST("/login", userLogin)
 		rgPublic.POST("/sso/login", userSSOLogin)
 		rgPublic.GET("/sso/callback", SSOCallBack)
 
-		// rgAuth.POST("/sql/query", UserSQLQuery)
 		// 导出文件下载
 		rgAuth.POST("/result/export", ResultExport)
 		rgAuth.GET("/result/download-link/sse", SSEHandle)
@@ -128,7 +126,6 @@ func InitBaseRoutes() {
 		rgAuth.GET("/sql/result/keys", getMapKeys)
 		rgAuth.GET("/db/list", DBList)
 
-		// rgAuth.GET("/result/issue/:issue_id/:task_id", showTempQueryResult)
 		rgAuth.GET("/result/temp-view/:identifier", showTempQueryResult)
 		rgPublic.GET("/gitlab/users", UpdateGitLabUsers)
 
@@ -136,10 +133,15 @@ func InitBaseRoutes() {
 		rgPublic.POST("/comment/callback", CommentCallBack)
 		// 测试专用路由
 		rgAuth.POST("/sql/excute", SQLExcuteTest)
-		rgAuth.POST("/db/info/create", CreateDBInfo)
-		rgAuth.POST("/env/info/create", CreateEnvInfo)
-		rgAuth.GET("/query/env/list", QueryEnvInfo)
-		rgAuth.PUT("/env/:id/update", UpdateEnvInfo)
+
+		rgAuth.POST("/env/create", CreateEnvInfo)
+		rgAuth.GET("/env/list", QueryEnvInfo)
+		rgAuth.PUT("/env/update/:uid", UpdateEnvInfo)
+		rgAuth.DELETE("/env/delete/:uid", DeleteEnvInfo)
+
+		rgAuth.POST("/sources/create", CreateDBInfo)
+		rgAuth.PUT("/sources/update/:uid", UpdateDBInfo)
+		rgAuth.DELETE("/sources/delete/:uid", DeleteDBInfo)
 	})
 }
 
@@ -409,27 +411,27 @@ func userCreate(ctx *gin.Context) {
 }
 
 // 用户登录（鉴权）
-func userLogin(ctx *gin.Context) {
-	var loginInfo UserInfo
-	ctx.ShouldBind(&loginInfo)
-	// 通过数据库验证
-	user := dbo.User{
-		Email: loginInfo.Email,
-	}
-	userInfo, err := user.BasicLogin(loginInfo.Password)
-	if err != nil {
-		common.DefaultResp(ctx, 1, nil, err.Error())
-		return
-	}
-	token, err := utils.GenerateJWT(userInfo.ID, userInfo.Name, userInfo.Email)
-	if err != nil {
-		common.DefaultResp(ctx, 1, nil, err.Error())
-	}
-	common.SuccessResp(ctx, gin.H{
-		"user_token": token,
-		"user":       userInfo.Name,
-	}, "user login success")
-}
+// func userLogin(ctx *gin.Context) {
+// 	var loginInfo UserInfo
+// 	ctx.ShouldBind(&loginInfo)
+// 	// 通过数据库验证
+// 	user := dbo.User{
+// 		Email: loginInfo.Email,
+// 	}
+// 	userInfo, err := user.BasicLogin(loginInfo.Password)
+// 	if err != nil {
+// 		common.DefaultResp(ctx, 1, nil, err.Error())
+// 		return
+// 	}
+// 	token, err := utils.GenerateJWT(userInfo.ID, userInfo.Name, userInfo.Email)
+// 	if err != nil {
+// 		common.DefaultResp(ctx, 1, nil, err.Error())
+// 	}
+// 	common.SuccessResp(ctx, gin.H{
+// 		"user_token": token,
+// 		"user":       userInfo.Name,
+// 	}, "user login success")
+// }
 
 func getQueryRecords(ctx *gin.Context) {
 	err := dbo.AllAuditRecords()
@@ -870,7 +872,6 @@ func CreateDBInfo(ctx *gin.Context) {
 		common.DefaultResp(ctx, 555, nil, err.Error())
 		return
 	}
-	fmt.Println("debug print - 0 ", dbInfo)
 	err = dbInfo.Create()
 	if err != nil {
 		common.DefaultResp(ctx, 555, nil, err.Error())
@@ -903,23 +904,74 @@ func QueryEnvInfo(ctx *gin.Context) {
 		return
 	}
 	result := core.AllEnvInfo()
-	common.SuccessResp(ctx, result, "get success")
+	common.SuccessResp(ctx, result, "get env data success")
 }
 
 func UpdateEnvInfo(ctx *gin.Context) {
-	envParam := ctx.Param("id")
-	envId, err := strconv.Atoi(envParam)
-	if err != nil {
-		common.DefaultResp(ctx, 555, nil, "Invalid Env ID")
+	uid := ctx.Param("uid")
+	if uid == "" {
+		common.DefaultResp(ctx, 555, nil, "Invalid UID")
 		return
 	}
-	// 解析用户数据体
+	// 解析用户要更新的数据体
 	var envInfo core.QueryEnvDTO
-	err = ctx.ShouldBindJSON(&envInfo)
+	err := ctx.ShouldBindJSON(&envInfo)
 	if err != nil {
 		common.DefaultResp(ctx, 555, nil, "request body is error: "+err.Error())
 		return
 	}
-	result := envInfo.UpdateEnvInfo(envId)
-	common.SuccessResp(ctx, result, "get success")
+	envInfo.UID = uid
+	result := envInfo.UpdateEnvInfo()
+	common.SuccessResp(ctx, result, "update env Success")
+}
+
+func UpdateDBInfo(ctx *gin.Context) {
+	uid := ctx.Param("uid")
+	if uid == "" {
+		common.DefaultResp(ctx, 555, nil, "Invalid UID")
+		return
+	}
+	// 解析用户数据体
+	var envInfo core.QueryDataBaseDTO
+	err := ctx.ShouldBindJSON(&envInfo)
+	if err != nil {
+		common.DefaultResp(ctx, 555, nil, "request body is error: "+err.Error())
+		return
+	}
+	envInfo.UID = uid
+	err = envInfo.UpdateDBInfo()
+	if err != nil {
+		common.DefaultResp(ctx, 555, nil, "request body is error: "+err.Error())
+		return
+	}
+	common.SuccessResp(ctx, nil, "update db config success")
+}
+
+func DeleteEnvInfo(ctx *gin.Context) {
+	uid := ctx.Param("uid")
+	if uid == "" {
+		common.DefaultResp(ctx, 555, nil, "Invalid  UID")
+		return
+	}
+	// 解析用户要更新的数据体
+	var envInfo core.QueryEnvDTO
+	envInfo.UID = uid
+	result := envInfo.DeleteEnvInfo()
+	common.SuccessResp(ctx, result, "delete env Success")
+}
+
+func DeleteDBInfo(ctx *gin.Context) {
+	uid := ctx.Param("uid")
+	if uid == "" {
+		common.DefaultResp(ctx, 555, nil, "Invalid UID")
+		return
+	}
+	var envInfo core.QueryDataBaseDTO
+	envInfo.UID = uid
+	err := envInfo.DeleteDBInfo()
+	if err != nil {
+		common.DefaultResp(ctx, 555, nil, "request body is error: "+err.Error())
+		return
+	}
+	common.SuccessResp(ctx, nil, "delete db config success")
 }

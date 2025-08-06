@@ -117,6 +117,7 @@ func LoadInDB(isReload bool) {
 			panic(err)
 		}
 	}
+	fmt.Println(config.Databases)
 	// 注册DB实例进入池子
 	err := registerPool(isReload, &config)
 	if err != nil {
@@ -347,6 +348,7 @@ func newDBInstance(usr, pwd, host, port string, maxConn, idleTime int) (*DBInsta
 	db.SetMaxIdleConns(maxConn)
 	err = db.Ping()
 	if err != nil {
+		fmt.Println(dsn)
 		return nil, err
 	}
 	return &DBInstance{
@@ -356,7 +358,6 @@ func newDBInstance(usr, pwd, host, port string, maxConn, idleTime int) (*DBInsta
 
 // 解析配置并注册
 func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
-	fmt.Println("debug print -1", configData.Databases)
 	for env, dbList := range configData.Databases {
 		if manager.Pool[env] == nil {
 			manager.Pool[env] = make(map[string]*DBInstance, len(dbList))
@@ -367,7 +368,6 @@ func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
 				utils.ErrorPrint("DBRegisterError", istName+" database register is failed, "+err.Error())
 				continue
 			}
-			fmt.Println("debug print -3", istName, dbConf, db)
 			db.name = istName
 			manager.Pool[env][istName] = db
 		}

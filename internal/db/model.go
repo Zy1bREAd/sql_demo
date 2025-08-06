@@ -18,45 +18,6 @@ type User struct {
 	QueryAuditLogs []AuditRecordV2 `gorm:"foreignKey:UserID"`
 }
 
-func (u *User) ToUserResp() UserResp {
-	return UserResp{
-		ID:    u.ID,
-		Name:  u.Name,
-		Email: u.Email,
-	}
-}
-
-// 专用响应User结构体
-type UserResp struct {
-	ID    uint   `json:"id"`
-	Name  string `json:"username"`
-	Email string `json:"email"`
-}
-
-// type AuditRecord struct {
-// 	ID     uint   `gorm:"primaryKey"`
-// 	TaskID string `gorm:"type:varchar(255);not null;uniqueIndex"`
-// 	// DML          string    `gorm:"type:char(64);"`
-// 	SQLStatement string    `gorm:"not null"`
-// 	DBName       string    `gorm:"type:varchar(255)"`
-// 	TimeStamp    time.Time `gorm:"type:datetime(0);autoCreateTime"`
-// 	IsExported   uint8     `gorm:"default:0;type:smallint;"`
-// 	ExportTime   time.Time `gorm:"type:datetime(0);"`
-// 	// 查询的环境
-// 	Env string `gorm:"type:char(64)"`
-// 	// 关联表
-// 	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user"`
-// 	UserID uint
-
-// 	// 关联GitLab
-// 	// ProjectID uint `gorm:"type:int"`
-// 	// IssueID   uint `gorm:"type:int"`
-// }
-
-// func (audit *AuditRecord) TableName() string {
-// 	return "query_audit_logs"
-// }
-
 type AuditRecordV2 struct {
 	ID        uint      `gorm:"primaryKey"`
 	TaskID    string    `gorm:"type:varchar(255);not null;index"` // 相当于链路ID
@@ -93,6 +54,7 @@ func (temp *TempResultMap) TableName() string {
 // 存储管理员的数据库执行环境
 type QueryEnv struct {
 	ID       uint      `gorm:"primaryKey"`
+	UID      string    `gorm:"type:varchar(36);not null,uniqueIndex"`
 	Name     string    `gorm:"type:varchar(255);not null;uniqueIndex"`
 	Tag      string    `gorm:"type:varchar(128)"`
 	Desc     string    `gorm:"type:varchar(255)"`
@@ -111,17 +73,18 @@ func (temp *QueryEnv) TableName() string {
 // 存储管理员的数据库执行环境
 type QueryDataBase struct {
 	ID       uint      `gorm:"primaryKey"`
+	UID      string    `gorm:"type:varchar(36);not null,uniqueIndex"`
+	Name     string    `gorm:"type:varchar(128);not null;"`
+	Service  string    `gorm:"type:varchar(128);not null;uniqueIndex:idx_env_app"`
+	Host     string    `gorm:"type:varchar(128);default:localhost"`
+	Port     string    `gorm:"type:varchar(64);default:3306;"`
+	User     string    `grom:"type:varchar(128);deafult:root;"`
+	Password string    `gorm:"type:varchar(128);not null;"`
+	Desc     string    `gorm:"type:varchar(255)"`
+	TLS      bool      `gorm:"default:false"`
 	MaxConn  int       `gorm:"default:10"`
 	IdleTime int       `gorm:"default:60"`
 	IsWrite  bool      `gorm:"default:false"`
-	TLS      bool      `gorm:"default:false"`
-	Name     string    `gorm:"type:varchar(128);not null;"`
-	Host     string    `gorm:"type:varchar(128);default:localhost"`
-	Service  string    `gorm:"type:varchar(128);not null;uniqueIndex:idx_env_app"`
-	Desc     string    `gorm:"type:varchar(255)"`
-	User     string    `grom:"type:varchar(128);deafult:root;"`
-	Password string    `gorm:"type:varchar(128);not null;"`
-	Port     string    `gorm:"type:varchar(64);default:3306;"`
 	Exclude  string    // 排除的数据库名
 	Salt     []byte    `gorm:"type:blob"`
 	UpdateAt time.Time `gorm:"type:datetime(0);autoCreateTime"`
