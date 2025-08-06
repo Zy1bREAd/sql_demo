@@ -6,7 +6,6 @@ import (
 	"slices"
 	"sql_demo/api"
 	"sql_demo/internal/conf"
-	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
 
@@ -162,18 +161,11 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	if issContent.Deadline == 0 {
 		issContent.Deadline = 60
 	}
-
-	// 执行SQL逻辑
-	user := dbo.User{
-		GitLabIdentity: iss.Author.ID,
-	}
-	userId := user.GetGitLabUserId()
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
 		Type: "gitlab_webhook",
 		Payload: &GitLabWebhook{
 			WebhookType: "comment",
-			UserId:      userId,
 			Issue:       iss,
 			Desc:        issContent,
 		},
@@ -252,5 +244,4 @@ type GitLabWebhook struct {
 	WebhookType string
 	Issue       *Issue
 	Desc        *SQLIssueTemplate
-	UserId      uint
 }

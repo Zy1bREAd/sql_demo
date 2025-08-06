@@ -377,7 +377,11 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
 	sqlt := body.Desc //  获取SQLIssueTemplate
-
+	// 获取USer真实ID
+	user := dbo.User{
+		GitLabIdentity: body.Issue.AuthorID,
+	}
+	userId := user.GetGitLabUserId()
 	gid := utils.GenerateUUIDKey()
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
@@ -386,7 +390,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			QTG: &QTaskGroup{
 				GID:      gid,
 				DML:      sqlt.Action,
-				UserID:   body.UserId,
+				UserID:   userId,
 				DBName:   body.Desc.DBName,
 				Env:      body.Desc.Env,
 				Service:  body.Desc.Service,
