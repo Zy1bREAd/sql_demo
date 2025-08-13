@@ -10,6 +10,7 @@ import (
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/utils"
+	"strings"
 )
 
 const (
@@ -226,12 +227,21 @@ func NewHashTempLink() (string, string) {
 
 // 解析Issue描述详情
 func ParseIssueDesc(desc string) (*SQLIssueTemplate, error) {
+	// 解析issue的描述情况是否为代码块
+	var descBytes []byte
+	if strings.HasPrefix(desc, "```") && strings.HasSuffix(desc, "```") {
+		temp := []byte(desc)
+		length := len(temp)
+		descBytes = temp[3 : length-3]
+	} else {
+		descBytes = []byte(desc)
+	}
 	// 解析并替换换行符
 	reg, err := regexp.Compile("\n")
 	if err != nil {
 		return nil, err
 	}
-	regResult := reg.ReplaceAll([]byte(desc), []byte(""))
+	regResult := reg.ReplaceAll(descBytes, []byte(""))
 	var content SQLIssueTemplate
 	err = json.Unmarshal(regResult, &content)
 	if err != nil {

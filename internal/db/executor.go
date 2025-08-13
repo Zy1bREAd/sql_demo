@@ -47,10 +47,6 @@ type SQLResult struct {
 	Results    []map[string]any // 结果集列表
 }
 
-type ResultGroup interface {
-	GetGID() string
-}
-
 type SQLResultGroup struct {
 	GID      string
 	ResGroup []*SQLResult

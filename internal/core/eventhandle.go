@@ -196,6 +196,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		ResultMap.Set(res.ID, res, 300, 0)
 	case *dbo.SQLResultGroup:
 		utils.DebugPrint("查询结果组事件消费", res.GID)
+		fmt.Println("test11111", res.ResGroup)
 		//! 后期核心处理结果集的代码逻辑块
 		ResultMap.Set(res.GID, res, 300, 0)
 		TestCh <- struct{}{}
@@ -204,6 +205,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		if !exist {
 			return nil
 		}
+		// 判断是否gitlab issue任务逻辑
 		v, ok := val.(*IssueQTask)
 		if !ok {
 			return nil
@@ -230,16 +232,16 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			utils.DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
 		}
 		glab.CommentCreate(v.IssProjectID, v.IssIID, tempURL)
-		// 导出结果(同步)
-		if v.QTG.IsExport {
-			exportTask := SubmitExportTask(res.GID, "csv", v.IssAuthorID)
-			<-exportTask.Result.Done
-		}
+		// // 导出结果(同步)
+		// if v.QTG.IsExport {
+		// 	exportTask := SubmitExportTask(res.GID, "csv", v.IssAuthorID)
+		// 	<-exportTask.Result.Done
+		// }
 		// 自动关闭issue（表示完成）
-		err = glab.IssueClose(v.IssProjectID, v.IssIID)
-		if err != nil {
-			utils.DebugPrint("GitLabAPIError", err.Error())
-		}
+		// err = glab.IssueClose(v.IssProjectID, v.IssIID)
+		// if err != nil {
+		// 	utils.DebugPrint("GitLabAPIError", err.Error())
+		// }
 		// 完成通知
 		iss, err := glab.IssueView(v.IssProjectID, v.IssIID)
 		if err != nil {
@@ -316,22 +318,22 @@ func (eh *ExportEventHandler) Name() string {
 }
 
 func (eh *ExportEventHandler) Work(ctx context.Context, e event.Event) error {
-	body, ok := e.Payload.(*ExportTask)
+	t, ok := e.Payload.(*ExportTask)
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
 	//! 后期核心处理结果集的代码逻辑块
-	utils.DebugPrint("ExportTask", "export task "+body.ID+" is starting...")
-	err := ExportSQLTask(ctx, body)
+	utils.DebugPrint("ExportTask", "export task "+t.GID+" is starting...")
+	err := t.Export(ctx)
 	if err != nil {
 		// 添加错误信息
-		body.Result.Error = err
-		body.Result.FilePath += "_failed"
-		body.Result.Done <- struct{}{}
-		utils.DebugPrint("ExportTask", "export task "+body.ID+" is failed,error: "+err.Error())
+		t.Result.Error = err
+		t.Result.FilePath += "_failed"
+		t.Result.Done <- struct{}{}
+		utils.DebugPrint("ExportTask", "export task "+t.GID+" is failed,error: "+err.Error())
 		return nil
 	}
-	utils.DebugPrint("ExportTask", "export task "+body.ID+" is completed")
+	utils.DebugPrint("ExportTask", "export task "+t.GID+" is completed")
 	return nil
 }
 
@@ -353,9 +355,9 @@ func (eh *HousekeepingEventHandler) Work(ctx context.Context, e event.Event) err
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
-	utils.DebugPrint("文件清理事件消费", body.ID)
+	utils.DebugPrint("文件清理事件消费", body.GID)
 	//! 后期核心处理结果集的代码逻辑块
-	FileClean(body.Result.FilePath)
+	body.Clean(ctx)
 	return nil
 }
 
@@ -396,7 +398,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				Service:  body.Desc.Service,
 				StmtRaw:  body.Desc.Statement,
 				IsExport: body.Desc.IsExport,
-				Deadline: body.Desc.Deadline,
+				Deadline: body.Desc.Deadline * 5,
 			},
 			IssProjectID:  body.Issue.ProjectID,
 			IssIID:        body.Issue.IID,

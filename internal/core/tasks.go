@@ -2,11 +2,10 @@ package core
 
 import (
 	"context"
-	"encoding/csv"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"log"
-	"os"
+
 	"sql_demo/internal/conf"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
@@ -14,19 +13,45 @@ import (
 	"time"
 )
 
+const (
+	ReExcuteFlag    = true
+	NotReExcuteFlag = false
+)
+
+type ReExcute struct {
+	isReExcute bool
+	deadline   int
+}
+
 type ExportResult struct {
-	Done     chan struct{}
+	Done     chan struct{} `json:"-"`
 	FilePath string
-	Error    error
+	Error    error `json:"-"`
 }
 
 type ExportTask struct {
-	ID       string `json:"task_id"`
-	Type     string `json:"export_type"`
-	FileName string
-	UserID   uint
-	deadline int // task timeout
-	Result   *ExportResult
+	UserID    uint
+	ResultIdx int    `json:"result_idx" query:"result_idx"` // 仅导出结果的索引
+	deadline  int    // task timeout
+	IsOnly    bool   `json:"is_only" query:"is_only"`
+	GID       string `json:"task_id" query:"task_id"`
+	IID       string `json:"sql_id" query:"sql_id"`
+	FileName  string
+
+	Result *ExportResult
+}
+
+func (et *ExportTask) GetResult() error {
+	val, exist := ExportWorkMap.Get(et.GID)
+	if !exist {
+		return utils.GenerateError("SyncMapKeyErr", "ExportTask is not exist")
+	}
+	resultVal, ok := val.(*ExportResult)
+	if !ok {
+		return utils.GenerateError("AssertTypeErr", "ExportTask type is error")
+	}
+	et.Result = resultVal
+	return nil
 }
 
 // var HouseKeepingQueue chan string = make(chan string, 30) // 针对结果集读取后的housekeeping
@@ -150,189 +175,162 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 	})
 }
 
-// 导出任务入队
-func SubmitExportTask(id, exportType string, userId uint) *ExportTask {
+func (et *ExportTask) Submit() {
 	today := time.Now().Format("20060102150405")
 	conf := conf.GetAppConf().GetBaseConfig()
-	filename := fmt.Sprintf("%s_%s.csv", id, today)
-	// 避免斜杠重复
-	filePath := conf.ExportEnv.FilePath + "/" + filename
+	et.FileName = fmt.Sprintf("result_export_%s_%s", et.GID, today)
 
+	// 异步插入记录V2
+	go func() {
+		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
+		var auditRecord dbo.AuditRecordV2
+		dbConn := dbo.HaveSelfDB().GetConn()
+		res := dbConn.Where("task_id = ?", et.GID).First(&auditRecord)
+		if res.Error != nil {
+			utils.ErrorPrint("DBAPIError", res.Error.Error())
+			return
+		}
+		if res.RowsAffected != 1 {
+			utils.ErrorPrint("DBAPIError", "rows is zero")
+			return
+		}
+		// 日志审计插入v2
+		auditRecord.ID = 0
+		auditRecord.UserID = et.UserID
+		// 更换导出详细的Payload
+		exportPayload, err := json.Marshal(&et)
+		if err != nil {
+			utils.ErrorPrint("AuditRecordV2", err.Error())
+			return
+		}
+		auditRecord.Payload = string(exportPayload)
+		auditRecord.CreatAt = time.Now()
+
+		err = auditRecord.InsertOne("RESULT_EXPORT")
+		if err != nil {
+			utils.ErrorPrint("AuditRecordV2", err.Error())
+			return
+		}
+	}()
 	// 构造导出任务（默认5分钟清理）
 	taskResult := &ExportResult{
-		Error:    nil,
-		FilePath: filePath,
-		Done:     make(chan struct{}),
+		Error: nil,
+		Done:  make(chan struct{}),
 	}
-	task := &ExportTask{
-		ID:       id,
-		Type:     exportType,
-		deadline: 300,
-		FileName: filename,
-		UserID:   userId,
-		Result:   taskResult,
+	// 避免斜杠重复
+	if et.IsOnly {
+		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName + ".csv"
+	} else {
+		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName + ".xlsx"
 	}
-	ExportWorkMap.Set(task.ID, task.Result, 300, 3)
-	// ExportQueue <- task
+	et.Result = taskResult
+	et.deadline = 300
+	ExportWorkMap.Set(et.GID, et.Result, 300, 3)
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
 		Type:    "export_result",
-		Payload: task,
+		Payload: et,
 	})
-	return task
 }
 
 // 导出SQL查询结果
-func ExportSQLTask(ctx context.Context, task *ExportTask) error {
-	var cachesMapResult *dbo.SQLResult
-	if task.ID == "" {
+func (et *ExportTask) Export(ctx context.Context) error {
+	// var cachesMapResult *dbo.SQLResultGroup
+	if et.GID == "" {
 		return utils.GenerateError("TaskNotExist", "task id is not found")
 	}
-	// 检查结果集resultMap还是否存在当前task的result
-	mapVal, resultExist := ResultMap.Get(task.ID)
+	// 获取任务结果集
+	taskResults, err := getTaskResults(ctx, et.GID, ReExcute{
+		isReExcute: ReExcuteFlag,
+		deadline:   et.deadline,
+	})
+	if err != nil {
+		return err
+	}
+	conf := conf.GetAppConf().GetBaseConfig()
+	if et.IsOnly {
+		// 仅导出
+		csvRes := utils.CSVResult{
+			BasePath: conf.ExportEnv.FilePath,
+			FileName: et.FileName,
+			Data:     taskResults.ResGroup[et.ResultIdx].Results,
+		}
+
+		err := csvRes.Convert()
+		if err != nil {
+			return err
+		}
+	} else {
+		// 导出全部
+		excelRes := utils.ExcelResult{
+			BasePath: conf.ExportEnv.FilePath,
+			FileName: et.FileName,
+		}
+		err := excelRes.CreateFile()
+		if err != nil {
+			return err
+		}
+		for index, result := range taskResults.ResGroup {
+			excelRes.Data = result.Results
+			excelRes.Index = index + 1
+			err := excelRes.Convert()
+			if err != nil {
+				return err
+			}
+		}
+	}
+	// 等待清理（goroutine）
+	time.AfterFunc(time.Second*time.Duration(conf.ExportEnv.HouseKeeping), func() {
+		// HouseKeepQueue <- task
+		ep := event.GetEventProducer()
+		ep.Produce(event.Event{
+			Type:    "file_housekeeping",
+			Payload: et,
+		})
+	})
+	et.Result.Done <- struct{}{}
+	return nil
+}
+
+func (et *ExportTask) Clean(ctx context.Context) {
+	utils.FileClean(et.Result.FilePath)
+}
+
+// 获取结果集（设置是否需要重做flag），返回结果集和error
+// 检查结果集resultMap还是否存在当前task的result，来决定是否重新执行查询任务来获取结果
+func getTaskResults(ctx context.Context, taskId string, re ReExcute) (*dbo.SQLResultGroup, error) {
+	mapVal, resultExist := ResultMap.Get(taskId)
 	if !resultExist {
-		// 从QueryTaskMap中找对应task id的任务信息，重新执行查询任务来获取结果
-		taskMap, taskExist := QueryTaskMap.Get(task.ID)
+		taskMap, taskExist := QueryTaskMap.Get(taskId)
 		if !taskExist {
-			return utils.GenerateError("QueryTaskError", "query task id is not exist,please re-excute sql query")
+			return nil, utils.GenerateError("QueryTaskError", "task id is not exist,please re-excute sql query")
 		}
 		switch t := taskMap.(type) {
 		case *QueryTask:
-			// t.ExcuteTask(ctx)
-			utils.ErrorPrint("NotSupprt", "the QueryTask is not supported.")
+			utils.ErrorPrint("ExportSQLTask", "the QueryTask is not supported")
 		case *QTaskGroup:
 			t.ExcuteTask(ctx)
 		default:
-			return utils.GenerateError("QueryTaskError", "query task object type not match")
+			return nil, utils.GenerateError("QueryTaskError", "query task object type not match")
 		}
 		// 同步方式每秒检测是否查询任务完成，来获取结果集
-		for i := 0; i <= task.deadline; i++ {
+		for i := 0; i <= int(re.deadline); i++ {
 			time.Sleep(1 * time.Second)
-			mapVal, ok := ResultMap.Get(task.ID)
+			mapVal, ok := ResultMap.Get(taskId)
 			if ok {
-				assertVal, ok := mapVal.(*dbo.SQLResult)
+				assertVal, ok := mapVal.(*dbo.SQLResultGroup)
 				if !ok {
-					return utils.GenerateError("QueryResultError", "query result data type is incorrect")
+					return nil, utils.GenerateError("QueryResultError", "query result data type is incorrect")
 				}
-				log.Println("[Re-Excute] re-excute sql task completed")
-				cachesMapResult = assertVal
-				break
+				utils.DebugPrint("ReExcuteTask", "re-excute query task is sucess")
+				return assertVal, nil
 			}
 		}
-	} else {
-		assertVal, ok := mapVal.(*dbo.SQLResult)
-		if !ok {
-			return errors.New("resultData is incorrect type")
-		}
-		cachesMapResult = assertVal
+		return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout")
 	}
-	conf := conf.GetAppConf().GetBaseConfig()
-	switch {
-	case task.Type == "csv":
-		err := convertCSVFile(conf.ExportEnv.FilePath, task.FileName, cachesMapResult.Results)
-		if err != nil {
-			return err
-		}
-		time.AfterFunc(time.Second*time.Duration(conf.ExportEnv.HouseKeeping), func() {
-			// HouseKeepQueue <- task
-			ep := event.GetEventProducer()
-			ep.Produce(event.Event{
-				Type:    "file_housekeeping",
-				Payload: task,
-			})
-		})
-	default:
-		log.Println("[WARN] 暂不支持其他方式导出")
-		return utils.GenerateError("TypeError", "export type is unknown")
+	assertVal, ok := mapVal.(*dbo.SQLResultGroup)
+	if !ok {
+		return nil, utils.GenerateError("QueryResultError", "query result data type is incorrect")
 	}
-	// 假装导出要耗时10s
-	// time.Sleep(2 * time.Second)
-	// 完成后传递<导出结果>对象信息，并通过channel传递完成消息
-	task.Result.Done <- struct{}{}
-	return nil
-}
-
-// 转换成CSV文件并存储在本地
-func convertCSVFile(base, filename string, data []map[string]any) error {
-	if len(data) <= 0 {
-		return utils.GenerateError("ConvertError", "data length is zero")
-	}
-	// 创建文件，不存在目录则创建
-	_, err := os.Stat(base)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err := os.MkdirAll(base, 0755)
-			if err != nil {
-				log.Println("create a file path is failed ->", err.Error())
-				return err
-			}
-		} else {
-			log.Println("create a temp CSV file is failed ->", err.Error())
-			return err
-		}
-	}
-	filePath := base + "/" + filename
-	f, err := os.Create(filePath)
-	if err != nil {
-		log.Println("create a temp CSV file is failed ->", err.Error())
-		return err
-	}
-	defer f.Close()
-
-	w := csv.NewWriter(f)
-	defer w.Flush()
-
-	// 制造表头
-	var headers = make([]string, 0, len(data[0]))
-	for key := range data[0] {
-		headers = append(headers, key)
-	}
-
-	// 写入表头
-	if err := w.Write(headers); err != nil {
-		log.Println("write headers csv file is error,", err.Error())
-		return err
-	}
-
-	// 写入结果集数据
-	for _, row := range data {
-		rowData := toCSVRow(row, headers)
-		err := w.Write(rowData)
-		if err != nil {
-			log.Println("write row data csv file is error,", err.Error())
-			return err
-		}
-	}
-	return nil
-}
-
-// 提取行数据成切片
-func toCSVRow(record map[string]any, headers []string) []string {
-	row := make([]string, 0, len(headers))
-	for _, col := range headers {
-		row = append(row, fmt.Sprintf("%v", record[col]))
-	}
-	return row
-}
-
-// 清理临时文件（如导出文件）
-func FileClean(filepath string) {
-	fileInfo, err := os.Stat(filepath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			log.Println("[FileNotExist]", fileInfo.Name(), "is not exist")
-			return
-		}
-		log.Println("[FileError]", err.Error())
-		return
-	}
-	if fileInfo.IsDir() {
-		log.Println("[Error]", fileInfo.Name(), "is not a file")
-		return
-	}
-	err = os.Remove(filepath)
-	if err != nil {
-		log.Println("[RemoveFailed]", fileInfo.Name(), "remove occur a error", err.Error())
-	}
-	log.Println("[Completed]", fileInfo.Name(), "is cleaned up")
+	return assertVal, nil
 }

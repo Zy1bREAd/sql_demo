@@ -17,6 +17,7 @@ import (
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,13 +25,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
-
-// 定义一个SSE消息内容对象
-type sseEvent struct {
-	ID    int    `json:"event_id"` // 0=download ready; 1=frist connected; 2=failed; 4=close connected;
-	Event string `json:"event"`
-	Data  string `json:"data"`
-}
 
 // 定义路由注册函数
 type FnRegisterRoute func(rgPublic *gin.RouterGroup, rgAuth *gin.RouterGroup)
@@ -116,8 +110,7 @@ func InitBaseRoutes() {
 		rgPublic.GET("/sso/callback", SSOCallBack)
 
 		// 导出文件下载
-		rgAuth.POST("/result/export", ResultExport)
-		rgAuth.GET("/result/download-link/sse", SSEHandle)
+		rgAuth.GET("/result/export", ResultExport)
 		rgAuth.GET("/result/download", DownloadFile)
 
 		rgAuth.GET("/record/list", getUserAuditRecordHandler)
@@ -165,13 +158,6 @@ func SQLExcuteTest(ctx *gin.Context) {
 	}
 	fmt.Printf("完成请求信息搜集，%s\n", time.Now().String())
 
-	// stmtList, err := core.ParseV2(content.DBName, content.Statement)
-	// if err != nil {
-	// 	common.ErrorResp(ctx, err.Error())
-	// 	return
-	// }
-	// fmt.Printf("完成SQL语句解析，%s\n", time.Now().String())
-
 	gid := utils.GenerateUUIDKey()
 	qtg := &core.QTaskGroup{
 		GID:      gid,
@@ -181,7 +167,7 @@ func SQLExcuteTest(ctx *gin.Context) {
 		Env:      content.Env,
 		Service:  content.Service,
 		IsExport: content.IsExport,
-		Deadline: 300,
+		Deadline: content.Deadline * 5,
 	}
 	// 事件驱动：封装成Event推送到事件通道(v2.0)
 	ep := event.GetEventProducer()
@@ -528,27 +514,134 @@ func SSOCallBack(ctx *gin.Context) {
 	}, "sso login success")
 }
 
-// 结果集导出路由逻辑
+// 结果集导出路由逻辑(SSE)
 func ResultExport(ctx *gin.Context) {
-	userId, exist := ctx.Get("user_id")
+	// 添加SSE的Header
+	ctx.Header("Content-Type", "text/event-stream")
+	ctx.Header("Cache-Control", "no-cache")
+	ctx.Header("Connection", "keep-alive")
+
+	val, exist := ctx.Get("user_id")
 	if !exist {
 		common.ErrorResp(ctx, "User not exist")
 		return
 	}
-	var reqBody core.ExportTask
-	ctx.ShouldBindJSON(&reqBody)
-	export := core.SubmitExportTask(reqBody.ID, reqBody.Type, utils.StrToUint(userId.(string)))
+	idStr, ok := val.(string)
+	if !ok {
+		common.ErrorResp(ctx, "UserId type is incrroect")
+		return
+	}
+	// 解析URL上的query信息（手动解析，因为ShouldBind失效）
+	var t core.ExportTask
+	// err := ctx.ShouldBindWith(&t, binding.Query)
+	queryVals := ctx.Request.URL.Query()
+	taskIdVal := queryVals.Get("task_id")
+	isOnlyVal := queryVals.Get("is_only")
 
-	common.SuccessResp(ctx, gin.H{
-		"task_id":  export.ID,
-		"filename": export.FileName,
-	}, "export file task start...")
+	t.GID = taskIdVal
+	isOnlyBool, err := strconv.ParseBool(isOnlyVal)
+	if err != nil {
+		utils.DebugPrint("StrConvErr", err.Error())
+	}
+	if t.GID == "" {
+		common.ErrorResp(ctx, "TaskID is invalid "+err.Error())
+		return
+	}
+	if isOnlyBool {
+		resultIdxVal := queryVals.Get("result_idx")
+		idxInt64, err := strconv.ParseInt(resultIdxVal, 10, 32)
+		t.ResultIdx = int(idxInt64)
+		if err != nil {
+			common.ErrorResp(ctx, "resultIdx is invalid "+err.Error())
+			return
+		}
+	}
+	t.UserID = utils.StrToUint(idStr)
+	t.IsOnly = isOnlyBool
+	t.Submit()
+	common.SuccessResp(ctx, nil, "export task is start working....")
+
+	// 设置超时控制
+	timeCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
+	defer cancel()
+	if err := t.GetResult(); err != nil {
+		common.ErrorResp(ctx, "Export Result is Null "+err.Error())
+		return
+	}
+	if t.Result == nil {
+		common.ErrorResp(ctx, "Export Result is Null "+err.Error())
+		return
+	}
+	select {
+	case <-t.Result.Done:
+		if t.Result.Error != nil {
+			// 此时SSE连接已开，必须返回错误消息和关闭sse
+			sseContent := utils.SSEEvent{
+				ID:    2,
+				Event: "error",
+				Data:  t.Result.Error.Error(),
+			}
+			utils.SSEMsgOnSend(ctx, &sseContent)
+			// 发送完毕关闭连接
+			sseContent = utils.SSEEvent{
+				ID:    4,
+				Event: "closed",
+				Data:  "",
+			}
+			utils.SSEMsgOnSend(ctx, &sseContent)
+			return
+		}
+		// 发送初始化连接消息
+		sseContent := utils.SSEEvent{
+			ID:    1,
+			Event: "connected",
+			Data:  "OK",
+		}
+		utils.SSEMsgOnSend(ctx, &sseContent)
+		// 生成签名的URL下载链接
+		// uri := GenerateSignedURI(taskId)
+		downloadURL := fmt.Sprintf("/result/download?task_id=%s", t.GID)
+		// JSON序列化下载信息
+		downloadInfo := map[string]string{
+			"link":      downloadURL,
+			"file_name": t.FileName,
+		}
+		bytesData, err := json.Marshal(&downloadInfo)
+		if err != nil {
+			sseContent = utils.SSEEvent{
+				ID:    2,
+				Event: "json_error",
+				Data:  err.Error(),
+			}
+			utils.SSEMsgOnSend(ctx, &sseContent)
+		}
+		sseContent = utils.SSEEvent{
+			ID:    0,
+			Event: "download_ready",
+			Data:  string(bytesData),
+		}
+		utils.SSEMsgOnSend(ctx, &sseContent)
+		defer func() {
+			// 发送完毕关闭连接
+			sseContent := utils.SSEEvent{
+				ID:    4,
+				Event: "closed",
+				Data:  "",
+			}
+			utils.SSEMsgOnSend(ctx, &sseContent)
+		}()
+		return
+	case <-timeCtx.Done():
+		utils.ErrorPrint("SSETimeOut", "SSE Connection is timeout")
+		return
+	}
 }
 
 func DownloadFile(ctx *gin.Context) {
+	//! 引入其他参数防止伪造task_id来请求偷取下载文件
 	taskId := ctx.Query("task_id")
 	if taskId == "" {
-		common.DefaultResp(ctx, 1, nil, "param taskid is invalid")
+		common.DefaultResp(ctx, common.RespFailed, nil, "URL query taskid is invalid")
 		return
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*25)
@@ -584,26 +677,27 @@ func DownloadFile(ctx *gin.Context) {
 		// 日志审计插入v2
 		auditRecord.ID = 0
 		auditRecord.UserID = utils.StrToUint(userId)
-		err := auditRecord.InsertOne("RESULT_EXPORT")
+		auditRecord.CreatAt = time.Now()
+
+		err := auditRecord.InsertOne("RESULT_DOWNLOAD")
 		if err != nil {
 			utils.ErrorPrint("AuditRecordV2", err.Error())
 		}
-		time.Sleep(30 * time.Second)
 		auditChan <- struct{}{}
 	}()
 	if !dbo.AllowResultExport(taskId) {
-		common.DefaultResp(ctx, 1, nil, "result file is not allow to export")
+		common.DefaultResp(ctx, common.RespFailed, nil, "result file is not allow to export")
 		return
 	}
 	// 获取文件路径并下载
 	mapVal, exist := core.ExportWorkMap.Get(taskId)
 	if !exist {
-		common.DefaultResp(ctx, 4, nil, "result file is not exist,may be cleaned")
+		common.DefaultResp(ctx, common.RecordNotExist, nil, "export result is not exist,may be cleaned")
 		return
 	}
 	exportResult, ok := mapVal.(*core.ExportResult)
 	if !ok {
-		common.DefaultResp(ctx, 4, nil, "result file type not match")
+		common.DefaultResp(ctx, common.RecordNotExist, nil, "result file type not match")
 		return
 	}
 	if _, err := os.Stat(exportResult.FilePath); err != nil {
@@ -623,104 +717,92 @@ func DownloadFile(ctx *gin.Context) {
 	}
 }
 
-// SSE处理，用于导出文件
-func SSEHandle(ctx *gin.Context) {
-	ctx.Header("Content-Type", "text/event-stream")
-	ctx.Header("Cache-Control", "no-cache")
-	ctx.Header("Connection", "keep-alive")
+// // SSE处理，用于导出文件
+// func SSEHandle(ctx *gin.Context) {
+// 	ctx.Header("Content-Type", "text/event-stream")
+// 	ctx.Header("Cache-Control", "no-cache")
+// 	ctx.Header("Connection", "keep-alive")
 
-	_, exist := ctx.Get("user_id")
-	if !exist {
-		common.ErrorResp(ctx, "User not exist")
-		return
-	}
-	// 从Parmas山获取taskId
-	taskId := ctx.Query("task_id")
-	if taskId == "" {
-		log.Println("[TaskError] taskId is null,Abort!!!")
-		return
-	}
+// 	_, exist := ctx.Get("user_id")
+// 	if !exist {
+// 		common.ErrorResp(ctx, "User not exist")
+// 		return
+// 	}
+// 	// 从URL Parma中获取taskId，查询导出任务的进度
+// 	taskId := ctx.Query("task_id")
+// 	if taskId == "" {
+// 		log.Println("[TaskError] taskId is null,Abort!!!")
+// 		return
+// 	}
 
-	// SSE处理逻辑超时控制
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
-	defer cancel()
-	// 获取对应taskId的<导出对象>信息
-	mapVal, exist := core.ExportWorkMap.Get(taskId)
-	if !exist {
-		log.Println("[NotExist] export result not exist,exit(1)")
-		return
-	}
-	exportJob, ok := mapVal.(*core.ExportResult)
-	if !ok {
-		log.Println("[TypeNotMatch] export result type is not match,exit(1)")
-		return
-	}
-	for {
-		select {
-		// 等待通知export结束
-		case <-exportJob.Done:
-			// 判断是否有错误
-			if exportJob.Error != nil {
-				log.Println("[ExportFailed] export task is failed ==>", exportJob.Error.Error())
-				// 此时SSE连接已开，必须返回错误消息和关闭sse
-				sseContent := sseEvent{
-					ID:    2,
-					Event: "error",
-					Data:  exportJob.Error.Error(),
-				}
-				SSEMsgOnSend(ctx, &sseContent)
-				// 发送完毕关闭连接
-				sseContent = sseEvent{
-					ID:    4,
-					Event: "closed",
-					Data:  "",
-				}
-				SSEMsgOnSend(ctx, &sseContent)
-				return
-			}
-			log.Println("[Completed] export task done")
-			// 发送初始化连接确认(discard)
+// 	// SSE处理逻辑超时控制
+// 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+// 	defer cancel()
+// 	// 获取对应taskId的<导出对象>信息
+// 	mapVal, exist := core.ExportWorkMap.Get(taskId)
+// 	if !exist {
+// 		log.Println("[NotExist] export result not exist,exit(1)")
+// 		return
+// 	}
+// 	exportJob, ok := mapVal.(*core.ExportResult)
+// 	if !ok {
+// 		log.Println("[TypeNotMatch] export result type is not match,exit(1)")
+// 		return
+// 	}
+// 	for {
+// 		select {
+// 		// 等待通知export结束
+// 		case <-exportJob.Done:
+// 			// 判断是否有错误
+// 			if exportJob.Error != nil {
+// 				log.Println("[ExportFailed] export task is failed ==>", exportJob.Error.Error())
+// 				// 此时SSE连接已开，必须返回错误消息和关闭sse
+// 				sseContent := sseEvent{
+// 					ID:    2,
+// 					Event: "error",
+// 					Data:  exportJob.Error.Error(),
+// 				}
+// 				SSEMsgOnSend(ctx, &sseContent)
+// 				// 发送完毕关闭连接
+// 				sseContent = sseEvent{
+// 					ID:    4,
+// 					Event: "closed",
+// 					Data:  "",
+// 				}
+// 				SSEMsgOnSend(ctx, &sseContent)
+// 				return
+// 			}
+// 			log.Println("[Completed] export task done")
+// 			// 发送初始化连接确认(discard)
 
-			// 生成签名的URL下载链接
-			// uri := GenerateSignedURI(taskId)
-			downloadURL := fmt.Sprintf("/result/download?task_id=%s", taskId)
-			sseContent := sseEvent{
-				ID:    0,
-				Event: "download_ready",
-				Data:  downloadURL,
-			}
-			SSEMsgOnSend(ctx, &sseContent)
+// 			// 生成签名的URL下载链接
+// 			// uri := GenerateSignedURI(taskId)
+// 			downloadURL := fmt.Sprintf("/result/download?task_id=%s", taskId)
+// 			sseContent := sseEvent{
+// 				ID:    0,
+// 				Event: "download_ready",
+// 				Data:  downloadURL,
+// 			}
+// 			SSEMsgOnSend(ctx, &sseContent)
 
-			// 发送完毕关闭连接
-			sseContent = sseEvent{
-				ID:    4,
-				Event: "closed",
-				Data:  "",
-			}
-			SSEMsgOnSend(ctx, &sseContent)
-			return
-		case <-timeoutCtx.Done():
-			log.Println("[TimeOut] sse handle timeout,exit 1")
-			return
-		default:
-			log.Println("[Wait] waiting export task done")
-			time.Sleep(time.Second * 2)
-		}
-	}
+// 			// 发送完毕关闭连接
+// 			sseContent = sseEvent{
+// 				ID:    4,
+// 				Event: "closed",
+// 				Data:  "",
+// 			}
+// 			SSEMsgOnSend(ctx, &sseContent)
+// 			return
+// 		case <-timeoutCtx.Done():
+// 			log.Println("[TimeOut] sse handle timeout,exit 1")
+// 			return
+// 		default:
+// 			log.Println("[Wait] waiting export task done")
+// 			time.Sleep(time.Second * 2)
+// 		}
+// 	}
 
-}
-
-// 失败的SSE Msg
-func SSEMsgOnSend(ctx *gin.Context, event *sseEvent) {
-	sseMsgJSON, err := json.Marshal(event)
-	if err != nil {
-		log.Println("[JSONMarshalError] json data masrshal error")
-		return
-	}
-	sendMsg := fmt.Sprintf("data: %s\n\n", sseMsgJSON)
-	ctx.Writer.Write([]byte(sendMsg))
-	ctx.Writer.Flush()
-}
+// }
 
 // 获取指定用户的日志审计
 func getUserAuditRecordHandler(ctx *gin.Context) {
@@ -785,6 +867,7 @@ func showTempQueryResult(ctx *gin.Context) {
 		// 日志审计插入v2
 		auditRecord.ID = 0
 		auditRecord.UserID = utils.StrToUint(userId)
+		auditRecord.CreatAt = time.Now()
 
 		err := auditRecord.InsertOne("RESULT_VIEW")
 		if err != nil {
@@ -799,11 +882,6 @@ func showTempQueryResult(ctx *gin.Context) {
 		return
 	}
 	if val, ok := userResult.(*dbo.SQLResultGroup); ok {
-		// if val.resGroup != nil {
-		// 	common.DefaultResp(ctx, 1, nil, val.errrr.Error())
-		// 	return
-		// }
-		// QueryTaskMap.Get(val.ID)
 		common.SuccessResp(ctx, gin.H{
 			"result":    val.ResGroup,
 			"is_export": dbRes.IsAllowExport,

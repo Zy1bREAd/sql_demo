@@ -8,6 +8,7 @@ import (
 	"sql_demo/internal/conf"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
@@ -49,7 +50,8 @@ func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
 	baseConf := conf.GetAppConf().GetBaseConfig()
 	// 校验请求，避免伪造
 	event := ctx.GetHeader("X-Gitlab-Event")
-	if event != gitlabEvent {
+
+	if !strings.HasSuffix(event, gitlabEvent) {
 		return utils.GenerateError("RequestHeaderError", "event is not match")
 	}
 	instance := ctx.GetHeader("X-Gitlab-Instance")
@@ -123,11 +125,11 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	glab := InitGitLabAPI()
 	// 检查审批人是否合法
 	approvalUserMap := conf.GetAppConf().GetBaseConfig().ApprovalMap
-	v, exist := approvalUserMap[c.User.Name]
+	approverID, exist := approvalUserMap[c.User.Name]
 	if !exist {
 		return utils.GenerateError("ApprovalUserNotExist", "该用户不是审批人")
 	}
-	if v != c.User.ID {
+	if c.User.ID != approverID {
 		// error: 不相同的userid
 		return utils.GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
 	}

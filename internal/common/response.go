@@ -15,9 +15,13 @@ const (
 )
 
 // ! 封装App业务性的响应状态码
+// 普通成功的都为个位数，错误通常都是两位数。
 const (
-	APP_SUCCESS = 0
-	APP_FAILED  = 1
+	RespSuccess = 100
+	RespFailed  = 11 // 未知错误的默认失败
+
+	RecordNotExist = 44
+	RecordNotFound = 45
 )
 
 type JSONResponse struct {
@@ -29,7 +33,7 @@ type JSONResponse struct {
 // 封装gin json成功响应
 func SuccessResp(ctx *gin.Context, data any, msg string) {
 	ctx.JSON(successCode, JSONResponse{
-		Code:    successCode,
+		Code:    RespSuccess,
 		Message: msg,
 		Data:    data,
 	})
@@ -38,7 +42,7 @@ func SuccessResp(ctx *gin.Context, data any, msg string) {
 // 封装gin json错误响应
 func ErrorResp(ctx *gin.Context, msg string) {
 	ctx.JSON(errorCode, JSONResponse{
-		Code:    errorCode,
+		Code:    RespFailed,
 		Message: msg,
 	})
 }
