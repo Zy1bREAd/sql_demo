@@ -178,8 +178,6 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 func (et *ExportTask) Submit() {
 	today := time.Now().Format("20060102150405")
 	conf := conf.GetAppConf().GetBaseConfig()
-	et.FileName = fmt.Sprintf("result_export_%s_%s", et.GID, today)
-
 	// 异步插入记录V2
 	go func() {
 		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
@@ -217,10 +215,14 @@ func (et *ExportTask) Submit() {
 		Error: nil,
 		Done:  make(chan struct{}),
 	}
-	// 避免斜杠重复
+	// 确定完整的文件名（包含后缀）
 	if et.IsOnly {
+		fileName := fmt.Sprintf("result_export_%s_%s", et.GID, today)
+		et.FileName = fileName + ".csv"
 		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName + ".csv"
 	} else {
+		fileName := fmt.Sprintf("result_export_%s_%s", et.GID, today)
+		et.FileName = fileName + ".xlsx"
 		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName + ".xlsx"
 	}
 	et.Result = taskResult

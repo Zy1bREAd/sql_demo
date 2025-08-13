@@ -69,6 +69,8 @@ func (exr *ExcelResult) CreateFile() error {
 		}
 	}
 	defer f.Close()
+	// 手动删除 Sheet1 工作表
+	f.DeleteSheet("Sheet1")
 	// 保存Excel文件
 	if err := f.SaveAs(filePath); err != nil {
 		return GenerateError("ExcelDataSaveErr", err.Error())
@@ -99,7 +101,7 @@ func (exr *ExcelResult) Convert() error {
 		return nil
 	}
 	colsName := getHeadersData(exr.Data[0])
-
+	fmt.Println("debug print -2 ", colsName)
 	err = writeRow(f, sheetName, 1, colsName)
 	if err != nil {
 		fmt.Println(GenerateError("TableHeaderError", err.Error()))
@@ -107,7 +109,7 @@ func (exr *ExcelResult) Convert() error {
 	// 写入结果集数据
 	for rowIdx, row := range exr.Data {
 		rowData := getRowsData(row, colsName)
-		err := writeRow(f, sheetName, rowIdx+1, rowData)
+		err := writeRow(f, sheetName, rowIdx+2, rowData)
 		if err != nil {
 			return GenerateError("ExcelDataError", err.Error())
 		}
