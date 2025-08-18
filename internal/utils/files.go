@@ -101,7 +101,6 @@ func (exr *ExcelResult) Convert() error {
 		return nil
 	}
 	colsName := getHeadersData(exr.Data[0])
-	fmt.Println("debug print -2 ", colsName)
 	err = writeRow(f, sheetName, 1, colsName)
 	if err != nil {
 		fmt.Println(GenerateError("TableHeaderError", err.Error()))

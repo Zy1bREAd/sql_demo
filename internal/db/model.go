@@ -53,15 +53,14 @@ func (temp *TempResultMap) TableName() string {
 
 // 存储管理员的数据库执行环境
 type QueryEnv struct {
-	ID       uint      `gorm:"primaryKey"`
-	UID      string    `gorm:"type:varchar(36);not null,uniqueIndex"`
-	Name     string    `gorm:"type:varchar(255);not null;uniqueIndex"`
-	Tag      string    `gorm:"type:varchar(128)"`
-	Desc     string    `gorm:"type:varchar(255)"`
-	IsWrite  bool      `gorm:"default:false"`
-	CreateAt time.Time `gorm:"type:datetime(0);autoCreateTime"`
-	UpdateAt time.Time `gorm:"type:datetime(0);autoCreateTime"`
-
+	ID          uint      `gorm:"primaryKey"`
+	UID         string    `gorm:"type:varchar(36);not null,uniqueIndex"`
+	Name        string    `gorm:"type:varchar(255);not null;uniqueIndex"`
+	Tag         string    `gorm:"type:varchar(128)"`
+	Description string    `gorm:"type:varchar(255)"`
+	IsWrite     bool      `gorm:"default:false"`
+	CreateAt    time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	UpdateAt    time.Time `gorm:"type:datetime(0);autoCreateTime"`
 	// 一对多
 	// QueryDataBases []QueryDataBase `gorm:"foreignKey:EnvID"`
 }
@@ -72,23 +71,24 @@ func (temp *QueryEnv) TableName() string {
 
 // 存储管理员的数据库执行环境
 type QueryDataBase struct {
-	ID       uint      `gorm:"primaryKey"`
-	UID      string    `gorm:"type:varchar(36);not null,uniqueIndex"`
-	Name     string    `gorm:"type:varchar(128);not null;"`
-	Service  string    `gorm:"type:varchar(128);not null;uniqueIndex:idx_env_app"`
-	Host     string    `gorm:"type:varchar(128);default:localhost"`
-	Port     string    `gorm:"type:varchar(64);default:3306;"`
-	User     string    `grom:"type:varchar(128);deafult:root;"`
-	Password string    `gorm:"type:varchar(128);not null;"`
-	Desc     string    `gorm:"type:varchar(255)"`
-	TLS      bool      `gorm:"default:false"`
-	MaxConn  int       `gorm:"default:10"`
-	IdleTime int       `gorm:"default:60"`
-	IsWrite  bool      `gorm:"default:false"`
-	Exclude  string    // 排除的数据库名
-	Salt     []byte    `gorm:"type:blob"`
-	UpdateAt time.Time `gorm:"type:datetime(0);autoCreateTime"`
-	CreateAt time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	ID           uint      `gorm:"primaryKey"`
+	UID          string    `gorm:"type:varchar(36);not null,uniqueIndex"`
+	Name         string    `gorm:"type:varchar(128);not null;"`
+	Service      string    `gorm:"type:varchar(128);not null;uniqueIndex:idx_env_app"`
+	Host         string    `gorm:"type:varchar(128);default:localhost"`
+	Port         string    `gorm:"type:varchar(64);default:3306;"`
+	User         string    `grom:"type:varchar(128);deafult:root;"`
+	Password     string    `gorm:"type:varchar(128);not null;"`
+	Description  string    `gorm:"type:varchar(255)"`
+	TLS          bool      `gorm:"default:false"`
+	MaxConn      int       `gorm:"default:10"`
+	IdleTime     int       `gorm:"default:60"`
+	IsWrite      bool      `gorm:"default:false"`
+	ExcludeDB    string    // 排除的数据库名
+	ExcludeTable string    // 排除的数据表名
+	Salt         []byte    `gorm:"type:blob"`
+	UpdateAt     time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	CreateAt     time.Time `gorm:"type:datetime(0);autoCreateTime"`
 
 	EnvID     uint     `gorm:"not null;uniqueIndex:idx_env_app"`
 	EnvForKey QueryEnv `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:EnvID;references:ID"`

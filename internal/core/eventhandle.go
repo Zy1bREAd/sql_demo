@@ -79,7 +79,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		// 解析SQL语法V2
 		stmtList, err := ParseV2(t.DBName, t.StmtRaw)
 		if err != nil {
-			commentMsg := fmt.Sprintf("TaskId=%s is failed, %s", t.GID, err.Error())
+			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.GID, err.Error())
 			rg := &dbo.SQLResultGroup{
 				GID:      t.GID,
 				ResGroup: make([]*dbo.SQLResult, 0),
@@ -96,21 +96,16 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		taskGroup := make([]*QueryTask, 0)
 		for _, s := range stmtList {
 			qTask := QueryTask{
-				ID:        utils.GenerateUUIDKey(),
-				Statement: s.SafeStmt,
-				Deadline:  t.Deadline,
-				Action:    s.Action,
+				ID:       utils.GenerateUUIDKey(),
+				SafeSQL:  s,
+				Deadline: t.Deadline,
 			}
 			taskGroup = append(taskGroup, &qTask)
 		}
 		t.QTasks = taskGroup
 		t.Deadline = len(taskGroup) * t.Deadline
 		t.ExcuteTask(ctx)
-		// 日志审计插入v2
-		// stmtAll := ""
-		// for _, t := range t.QTasks {
-		// 	stmtAll = stmtAll + t.Statement + ";"
-		// }
+
 		jsonBytes, err := json.Marshal(taskGroup)
 		if err != nil {
 			utils.ErrorPrint("AuditRecordV2", err.Error())
@@ -135,7 +130,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		// 解析SQL语法V2
 		stmtList, err := ParseV2(t.QTG.DBName, t.QTG.StmtRaw)
 		if err != nil {
-			commentMsg := fmt.Sprintf("TaskId=%s is failed, %s", t.QTG.GID, err.Error())
+			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.QTG.GID, err.Error())
 			glab.CommentCreate(t.IssProjectID, t.IssIID, commentMsg)
 			return err
 		}
@@ -143,10 +138,9 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		taskGroup := make([]*QueryTask, 0)
 		for _, s := range stmtList {
 			qTask := QueryTask{
-				ID:        utils.GenerateUUIDKey(),
-				Statement: s.SafeStmt,
-				Deadline:  t.QTG.Deadline,
-				Action:    s.Action,
+				ID:       utils.GenerateUUIDKey(),
+				SafeSQL:  s,
+				Deadline: t.QTG.Deadline,
 			}
 			taskGroup = append(taskGroup, &qTask)
 		}
@@ -196,7 +190,6 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		ResultMap.Set(res.ID, res, 300, 0)
 	case *dbo.SQLResultGroup:
 		utils.DebugPrint("查询结果组事件消费", res.GID)
-		fmt.Println("test11111", res.ResGroup)
 		//! 后期核心处理结果集的代码逻辑块
 		ResultMap.Set(res.GID, res, 300, 0)
 		TestCh <- struct{}{}

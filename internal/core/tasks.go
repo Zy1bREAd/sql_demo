@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"sql_demo/internal/conf"
 	dbo "sql_demo/internal/db"
@@ -66,11 +65,9 @@ type QTasker interface {
 }
 
 type QueryTask struct {
-	ID        string
-	Action    string // 表示SQL执行的DML
-	Statement string
-	Deadline  int // 单个SQL的超时时间（单位为秒）
-
+	ID       string
+	Deadline int // 单个SQL的超时时间（单位为秒）
+	SafeSQL  SQLParser
 }
 type QTaskGroup struct {
 	UserID   uint // 关联执行用户id
@@ -95,37 +92,13 @@ type IssueQTask struct {
 	// IssDesc       *gapi.SQLIssueTemplate
 }
 
-// 提交SQL查询任务入队(v1.0)
-// func SubmitSQLTask(statement string, database string, userId string) string {
-// 	//! context控制超时
-// 	task := &QueryTask{
-// 		ID:        GenerateUUIDKey(),
-// 		DBName:    database,
-// 		Statement: statement,
-// 		deadline:  12,
-// 		UserID:    StrToUint(userId),
-// 	}
-// 	TaskQueue <- task
-// 	log.Printf("task id=%s is enqueue", task.ID)
-// 	return task.ID
-// }
+// func (qtg *QTaskGroup) PreCheck(ctx context.Context) {
 
-// 事件驱动(v2.0)
-// func CreateSQLQueryTask(statement string, database string, userId string) QueryTask {
-// 	//! context控制超时
-// 	task := QueryTask{
-// 		ID:        GenerateUUIDKey(),
-// 		DBName:    database,
-// 		Statement: statement,
-// 		deadline:  30,
-// 	}
-// 	log.Printf("task id=%s is enqueue", task.ID)
-// 	return task
 // }
 
 // 多SQL执行(可Query可Excute), 遇到错误立即退出后续执行
 func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
-	log.Printf("task group_id=%s is working", qtg.GID)
+	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is working...", qtg.GID))
 	//! 执行任务函数只当只关心任务处理逻辑本身
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(qtg.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 	defer cancel()
@@ -135,10 +108,12 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 		GID:      qtg.GID,
 		ResGroup: make([]*dbo.SQLResult, 0),
 	}
+outerLoop:
 	for _, task := range qtg.QTasks {
+		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is working...", task.ID))
 		var result dbo.SQLResult = dbo.SQLResult{
 			ID:   task.ID,
-			Stmt: task.Statement,
+			Stmt: task.SafeSQL.SafeStmt,
 		}
 		// 获取对应数据库实例进行SQL查询
 		op, err := dbo.HaveDBIst(qtg.Env, qtg.DBName, qtg.Service)
@@ -147,6 +122,16 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 			result.ErrMsg = result.Errrrr.Error()
 			rg.ResGroup = append(rg.ResGroup, &result)
 			break
+		}
+		// 检查黑名单表名
+		for _, illegal := range op.ExcludeTableList() {
+			if task.SafeSQL.Table != illegal {
+				continue
+			}
+			result.Errrrr = utils.GenerateError("TaskPreCheck", task.SafeSQL.Table+" SQL Table Name is illegal")
+			result.ErrMsg = result.Errrrr.Error()
+			rg.ResGroup = append(rg.ResGroup, &result)
+			break outerLoop
 		}
 		// 执行前健康检查DB
 		err = op.HealthCheck(timeoutCtx)
@@ -157,18 +142,19 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 			break
 		}
 		// 主要分查询和执行，核心通过解析SQL语句的类型来实现对应的逻辑
-		if task.Action == "select" {
-			result = op.Query(timeoutCtx, task.Statement, task.ID)
+		if task.SafeSQL.Action == "select" {
+			result = op.Query(timeoutCtx, task.SafeSQL.SafeStmt, task.ID)
 		} else {
-			result = op.Excute(timeoutCtx, task.Statement, task.ID)
+			result = op.Excute(timeoutCtx, task.SafeSQL.SafeStmt, task.ID)
 		}
-		log.Printf("task group_id=%s iid=%s is completed", rg.GID, task.ID)
+		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is completed", task.ID))
 		rg.ResGroup = append(rg.ResGroup, &result)
 		// 如果该条SQL遇到ERROR立即中止后续执行
 		if result.Errrrr != nil {
 			break
 		}
 	}
+	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is completed", qtg.GID))
 	ep.Produce(event.Event{
 		Type:    "save_result",
 		Payload: rg,

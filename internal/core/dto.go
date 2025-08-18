@@ -17,18 +17,19 @@ type ConnectInfo struct {
 }
 
 type QueryDataBaseDTO struct {
-	EnvID      uint        `json:"env_id"` // 关键指定EnvID
-	MaxConn    int         `json:"max_conn"`
-	IdleTime   int         `json:"idle_time"`
-	IsWrite    bool        `json:"is_write"`
-	Name       string      `json:"name"`
-	UID        string      `json:"uid"`
-	EnvName    string      `json:"env_name"`
-	Service    string      `json:"service"`
-	Desc       string      `json:"description,omitempty"`
-	UpdateAt   time.Time   `json:"-"`
-	Exclude    []string    `json:"exclude"`    // 排除的数据库名
-	Connection ConnectInfo `json:"connection"` // 连接信息
+	EnvID        uint        `json:"env_id"` // 关键指定EnvID
+	MaxConn      int         `json:"max_conn"`
+	IdleTime     int         `json:"idle_time"`
+	IsWrite      bool        `json:"is_write"`
+	Name         string      `json:"name"`
+	UID          string      `json:"uid"`
+	EnvName      string      `json:"env_name"`
+	Service      string      `json:"service"`
+	Desc         string      `json:"description,omitempty"`
+	UpdateAt     time.Time   `json:"-"`
+	ExcludeDB    []string    `json:"exclude_db"`    // 排除的数据库名
+	ExcludeTable []string    `json:"exclude_table"` // 排除的数据表名
+	Connection   ConnectInfo `json:"connection"`    // 连接信息
 }
 
 type QueryEnvDTO struct {
@@ -41,18 +42,21 @@ type QueryEnvDTO struct {
 
 func (env *QueryEnvDTO) toORMData() *dbo.QueryEnv {
 	return &dbo.QueryEnv{
-		UID:     env.UID,
-		Name:    env.Name,
-		Tag:     env.Tag,
-		Desc:    env.Desc,
-		IsWrite: env.IsWrite,
+		UID:         env.UID,
+		Name:        env.Name,
+		Tag:         env.Tag,
+		Description: env.Desc,
+		IsWrite:     env.IsWrite,
 	}
 }
 
 func (qdb *QueryDataBaseDTO) toORMData() *dbo.QueryDataBase {
-	var excludeStr string
-	for _, v := range qdb.Exclude {
-		excludeStr += v + ","
+	var excludeDBStr, excludeTableStr string
+	for _, d := range qdb.ExcludeDB {
+		excludeDBStr += d + ","
+	}
+	for _, t := range qdb.ExcludeTable {
+		excludeTableStr += t + ","
 	}
 	var pwd string
 	secretKey := make([]byte, 32)
@@ -69,25 +73,27 @@ func (qdb *QueryDataBaseDTO) toORMData() *dbo.QueryDataBase {
 		}
 	}
 	return &dbo.QueryDataBase{
-		EnvID:    qdb.EnvID,
-		UID:      qdb.UID,
-		MaxConn:  qdb.MaxConn,
-		IdleTime: qdb.IdleTime,
-		IsWrite:  qdb.IsWrite,
-		Name:     qdb.Name,
-		Service:  qdb.Service,
-		Desc:     qdb.Desc,
-		UpdateAt: qdb.UpdateAt,
-		Exclude:  excludeStr,
-		Host:     qdb.Connection.Host,
-		User:     qdb.Connection.User,
-		Password: pwd,
-		Port:     qdb.Connection.Port,
-		TLS:      qdb.Connection.TLS,
-		Salt:     secretKey,
+		EnvID:        qdb.EnvID,
+		UID:          qdb.UID,
+		MaxConn:      qdb.MaxConn,
+		IdleTime:     qdb.IdleTime,
+		IsWrite:      qdb.IsWrite,
+		Name:         qdb.Name,
+		Service:      qdb.Service,
+		Description:  qdb.Desc,
+		UpdateAt:     qdb.UpdateAt,
+		ExcludeDB:    excludeDBStr,
+		ExcludeTable: excludeTableStr,
+		Host:         qdb.Connection.Host,
+		User:         qdb.Connection.User,
+		Password:     pwd,
+		Port:         qdb.Connection.Port,
+		TLS:          qdb.Connection.TLS,
+		Salt:         secretKey,
 	}
 }
 
+// 热加载的封装函数
 func hotReloadDBCfg(f func() error) error {
 	okCh := make(chan struct{}, 1)
 	defer func() {
@@ -96,6 +102,7 @@ func hotReloadDBCfg(f func() error) error {
 			utils.DebugPrint("HotReload", "hot reload config")
 			dbo.LoadInDB(true) // 触发热加载配置
 		default:
+			// 因error没有触发热加载
 		}
 
 	}()

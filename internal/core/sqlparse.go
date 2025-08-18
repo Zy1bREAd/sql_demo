@@ -16,15 +16,9 @@ import (
 
 type SQLParser struct {
 	Action   string // 代表DML类型
+	DBName   string
+	Table    string
 	SafeStmt string // 经过语法检验的原生SQL
-}
-
-func signelParseV2(sqlRaw string) (SQLParser, error) {
-	// stmt, err := p.Parse(sqlRaw)
-	// if err != nil {
-	// 	return utils.GenerateError("ParseStmtError", err.Error())
-	// }
-	return SQLParser{}, nil
 }
 
 func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
@@ -58,12 +52,12 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 			// LIMIT子句限制(1000)
 			lmtBuf := sqlparser.NewTrackedBuffer(nil)
 			s.GetLimit().Format(lmtBuf)
-			if !validateLimit(lmtBuf.String()) {
+			if !psr.validateLimit(lmtBuf.String()) {
 				s.SetLimit(sqlparser.NewLimit(0, 1000))
 				psr.SafeStmt = sqlparser.String(s)
 			}
 			// 判断是否完整的表名
-			if !validateFullTableNameV2(s.GetFrom()) {
+			if !psr.validateFullTableNameV2(s.GetFrom()) {
 				errMsg := fmt.Sprintf("DB name for your SQL TableExpr is not included.\n> %s\n", sqlparser.String(s))
 				return nil, utils.GenerateError("DBNameIsNotFound", errMsg)
 			}
@@ -74,7 +68,7 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 
 		case *sqlparser.Update:
 			// 判断是否完整的表名
-			if !validateFullTableNameV2(s.GetFrom()) {
+			if !psr.validateFullTableNameV2(s.GetFrom()) {
 				errMsg := fmt.Sprintf("DB name for your SQL TableExpr is not included.\n> %s\n", sqlparser.String(s))
 				return nil, utils.GenerateError("DBNameIsNotFound", errMsg)
 			}
@@ -98,20 +92,21 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 				// s.Table.Expr = sqlparser.NewTableNameWithQualifier(originalTable, dbName)
 				// psr.SafeStmt = sqlparser.String(s)
 			}
+			psr.DBName = table.Qualifier.String()
+			psr.Table = table.Name.String()
 			psr.Action = "insert"
 		case *sqlparser.Delete:
 			return nil, utils.GenerateError("IllegalAction", "dml=DELETE action is not allow")
 		default:
 			return nil, utils.GenerateError("ActionNotSupprt", "Unknown Action")
 		}
-
 		parseRes = append(parseRes, psr)
 	}
 	return parseRes, nil
 }
 
 // 校验LIMIT子句约束
-func validateLimit(limitExprs string) bool {
+func (s *SQLParser) validateLimit(limitExprs string) bool {
 	re, err := regexp.Compile(`\s+limit\s+([0-9]+$)`)
 	if err != nil {
 		utils.DebugPrint("RegexpError", err.Error())
@@ -134,8 +129,8 @@ func validateLimit(limitExprs string) bool {
 	return true
 }
 
-// 递归检查是否完整表名（强制约束）
-func validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
+// ! 递归检查是否完整表名（强制约束）
+func (s *SQLParser) validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
 	for _, from := range tableExprs {
 		tempBuf := sqlparser.NewTrackedBuffer(nil)
 		from.Format(tempBuf)
@@ -145,32 +140,38 @@ func validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
 		case *sqlparser.AliasedTableExpr:
 			switch subFr := fr.Expr.(type) {
 			case *sqlparser.TableName:
-				return !subFr.Qualifier.IsEmpty() // 终止条件2: 判断是否完整表名
+				// 终止条件2: 基础TableName类型判断是否完整表名
+				if subFr.Qualifier.IsEmpty() {
+					return false
+				}
+				s.DBName = subFr.Qualifier.String()
+				s.Table = subFr.Name.String()
 			case *sqlparser.DerivedTable:
 				// 子表
 				switch subSelect := subFr.Select.(type) {
 				case *sqlparser.Select:
-					return validateFullTableNameV2(subSelect.GetFrom())
+					return s.validateFullTableNameV2(subSelect.GetFrom())
 				default:
 					utils.DebugPrint("UnknownSQL", "Unknown AsTableExpr sql parser,Oops")
 				}
 			default:
+				// 此时字符串不能再断言成sqlparser类型了，因此需要加入正则来判断是否完整。
 				// 终止条件1：判断字符串是否为完整的表名
-				if !validateTableIsFull(currTableName) {
+				if !s.validateTableIsFull(currTableName) {
 					return false
 				}
-				fmt.Println("当前FROM表名检测为完整状态，因此跳过...", tableExprs)
+				// fmt.Println("当前FROM表名检测为完整状态，因此跳过...", tableExprs)
 			}
 		case *sqlparser.JoinTableExpr:
 			// 左右子表
 			tempList := make(sqlparser.TableExprs, 0)
 			tempList = append(tempList, fr.LeftExpr)
-			if !validateFullTableNameV2(tempList) {
+			if !s.validateFullTableNameV2(tempList) {
 				return false
 			}
 			tempList = nil
 			tempList = append(tempList, fr.RightExpr)
-			if !validateFullTableNameV2(tempList) {
+			if !s.validateFullTableNameV2(tempList) {
 				return false
 			}
 			return true
@@ -181,10 +182,12 @@ func validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
 	return true
 }
 
-func validateTableIsFull(tableExprs string) bool {
+// 判断Table表达式是否符合完整的数据库名+表名的格式
+func (s *SQLParser) validateTableIsFull(tableExprs string) bool {
 	// split 和 正则表达式
-	s := strings.Split(tableExprs, ".")
-	if len(s) == 0 {
+	splitRes := strings.Split(tableExprs, ".")
+	if len(splitRes) == 0 {
+		s.DBName = tableExprs
 		return false
 	}
 	reg, err := regexp.Compile(`([\d\w_]+)\.([\d\w_]+)`)
@@ -193,7 +196,17 @@ func validateTableIsFull(tableExprs string) bool {
 		return false
 	}
 	findList := reg.FindStringSubmatch(tableExprs)
-	return len(findList) != 0
+	// 等于0相当于确认该Table表达式不是完整的
+	resLen := len(findList)
+	if resLen != 0 {
+		if resLen == 3 {
+			s.DBName = findList[1]
+			s.Table = findList[2]
+		}
+		return true
+	}
+	return false
+
 }
 
 // 解析一个SQL语句（仅能通过select查询语句）

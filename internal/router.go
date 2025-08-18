@@ -644,7 +644,7 @@ func DownloadFile(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, "URL query taskid is invalid")
 		return
 	}
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*25)
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*30)
 	defer cancel()
 	auditChan := make(chan struct{}, 1)
 	// 插入记录V2
@@ -716,93 +716,6 @@ func DownloadFile(ctx *gin.Context) {
 		return
 	}
 }
-
-// // SSE处理，用于导出文件
-// func SSEHandle(ctx *gin.Context) {
-// 	ctx.Header("Content-Type", "text/event-stream")
-// 	ctx.Header("Cache-Control", "no-cache")
-// 	ctx.Header("Connection", "keep-alive")
-
-// 	_, exist := ctx.Get("user_id")
-// 	if !exist {
-// 		common.ErrorResp(ctx, "User not exist")
-// 		return
-// 	}
-// 	// 从URL Parma中获取taskId，查询导出任务的进度
-// 	taskId := ctx.Query("task_id")
-// 	if taskId == "" {
-// 		log.Println("[TaskError] taskId is null,Abort!!!")
-// 		return
-// 	}
-
-// 	// SSE处理逻辑超时控制
-// 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
-// 	defer cancel()
-// 	// 获取对应taskId的<导出对象>信息
-// 	mapVal, exist := core.ExportWorkMap.Get(taskId)
-// 	if !exist {
-// 		log.Println("[NotExist] export result not exist,exit(1)")
-// 		return
-// 	}
-// 	exportJob, ok := mapVal.(*core.ExportResult)
-// 	if !ok {
-// 		log.Println("[TypeNotMatch] export result type is not match,exit(1)")
-// 		return
-// 	}
-// 	for {
-// 		select {
-// 		// 等待通知export结束
-// 		case <-exportJob.Done:
-// 			// 判断是否有错误
-// 			if exportJob.Error != nil {
-// 				log.Println("[ExportFailed] export task is failed ==>", exportJob.Error.Error())
-// 				// 此时SSE连接已开，必须返回错误消息和关闭sse
-// 				sseContent := sseEvent{
-// 					ID:    2,
-// 					Event: "error",
-// 					Data:  exportJob.Error.Error(),
-// 				}
-// 				SSEMsgOnSend(ctx, &sseContent)
-// 				// 发送完毕关闭连接
-// 				sseContent = sseEvent{
-// 					ID:    4,
-// 					Event: "closed",
-// 					Data:  "",
-// 				}
-// 				SSEMsgOnSend(ctx, &sseContent)
-// 				return
-// 			}
-// 			log.Println("[Completed] export task done")
-// 			// 发送初始化连接确认(discard)
-
-// 			// 生成签名的URL下载链接
-// 			// uri := GenerateSignedURI(taskId)
-// 			downloadURL := fmt.Sprintf("/result/download?task_id=%s", taskId)
-// 			sseContent := sseEvent{
-// 				ID:    0,
-// 				Event: "download_ready",
-// 				Data:  downloadURL,
-// 			}
-// 			SSEMsgOnSend(ctx, &sseContent)
-
-// 			// 发送完毕关闭连接
-// 			sseContent = sseEvent{
-// 				ID:    4,
-// 				Event: "closed",
-// 				Data:  "",
-// 			}
-// 			SSEMsgOnSend(ctx, &sseContent)
-// 			return
-// 		case <-timeoutCtx.Done():
-// 			log.Println("[TimeOut] sse handle timeout,exit 1")
-// 			return
-// 		default:
-// 			log.Println("[Wait] waiting export task done")
-// 			time.Sleep(time.Second * 2)
-// 		}
-// 	}
-
-// }
 
 // 获取指定用户的日志审计
 func getUserAuditRecordHandler(ctx *gin.Context) {

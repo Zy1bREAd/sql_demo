@@ -21,16 +21,17 @@ type AllEnvDBConfig struct {
 }
 
 type MySQLConfig struct {
-	MaxConn  int      `yaml:"max_conn"`
-	IdleTime int      `yaml:"idle_time"`
-	TLS      bool     `yaml:"tls"`
-	Name     string   `yaml:"name"`
-	Host     string   `yaml:"host"`
-	Password string   `yaml:"password"`
-	User     string   `yaml:"user"`
-	Port     string   `yaml:"port"`
-	DSN      string   `yaml:"dsn"`
-	Exclude  []string `yaml:"exclude"`
+	MaxConn      int      `yaml:"max_conn"`
+	IdleTime     int      `yaml:"idle_time"`
+	TLS          bool     `yaml:"tls"`
+	Name         string   `yaml:"name"`
+	Host         string   `yaml:"host"`
+	Password     string   `yaml:"password"`
+	User         string   `yaml:"user"`
+	Port         string   `yaml:"port"`
+	DSN          string   `yaml:"dsn"`
+	ExcludeTable []string `yaml:"exclude_table"`
+	ExcludeDB    []string `yaml:"exclude_db"`
 }
 
 // type SQLError struct
@@ -80,11 +81,10 @@ func LoadInDB(isReload bool) {
 				if env.ID != dbConf.EnvID {
 					continue
 				}
-				// 处理Exclude列表
-				excludeList := strings.Split(dbConf.Exclude, ",")
+
 				pwd, err := utils.DecryptAES256([]byte(dbConf.Password), dbConf.Salt)
 				if err != nil {
-					utils.ErrorPrint("DecrptPwdErr", err.Error())
+					utils.ErrorPrint("DecryptPwdErr", err.Error())
 					continue
 				}
 				istCfg := MySQLConfig{
@@ -95,9 +95,23 @@ func LoadInDB(isReload bool) {
 					Password: pwd,
 					User:     dbConf.User,
 					Port:     dbConf.Port,
-					Exclude:  excludeList,
 					TLS:      dbConf.TLS,
 				}
+				// 处理Exclude列表(分库和表)
+				excludeTableList := strings.Split(strings.TrimSuffix(dbConf.ExcludeTable, ","), ",")
+				excludeDBList := strings.Split(strings.TrimSuffix(dbConf.ExcludeDB, ","), ",")
+				// Split至少会返回一个元素(!)
+				if excludeTableList[0] == "" {
+					istCfg.ExcludeTable = nil
+				} else {
+					istCfg.ExcludeDB = excludeTableList
+				}
+				if excludeDBList[0] == "" {
+					istCfg.ExcludeDB = nil
+				} else {
+					istCfg.ExcludeDB = excludeDBList
+				}
+
 				dbsConf[env.Name][dbConf.Service] = istCfg
 			}
 		}
@@ -146,14 +160,26 @@ var dbPool *DBPoolManager
 
 // 多数据库连接的新实例
 type DBInstance struct {
-	conn *sql.DB
-	name string // 数据库名称
+	conn    *sql.DB
+	name    string // 数据库名称
+	exclude []string
 }
 
 // 数据库连接的池子
 type DBPoolManager struct {
-	Pool map[string]map[string]*DBInstance
-	mu   sync.RWMutex // 引入读写锁保证并发安全
+	Pool    map[string]map[string]*DBInstance
+	exclude []string
+	mu      sync.RWMutex // 引入读写锁保证并发安全
+}
+
+// 返回表的黑名单列表
+func (manager *DBPoolManager) ExcludeDBList() []string {
+	return manager.exclude
+}
+
+// 返回表的黑名单列表
+func (ist *DBInstance) ExcludeTableList() []string {
+	return ist.exclude
 }
 
 // 健康检查
@@ -354,6 +380,7 @@ func newDBInstance(usr, pwd, host, port string, maxConn, idleTime int) (*DBInsta
 
 // 解析配置并注册
 func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
+	manager.exclude = make([]string, 0, 20)
 	for env, dbList := range configData.Databases {
 		if manager.Pool[env] == nil {
 			manager.Pool[env] = make(map[string]*DBInstance, len(dbList))
@@ -365,6 +392,11 @@ func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
 				continue
 			}
 			db.name = istName
+			// 新增表和数据库的黑名单
+			db.exclude = dbConf.ExcludeTable
+			if len(dbConf.ExcludeDB) > 0 {
+				manager.exclude = append(manager.exclude, dbConf.ExcludeDB...)
+			}
 			manager.Pool[env][istName] = db
 		}
 	}
@@ -387,14 +419,23 @@ func (manager *DBPoolManager) CloseDBPool() {
 
 // 获取指定db实例
 func HaveDBIst(env, name, service string) (*DBInstance, error) {
-	dbPool.mu.RLock()
-	defer dbPool.mu.RUnlock()
+	dp := GetDBPoolManager()
+	dp.mu.RLock()
+	defer dp.mu.RUnlock()
 	if name == "" {
 		return nil, utils.GenerateError("InstanceIsNull", "db instance name is null")
 	} else if env == "" {
 		return nil, utils.GenerateError("InstanceIsNull", "env name is null")
 	}
-	if dbIstMap, ok := dbPool.Pool[env]; ok {
+	// 检查数据库黑名单列表
+	for _, illegal := range dp.ExcludeDBList() {
+		if name != illegal {
+			continue
+		}
+		return nil, utils.GenerateError("IllegalInstance", name+" DB Instance is illegal")
+	}
+	// 获取实例
+	if dbIstMap, ok := dp.Pool[env]; ok {
 		if dbIst, ok := dbIstMap[service]; ok {
 			return dbIst, nil
 		}
