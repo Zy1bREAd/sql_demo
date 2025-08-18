@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/rand"
+	"fmt"
 	"slices"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
@@ -38,6 +39,62 @@ type QueryEnvDTO struct {
 	Tag     string `json:"tag"`
 	Desc    string `json:"description"`
 	IsWrite bool   `json:"is_write"`
+}
+
+type AuditRecordDTO struct {
+	ProjectID uint      `json:"project_id"`
+	IssueID   uint      `json:"issue_id"`
+	TaskType  int       `json:"task_type"`
+	UserName  string    `json:"username"`
+	EventType string    `json:"event_type"`
+	TaskID    string    `json:"task_id"`
+	Payload   string    `json:"payload"`
+	CreateAt  time.Time `json:"create_at"`
+}
+
+func (dto *AuditRecordDTO) toORMData() *dbo.AuditRecordV2 {
+	return &dbo.AuditRecordV2{
+		TaskID:    dto.TaskID,
+		EventType: dto.EventType,
+		CreatAt:   dto.CreateAt,
+	}
+}
+
+func (dto *AuditRecordDTO) Get() ([]AuditRecordDTO, error) {
+	orm := dto.toORMData()
+	// 查找对应的UserID
+	if dto.UserName != "" {
+		dbConn := dbo.HaveSelfDB().GetConn()
+		var user dbo.User
+		res := dbConn.Where("name = ?", dto.UserName).Last(&user)
+		if res.Error != nil {
+			return nil, res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil, utils.GenerateError("UserNotFound", dto.UserName+" The user is not exist")
+		}
+		fmt.Println("this is my user????", user, dto.UserName)
+		orm.UserID = user.ID
+	}
+	sqlResult, err := orm.Get()
+	fmt.Println("debug print -1", orm, sqlResult)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]AuditRecordDTO, 0, len(sqlResult))
+	for _, record := range sqlResult {
+		result = append(result, AuditRecordDTO{
+			TaskID:    record.TaskID,
+			EventType: record.EventType,
+			CreateAt:  record.CreatAt,
+			TaskType:  record.TaskType,
+			ProjectID: record.ProjectID,
+			IssueID:   record.IssueID,
+			UserName:  dto.UserName,
+			Payload:   record.Payload,
+		})
+	}
+	return result, nil
 }
 
 func (env *QueryEnvDTO) toORMData() *dbo.QueryEnv {

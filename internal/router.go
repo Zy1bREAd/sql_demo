@@ -113,8 +113,6 @@ func InitBaseRoutes() {
 		rgAuth.GET("/result/export", ResultExport)
 		rgAuth.GET("/result/download", DownloadFile)
 
-		rgAuth.GET("/record/list", getUserAuditRecordHandler)
-
 		rgAuth.GET("/:taskId/result", getQueryResult)
 		rgAuth.GET("/sql/result/keys", getMapKeys)
 		rgAuth.GET("/db/list", DBList)
@@ -135,6 +133,10 @@ func InitBaseRoutes() {
 		rgAuth.POST("/sources/create", CreateDBInfo)
 		rgAuth.PUT("/sources/update/:uid", UpdateDBInfo)
 		rgAuth.DELETE("/sources/delete/:uid", DeleteDBInfo)
+
+		// 审计日志
+		rgAuth.GET("/record/list", getUserAuditRecordHandler)
+		rgAuth.POST("/audit/record/list", GetAuditRecord)
 	})
 }
 
@@ -418,15 +420,6 @@ func userCreate(ctx *gin.Context) {
 // 		"user":       userInfo.Name,
 // 	}, "user login success")
 // }
-
-func getQueryRecords(ctx *gin.Context) {
-	err := dbo.AllAuditRecords()
-	if err != nil {
-		common.DefaultResp(ctx, 1, nil, err.Error())
-		return
-	}
-	common.SuccessResp(ctx, "test ok", "Get query result success")
-}
 
 // 处理gitlab SSO登录
 func userSSOLogin(ctx *gin.Context) {
@@ -965,4 +958,21 @@ func DeleteDBInfo(ctx *gin.Context) {
 		return
 	}
 	common.SuccessResp(ctx, nil, "delete db config success")
+}
+
+func GetAuditRecord(ctx *gin.Context) {
+	var auditRecord core.AuditRecordDTO
+	err := ctx.ShouldBindJSON(&auditRecord)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	results, err := auditRecord.Get()
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, results, "ok", common.WithPagination(common.Pagina{
+		Total: len(results),
+	}))
 }

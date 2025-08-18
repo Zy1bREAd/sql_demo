@@ -8,6 +8,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// 常量标识
+const (
+	QTaskGroupType = 1
+	IssueQTaskType = 2
+)
+
 // ! 封装响应数据
 const (
 	successCode = 200
@@ -24,19 +30,41 @@ const (
 	RecordNotFound = 45
 )
 
+// 分页器
+type Pagina struct {
+	Total      int `json:"total"`
+	Page       int `json:"page"`
+	Size       int `json:"page_size"`
+	TotalPages int `json:"total_pages"`
+}
+
 type JSONResponse struct {
-	Code    int    `json:"status_code"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"` // 数据可为空
+	Code       int    `json:"status_code"`
+	Message    string `json:"message"`
+	Data       any    `json:"data,omitempty"` // 数据可为空
+	Pagination Pagina `json:"pagination"`
+}
+
+type Option func(*JSONResponse)
+
+// 新增分页器设置的选项
+func WithPagination(p Pagina) Option {
+	return func(j *JSONResponse) {
+		j.Pagination = p
+	}
 }
 
 // 封装gin json成功响应
-func SuccessResp(ctx *gin.Context, data any, msg string) {
-	ctx.JSON(successCode, JSONResponse{
+func SuccessResp(ctx *gin.Context, data any, msg string, opts ...Option) {
+	jsonResp := &JSONResponse{
 		Code:    RespSuccess,
 		Message: msg,
 		Data:    data,
-	})
+	}
+	for _, opt := range opts {
+		opt(jsonResp)
+	}
+	ctx.JSON(successCode, jsonResp)
 }
 
 // 封装gin json错误响应

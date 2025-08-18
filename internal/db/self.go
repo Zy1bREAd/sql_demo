@@ -175,15 +175,6 @@ func (usr *User) SSOLogin() (uint, error) {
 	return usr.ID, nil
 }
 
-func AllAuditRecords() error {
-	auditRecords := AuditRecordV2{}
-	result := selfDB.conn.Find(&auditRecords)
-	if result.Error != nil {
-		return result.Error
-	}
-	return nil
-}
-
 // User DTO
 type UserAuditRecord struct {
 	// 查询的环境
@@ -308,6 +299,28 @@ func (v2 *AuditRecordV2) InsertOne(e string) error {
 	tx.Commit()
 
 	return nil
+}
+
+// 查看审计日志
+func (v2 *AuditRecordV2) Get() ([]AuditRecordV2, error) {
+	var records []AuditRecordV2
+	db := HaveSelfDB()
+	res := db.conn.Where(&v2).Find(&records)
+	if res.Error != nil {
+		return nil, utils.GenerateError("AuditRecordErr", res.Error.Error())
+	}
+	return records, nil
+}
+
+// 通过时间范围筛选s
+func (v2 *AuditRecordV2) GetByTime(start, end time.Time) ([]AuditRecordV2, error) {
+	var records []AuditRecordV2
+	db := HaveSelfDB()
+	res := db.conn.Where(&v2).Where("create_at BETWEEN ? AND ?").Find(&records)
+	if res.Error != nil {
+		return nil, utils.GenerateError("AuditRecordErr", res.Error.Error())
+	}
+	return records, nil
 }
 
 func (dbInfo *QueryDataBase) CreateOne() error {

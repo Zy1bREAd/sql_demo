@@ -8,6 +8,7 @@ import (
 	"reflect"
 	api "sql_demo/api"
 	glbapi "sql_demo/api/gitlab"
+	"sql_demo/internal/common"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
@@ -49,11 +50,6 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 	ed := event.GetEventDispatcher()
 	go ed.Dispatch(ctx)
 }
-
-const (
-	QTaskGroupType = 1
-	IssueQTaskType = 2
-)
 
 // 具体实现事件处理者
 type QueryEventHandler struct {
@@ -114,7 +110,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			TaskID:   t.GID,
 			UserID:   t.UserID,
 			Payload:  string(jsonBytes),
-			TaskType: QTaskGroupType,
+			TaskType: common.QTaskGroupType,
 		}
 		err = audit.InsertOne("SQL_QUERY")
 		if err != nil {
@@ -158,7 +154,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			Payload:   string(jsonBytes),
 			ProjectID: t.IssProjectID,
 			IssueID:   t.IssIID,
-			TaskType:  IssueQTaskType,
+			TaskType:  common.IssueQTaskType,
 		}
 		err = audit.InsertOne("SQL_QUERY")
 		if err != nil {
