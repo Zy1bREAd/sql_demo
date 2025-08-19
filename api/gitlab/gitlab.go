@@ -13,11 +13,6 @@ import (
 	"strings"
 )
 
-const (
-	ApprovalStatusRejected = 0
-	ApprovalStatusPassed   = 1
-)
-
 // 主要是封装一个操作GITLAB API的Handler
 type GitLabAPI struct {
 	URL         string

@@ -70,15 +70,16 @@ type QueryTask struct {
 	SafeSQL  SQLParser
 }
 type QTaskGroup struct {
+	IsExport bool
 	UserID   uint // 关联执行用户id
 	Deadline int  //整个任务组的超时时间
 	GID      string
+	TicketID string
 	DML      string
 	Env      string // 所执行环境
 	DBName   string
 	Service  string
 	StmtRaw  string // 原生的SQL语句
-	IsExport bool
 	QTasks   []*QueryTask
 }
 
@@ -108,6 +109,7 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 		GID:      qtg.GID,
 		ResGroup: make([]*dbo.SQLResult, 0),
 	}
+
 outerLoop:
 	for _, task := range qtg.QTasks {
 		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is working...", task.ID))
@@ -162,6 +164,7 @@ outerLoop:
 }
 
 func (et *ExportTask) Submit() {
+	auditCh := make(chan struct{}, 1)
 	today := time.Now().Format("20060102150405")
 	conf := conf.GetAppConf().GetBaseConfig()
 	// 异步插入记录V2
@@ -195,6 +198,7 @@ func (et *ExportTask) Submit() {
 			utils.ErrorPrint("AuditRecordV2", err.Error())
 			return
 		}
+		auditCh <- struct{}{}
 	}()
 	// 构造导出任务（默认5分钟清理）
 	taskResult := &ExportResult{
@@ -214,6 +218,7 @@ func (et *ExportTask) Submit() {
 	et.Result = taskResult
 	et.deadline = 300
 	ExportWorkMap.Set(et.GID, et.Result, 300, 3)
+	// 确保审计完成
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
 		Type:    "export_result",

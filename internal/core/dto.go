@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto/rand"
-	"fmt"
 	"slices"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
@@ -73,11 +72,9 @@ func (dto *AuditRecordDTO) Get() ([]AuditRecordDTO, error) {
 		if res.RowsAffected == 0 {
 			return nil, utils.GenerateError("UserNotFound", dto.UserName+" The user is not exist")
 		}
-		fmt.Println("this is my user????", user, dto.UserName)
 		orm.UserID = user.ID
 	}
-	sqlResult, err := orm.Get()
-	fmt.Println("debug print -1", orm, sqlResult)
+	sqlResult, err := orm.Find()
 	if err != nil {
 		return nil, err
 	}

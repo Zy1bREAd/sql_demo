@@ -14,6 +14,17 @@ import (
 	"github.com/goccy/go-json"
 )
 
+const (
+	CommentApprovalPassed = 1
+	CommentApprovalReject = 0
+
+	IssueOpenFlag   = 1
+	IssueUpdateFlag = 0
+
+	IssueHandle   = "issue"
+	CommentHandle = "comment"
+)
+
 // Issue问题事件的回调
 type IssueWebhook struct {
 	EventType  string                `json:"event_type"`
@@ -66,20 +77,14 @@ func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
 }
 
 func (i *IssueWebhook) OpenIssueHandle() error {
-	// var content SQLIssueTemplate
-	// err := json.Unmarshal([]byte(i.ObjectAttr.Description), &content)
-	// if err != nil {
-	// 	utils.DebugPrint("JSONError", err.Error())
-	// 	return err
-	// }
-	// if len(i.ObjectAttr.Assigneers) == 0 {
-	// 	// 没有签派给robot，因此跳过
-	// 	return nil
-	// }
 	// 区分Issue是open还是update操作,企业微信通知,发送消息通知至企业微信机器人
+	issueActionMap := map[string]int{
+		"open":   IssueOpenFlag,
+		"update": IssueUpdateFlag,
+	}
 	switch i.ObjectAttr.Action {
 	case "open":
-		utils.DebugPrint("OpenIssueHandle", "open open open")
+		utils.DebugPrint("OpenIssueHandle", "open new a issue")
 		rob := api.NewRobotNotice(&api.TicketInformBody{
 			Action:   "Create",
 			Title:    i.ObjectAttr.Title,
@@ -88,12 +93,13 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			Link:     i.ObjectAttr.URL,
 			UserName: i.User.Username,
 		})
+		// 发送消息给通知机器人
 		err := rob.InformRobot()
 		if err != nil {
 			utils.DebugPrint("InformError", err.Error())
 		}
 	case "update":
-		utils.DebugPrint("UpdateIssueHandle", "update issue")
+		utils.DebugPrint("UpdateIssueHandle", "update a issue")
 		desc, exist := i.Changes["description"]
 		if exist {
 			if _, ok := desc.Current.(string); ok {
@@ -106,6 +112,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 					Link:     i.ObjectAttr.URL,
 					UserName: i.User.Username,
 				})
+				// 发送消息给通知机器人
 				err := rob.InformRobot()
 				if err != nil {
 					utils.DebugPrint("InformError", err.Error())
@@ -113,9 +120,21 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			}
 		}
 	default:
-		fmt.Println("nothing to do")
+		utils.DebugPrint("", "nothing to do")
 		return nil
 	}
+	// 事件驱动完成其他事情
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
+		Type: "gitlab_webhook",
+		Payload: &GitLabWebhook{
+			Webhook: IssueHandle,
+			Payload: &IssuePayload{
+				Issue:  &i.ObjectAttr,
+				Action: issueActionMap[i.ObjectAttr.Action],
+			},
+		},
+	})
 	// 存储DB？？
 	return nil
 }
@@ -167,13 +186,17 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	ep.Produce(event.Event{
 		Type: "gitlab_webhook",
 		Payload: &GitLabWebhook{
-			WebhookType: "comment",
-			Issue:       iss,
-			Desc:        issContent,
+			Webhook: CommentHandle,
+			Payload: &CommentPayload{
+				Action: CommentApprovalPassed,
+				IssuePayload: &IssuePayload{
+					Issue: &c.Issue,
+					Desc:  issContent,
+				},
+			},
 		},
 	})
 	return nil
-	// return issContent.queryHandle(userId, iss, issContent.Statement)
 }
 
 func (c *CommentWebhook) handleApprovalRejected(reason string) error {
@@ -209,6 +232,22 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 	if err != nil {
 		utils.DebugPrint("InformError", err.Error())
 	}
+
+	// 进入Webhook其他操作
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
+		Type: "gitlab_webhook",
+		Payload: &GitLabWebhook{
+			Webhook: CommentHandle,
+			Payload: &CommentPayload{
+				Action: CommentApprovalReject,
+				Reason: reason,
+				IssuePayload: &IssuePayload{
+					Issue: &c.Issue,
+				},
+			},
+		},
+	})
 	return nil
 }
 
@@ -220,9 +259,9 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		return nil
 	}
 	switch content.Approval {
-	case ApprovalStatusPassed:
+	case CommentApprovalPassed:
 		return c.handleApprovalPassed()
-	case ApprovalStatusRejected:
+	case CommentApprovalReject:
 		return c.handleApprovalRejected(content.Reason)
 	default:
 		return utils.GenerateError("ApprovalError", "Unknown Approval Status")
@@ -242,8 +281,23 @@ type SQLIssueTemplate struct {
 	IsExport bool `json:"is_export"`
 }
 
+// 集成Webhook结构体
 type GitLabWebhook struct {
-	WebhookType string
-	Issue       *Issue
-	Desc        *SQLIssueTemplate
+	Webhook string // issue、comment
+	Payload any
+}
+
+// 集成批准、驳回两大数据的结构体
+type IssuePayload struct {
+	Action int // open、update
+	Issue  *Issue
+	Desc   *SQLIssueTemplate
+}
+
+// 集成批准、驳回两大数据的结构体
+type CommentPayload struct {
+	Reason       string
+	Action       int // approval、reject
+	CommentDesc  *CommentWebhook
+	IssuePayload *IssuePayload
 }

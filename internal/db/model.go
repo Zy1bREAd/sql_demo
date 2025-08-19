@@ -1,6 +1,10 @@
 package dbo
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 type User struct {
 	ID             uint      `gorm:"primaryKey"`
@@ -96,4 +100,20 @@ type QueryDataBase struct {
 
 func (temp *QueryDataBase) TableName() string {
 	return "query_db_info"
+}
+
+// 工单表（主要是完成Ticket的状态流转）
+type Ticket struct {
+	gorm.Model
+	UID       string `gorm:"type:varchar(36);uniqueIndex;not null"`
+	TaskID    string `gorm:"type:varchar(64)"`
+	Status    string `gorm:"type:varchar(64);not null;index"`
+	Link      string `gorm:"type:varchar(255)"`
+	AuthorID  int    `gorm:"not null"` // 表示该Ticket所属者
+	ProjectID int    `gorm:"uniqueIndex:idx_ticket;"`
+	IssueID   int    `gorm:"uniqueIndex:idx_ticket;"`
+}
+
+func (t *Ticket) TableName() string {
+	return "t_ticket"
 }

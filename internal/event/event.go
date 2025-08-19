@@ -16,12 +16,19 @@ type Event struct {
 	Payload any // 事件具体信息
 }
 
+// ! 事件处理者接口（实现该接口的实例会是真正操作er）
+type EventHandler interface {
+	Work(context.Context, Event) error
+	Name() string
+	// Stop()
+}
+
 // ! 事件生产者
 type EventProducer struct {
 	eventChan chan Event // 全局事件通道
 }
 
-func (ep *EventProducer) Channel() chan Event {
+func (ep *EventProducer) channel() chan Event {
 	return ep.eventChan
 }
 
@@ -149,13 +156,6 @@ func (ed *EventDispatcher) processEvent(e Event) error {
 	}
 }
 
-// ! 事件处理者接口（实现该接口的实例会是真正操作er）
-type EventHandler interface {
-	Work(context.Context, Event) error
-	Name() string
-	// Stop()
-}
-
 // 封装一层事件处理者
 type EventHandlerWrapper struct {
 	handler   EventHandler // 实际EventHandler
@@ -185,8 +185,8 @@ func (wrapper *EventHandlerWrapper) workLoop() {
 			cancel()
 			if err != nil {
 				// 判断错误是否严重不可逆，来决定是否中断Worker
-				utils.DebugPrint("EventHandlerError", err)
-				return
+				utils.ErrorPrint("EventHandlerError", err)
+				continue
 			}
 		case <-wrapper.stopCh:
 			utils.DebugPrint("EventHandlerExit", "正常收到信号，关闭Handler处理")

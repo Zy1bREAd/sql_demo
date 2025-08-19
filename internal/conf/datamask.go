@@ -34,7 +34,7 @@ type RangeConfig struct {
 
 func initDataMaskConfig(filePath string) (*DataMaskConfig, error) {
 	var dmConf DataMaskConfig
-	f, err := os.ReadFile("config/data_mask_rule.yaml")
+	f, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, utils.GenerateError("LoadIn Failed", err.Error())
 	}

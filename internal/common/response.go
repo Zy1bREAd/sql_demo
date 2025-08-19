@@ -14,6 +14,18 @@ const (
 	IssueQTaskType = 2
 )
 
+// Ticket Status
+const (
+	CreatedStatus        = "CREATED"
+	ApprovalPassedStatus = "PASSED"
+	ApprovalRejectStatus = "REJECT"
+	ExcutePendingStatus  = "EXCUTE_PENDING" // 等待确认上线
+	PendingStatus        = "PENDING"        // 执行任务中
+	CompletedStatus      = "COMPLETED"
+	FailedStatus         = "FAILED"
+	UnknownStatus        = "UNKNOWN"
+)
+
 // ! 封装响应数据
 const (
 	successCode = 200

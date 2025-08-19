@@ -135,7 +135,7 @@ func InitBaseRoutes() {
 		rgAuth.DELETE("/sources/delete/:uid", DeleteDBInfo)
 
 		// 审计日志
-		rgAuth.GET("/record/list", getUserAuditRecordHandler)
+		// rgAuth.GET("/record/list", getUserAuditRecordHandler)
 		rgAuth.POST("/audit/record/list", GetAuditRecord)
 	})
 }
@@ -206,7 +206,7 @@ func IssueCallBack(ctx *gin.Context) {
 		common.NotAuthResp(ctx, err.Error()) // ERROR：401
 		return
 	}
-	//！ callback 核心逻辑
+	//! callback 核心逻辑
 	// 获取并解析请求体
 	var reqBody api.IssueWebhook
 	err = ctx.ShouldBind(&reqBody)
@@ -711,24 +711,24 @@ func DownloadFile(ctx *gin.Context) {
 }
 
 // 获取指定用户的日志审计
-func getUserAuditRecordHandler(ctx *gin.Context) {
-	val, exist := ctx.Get("user_id")
-	if !exist {
-		common.ErrorResp(ctx, "server parse user is failed")
-		return
-	}
-	userId, ok := val.(string)
-	if !ok {
-		common.ErrorResp(ctx, "convert type is failed")
-		return
-	}
-	recordData, err := dbo.GetAuditRecordByUserID(userId)
-	if err != nil {
-		common.ErrorResp(ctx, err.Error())
-		return
-	}
-	common.SuccessResp(ctx, recordData, "get audit records by userid")
-}
+// func getUserAuditRecordHandler(ctx *gin.Context) {
+// 	val, exist := ctx.Get("user_id")
+// 	if !exist {
+// 		common.ErrorResp(ctx, "server parse user is failed")
+// 		return
+// 	}
+// 	userId, ok := val.(string)
+// 	if !ok {
+// 		common.ErrorResp(ctx, "convert type is failed")
+// 		return
+// 	}
+// 	recordData, err := dbo.GetAuditRecordByUserID(userId)
+// 	if err != nil {
+// 		common.ErrorResp(ctx, err.Error())
+// 		return
+// 	}
+// 	common.SuccessResp(ctx, recordData, "get audit records by userid")
+// }
 
 // 外链形式展示ticket任务执行结果
 func showTempQueryResult(ctx *gin.Context) {

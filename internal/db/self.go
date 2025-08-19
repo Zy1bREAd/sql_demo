@@ -11,7 +11,6 @@ import (
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var selfDB *SelfDatabase
@@ -94,7 +93,7 @@ func (db *SelfDatabase) autoMigrator() error {
 		return utils.GenerateError("Migrator Failed", "self db is not init")
 	}
 	// 表多的话要以注册的方式注册进来，避免手动一个个输入
-	return db.conn.AutoMigrate(&User{}, &TempResultMap{}, &AuditRecordV2{}, &QueryDataBase{}, &QueryEnv{})
+	return db.conn.AutoMigrate(&User{}, &TempResultMap{}, &AuditRecordV2{}, &QueryDataBase{}, &QueryEnv{}, &Ticket{})
 }
 
 // 创建用户逻辑
@@ -175,42 +174,42 @@ func (usr *User) SSOLogin() (uint, error) {
 	return usr.ID, nil
 }
 
-// User DTO
-type UserAuditRecord struct {
-	// 查询的环境
-	Env          string    `json:"env"`
-	SQLStatement string    `json:"statement"`
-	DBName       string    `json:"db_name"`
-	ExcuteTime   time.Time `json:"excute_time"`
-}
+// // User DTO
+// type UserAuditRecord struct {
+// 	// 查询的环境
+// 	Env          string    `json:"env"`
+// 	SQLStatement string    `json:"statement"`
+// 	DBName       string    `json:"db_name"`
+// 	ExcuteTime   time.Time `json:"excute_time"`
+// }
 
-func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
-	auditRecords := []AuditRecordV2{}
-	res := selfDB.conn.Where("user_id = ?", userId).Order(
-		clause.OrderByColumn{
-			Column: clause.Column{
-				Name: "time_stamp", // 按照时间戳排序获取前10条
-			},
-			Desc: true,
-		}).Limit(10).Find(&auditRecords)
-	if res.Error != nil {
-		utils.DebugPrint("AuditRecordError", res.Error.Error())
-		return nil, errors.New("<DBQueryFailed>" + res.Error.Error())
-	}
-	if res.RowsAffected == 0 {
-		utils.DebugPrint("AuditRecordError", "audit records is null")
-		return []UserAuditRecord{}, nil
-	}
-	// Convert DTO Object
-	userRecords := make([]UserAuditRecord, 0, 10)
-	// for _, record := range auditRecords {
-	// 	userRecords = append(userRecords, UserAuditRecord{
-	// 		// DBName: record.,?
-	// 	})
-	// }
-	// DebugPrint("resultRows", auditRecords)
-	return userRecords, nil
-}
+// func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
+// 	auditRecords := []AuditRecordV2{}
+// 	res := selfDB.conn.Where("user_id = ?", userId).Order(
+// 		clause.OrderByColumn{
+// 			Column: clause.Column{
+// 				Name: "time_stamp", // 按照时间戳排序获取前10条
+// 			},
+// 			Desc: true,
+// 		}).Limit(10).Find(&auditRecords)
+// 	if res.Error != nil {
+// 		utils.DebugPrint("AuditRecordError", res.Error.Error())
+// 		return nil, errors.New("<DBQueryFailed>" + res.Error.Error())
+// 	}
+// 	if res.RowsAffected == 0 {
+// 		utils.DebugPrint("AuditRecordError", "audit records is null")
+// 		return []UserAuditRecord{}, nil
+// 	}
+// 	// Convert DTO Object
+// 	userRecords := make([]UserAuditRecord, 0, 10)
+// 	// for _, record := range auditRecords {
+// 	// 	userRecords = append(userRecords, UserAuditRecord{
+// 	// 		// DBName: record.,?
+// 	// 	})
+// 	// }
+// 	// DebugPrint("resultRows", auditRecords)
+// 	return userRecords, nil
+// }
 
 // 存储临时结果链接
 func SaveTempResult(uukey, taskId string, expireTime uint, allowExport bool) error {
@@ -282,8 +281,8 @@ func (usr *User) GetGitLabUserId() uint {
 	return usr.ID
 }
 
-func (v2 *AuditRecordV2) InsertOne(e string) error {
-	v2.EventType = e
+func (v2 *AuditRecordV2) InsertOne(eventType string) error {
+	v2.EventType = eventType
 	db := HaveSelfDB()
 	tx := db.conn.Begin()
 	// 避免携带默认值插入污染导出相关信息
@@ -302,7 +301,7 @@ func (v2 *AuditRecordV2) InsertOne(e string) error {
 }
 
 // 查看审计日志
-func (v2 *AuditRecordV2) Get() ([]AuditRecordV2, error) {
+func (v2 *AuditRecordV2) Find() ([]AuditRecordV2, error) {
 	var records []AuditRecordV2
 	db := HaveSelfDB()
 	res := db.conn.Where(&v2).Find(&records)
@@ -313,7 +312,7 @@ func (v2 *AuditRecordV2) Get() ([]AuditRecordV2, error) {
 }
 
 // 通过时间范围筛选s
-func (v2 *AuditRecordV2) GetByTime(start, end time.Time) ([]AuditRecordV2, error) {
+func (v2 *AuditRecordV2) FindByTime(start, end time.Time) ([]AuditRecordV2, error) {
 	var records []AuditRecordV2
 	db := HaveSelfDB()
 	res := db.conn.Where(&v2).Where("create_at BETWEEN ? AND ?").Find(&records)
@@ -376,7 +375,8 @@ func (env *QueryEnv) CreateOne() error {
 	return nil
 }
 
-func (env *QueryEnv) LoadAll() ([]QueryEnv, error) {
+// 默认查找全部
+func (env *QueryEnv) Find() ([]QueryEnv, error) {
 	var envList []QueryEnv
 	db := HaveSelfDB().GetConn()
 	findRes := db.Find(&envList)
@@ -387,7 +387,8 @@ func (env *QueryEnv) LoadAll() ([]QueryEnv, error) {
 	return envList, nil
 }
 
-func (env *QueryDataBase) LoadAll() ([]QueryDataBase, error) {
+// 默认查找全部
+func (env *QueryDataBase) Find() ([]QueryDataBase, error) {
 	var dbList []QueryDataBase
 	db := HaveSelfDB().GetConn()
 	findRes := db.Find(&dbList)
@@ -449,7 +450,6 @@ func (dbInfo *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
 	tx := db.Begin()
 	updateDB.ID = dbInfo.ID
 	updateDB.UpdateAt = time.Now()
-	fmt.Println("uuuuupdate", updateDB.Password)
 	updateRes := db.Model(&dbInfo).Updates(updateDB)
 	if updateRes.Error != nil {
 		tx.Rollback()
@@ -493,4 +493,66 @@ func (qdb *QueryDataBase) DeleteOne() error {
 	}
 	tx.Commit()
 	return nil
+}
+
+func (t *Ticket) Create() error {
+	dbConn := HaveSelfDB().GetConn()
+	tx := dbConn.Begin()
+	res := tx.Create(&t)
+	if res.Error != nil {
+		tx.Rollback()
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("TicketCreateErr", "create rows is not 1")
+	}
+	tx.Commit()
+	return nil
+}
+
+func (t *Ticket) Update(cond, updateTicket Ticket) error {
+	dbConn := HaveSelfDB().GetConn()
+	// 根据ProjectID + IssueID作为条件，进行更新操作
+	findRes := dbConn.Where(&cond).First(&t)
+	if findRes.Error != nil {
+		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
+			return utils.GenerateError("UpdateFailed", "the db record is not exist:"+findRes.Error.Error())
+		}
+		return utils.GenerateError("UpdateFailed", findRes.Error.Error())
+	}
+	updateTicket.UID = t.UID
+	// UpdateAt
+	tx := dbConn.Begin()
+	res := tx.Model(&t).Updates(&updateTicket)
+	if res.Error != nil {
+		tx.Rollback()
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("TicketUpdateErr", "create rows is not 1")
+	}
+	tx.Commit()
+	return nil
+}
+
+func (t *Ticket) UpdateStatus(cond Ticket, status string) error {
+	var statusTicket Ticket = Ticket{
+		Status: status,
+	}
+	return t.Update(cond, statusTicket)
+}
+
+func (t *Ticket) Find(cond Ticket) (*Ticket, error) {
+	var resultTicket Ticket
+	dbConn := HaveSelfDB().GetConn()
+	res := dbConn.Where(&cond).Last(&resultTicket)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected != 1 {
+		return nil, utils.GenerateError("TicketUpdateErr", "create rows is not 1")
+	}
+	return &resultTicket, nil
 }
