@@ -105,9 +105,10 @@ func (temp *QueryDataBase) TableName() string {
 // 工单表（主要是完成Ticket的状态流转）
 type Ticket struct {
 	gorm.Model
-	UID       string `gorm:"type:varchar(36);uniqueIndex;not null"`
-	TaskID    string `gorm:"type:varchar(64)"`
-	Status    string `gorm:"type:varchar(64);not null;index"`
+	UID    string `gorm:"type:varchar(36);uniqueIndex;not null"`
+	TaskID string `gorm:"type:varchar(64)"`
+	Status string `gorm:"type:varchar(64);not null;index"`
+	// LastStatus string `gorm:"type:varchar(64);index"`
 	Link      string `gorm:"type:varchar(255)"`
 	AuthorID  int    `gorm:"not null"` // 表示该Ticket所属者
 	ProjectID int    `gorm:"uniqueIndex:idx_ticket;"`

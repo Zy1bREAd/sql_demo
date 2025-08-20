@@ -220,7 +220,11 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		t.QTG.QTasks = taskGroup
 		t.QTG.Deadline = len(taskGroup) * t.QTG.Deadline
 		// （更新）Ticket记录
-		err = tk.UpdateStatus(condTicket, common.PendingStatus)
+		// err = tk.UpdateStatus(condTicket, common.PendingStatus)
+		err = tk.Update(condTicket, dbo.Ticket{
+			Status: common.PendingStatus,
+			TaskID: t.QTG.GID,
+		})
 		if err != nil {
 			return utils.GenerateError("TicketErr", err.Error())
 		}
@@ -284,20 +288,6 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 		// （更新）Ticket记录
 		var tk dbo.Ticket
-		var updateStatus string
-		if res.Errrr != nil {
-			updateStatus = common.FailedStatus
-		} else {
-			updateStatus = common.CompletedStatus
-		}
-		err := tk.UpdateStatus(dbo.Ticket{
-			UID:      v.QTG.TicketID,
-			AuthorID: int(v.QTG.UserID),
-		}, updateStatus)
-		if err != nil {
-			return utils.GenerateError("TicketErr", err.Error())
-		}
-
 		// Issue评论情况更新
 		glab := glbapi.InitGitLabAPI()
 		updateMsg := fmt.Sprintf("TaskGId=%s is completed", res.GID)
@@ -309,9 +299,23 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 				if err != nil {
 					utils.DebugPrint("CommentError", "query task result comment is failed"+err.Error())
 				}
+				err = tk.UpdateStatus(dbo.Ticket{
+					UID:      v.QTG.TicketID,
+					AuthorID: int(v.QTG.UserID),
+				}, common.FailedStatus)
+				if err != nil {
+					return utils.GenerateError("TicketErr", err.Error())
+				}
 				// break
 				return nil
 			}
+		}
+		err := tk.UpdateStatus(dbo.Ticket{
+			UID:      v.QTG.TicketID,
+			AuthorID: int(v.QTG.UserID),
+		}, common.CompletedStatus)
+		if err != nil {
+			return utils.GenerateError("TicketErr", err.Error())
 		}
 		// 存储结果、输出结果临时链接
 		uuKey, tempURL := glbapi.NewHashTempLink()
@@ -552,8 +556,9 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			AuthorID:  int(userId),
 			ProjectID: int(payload.Issue.ProjectID),
 			IssueID:   int(payload.Issue.IID),
+			Link:      fmt.Sprintf("http://159.75.119.146:28660/infra/demo_1/-/issues/%d", int(payload.Issue.IID)),
 		}
-		err := ticket.Create()
+		err := ticket.FristOrCreate()
 		if err != nil {
 			return err
 		}

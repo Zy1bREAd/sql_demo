@@ -511,6 +511,31 @@ func (t *Ticket) Create() error {
 	return nil
 }
 
+// 不存在时创建记录，存在则更新
+func (t *Ticket) FristOrCreate() error {
+	dbConn := HaveSelfDB().GetConn()
+	tx := dbConn.Begin()
+	var tk Ticket
+	res := tx.Where(Ticket{
+		ProjectID: t.ProjectID,
+		IssueID:   t.IssueID,
+		AuthorID:  t.AuthorID,
+	}).Assign(Ticket{
+		Status: t.Status,
+		Link:   t.Link,
+	}).FirstOrCreate(&tk)
+	if res.Error != nil {
+		tx.Rollback()
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("TicketCreateErr", "create rows is not 1")
+	}
+	tx.Commit()
+	return nil
+}
+
 func (t *Ticket) Update(cond, updateTicket Ticket) error {
 	dbConn := HaveSelfDB().GetConn()
 	// 根据ProjectID + IssueID作为条件，进行更新操作

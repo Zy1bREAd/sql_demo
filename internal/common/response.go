@@ -17,6 +17,7 @@ const (
 // Ticket Status
 const (
 	CreatedStatus        = "CREATED"
+	ReInitedStatus       = "REINITED" // 用于完成TIcket后二次更新Issue后的状态
 	ApprovalPassedStatus = "PASSED"
 	ApprovalRejectStatus = "REJECT"
 	ExcutePendingStatus  = "EXCUTE_PENDING" // 等待确认上线
