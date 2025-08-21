@@ -6,6 +6,16 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	DEFAULTUSER = 0
+	GITLABUSER  = 2
+
+	// User Role
+	AdministratorRole = 0
+	DeveloperRole     = 1
+	GuestRole         = 2
+)
+
 type User struct {
 	ID             uint      `gorm:"primaryKey"`
 	UserType       uint      `gorm:"type:smallint;not null"` // 0=Default User; 2=GitLab User
@@ -14,6 +24,7 @@ type User struct {
 	UserName       string    `gorm:"type:varchar(255);"`
 	Password       string    `gorm:"type:varchar(255);not null"`
 	Email          string    `gorm:"type:varchar(255);"`
+	Role           int       `gorm:"type:smallint;default:2;"`
 	CreateAt       time.Time `gorm:"autoCreateTime"`
 
 	// 权限？

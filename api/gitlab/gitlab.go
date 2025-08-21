@@ -188,17 +188,17 @@ func (gitlab *GitLabAPI) UserList() ([]GUser, error) {
 	apiURL := gitlab.URL + "/api/v4/users"
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
-		return nil, utils.GenerateError("UserListError", err.Error())
+		return nil, utils.GenerateError("GUserListError", err.Error())
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, utils.GenerateError("UserListError", err.Error())
+		return nil, utils.GenerateError("GUserListError", err.Error())
 	}
 	defer resp.Body.Close()
-	err = common.ValidateRespBody("IssueCloseError", resp)
+	err = common.ValidateRespBody("GUserListError", resp)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func (gitlab *GitLabAPI) UserList() ([]GUser, error) {
 	var userList []GUser
 	err = json.NewDecoder(resp.Body).Decode(&userList)
 	if err != nil {
-		return nil, utils.GenerateError("UserViewError", err.Error())
+		return nil, utils.GenerateError("GUserListError", err.Error())
 	}
 	return userList, nil
 }

@@ -11,6 +11,15 @@ import (
 	"golang.org/x/oauth2"
 )
 
+type GitLabUser struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	UserName    string `json:"username"`
+	State       string `json:"state"`
+	Email       string `json:"email"`
+	LastLoginAt string `json:"last_sign_in_at"`
+}
+
 var oauthConf *oauth2.Config
 var oauthOnce sync.Once
 

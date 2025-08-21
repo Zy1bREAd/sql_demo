@@ -118,7 +118,7 @@ func InitBaseRoutes() {
 		rgAuth.GET("/db/list", DBList)
 
 		rgAuth.GET("/result/temp-view/:identifier", showTempQueryResult)
-		rgPublic.GET("/gitlab/users", UpdateGitLabUsers)
+		rgAuth.GET("/users/register", RegisterUsersByGitLab)
 
 		rgPublic.POST("/issue/callback", IssueCallBack)
 		rgPublic.POST("/comment/callback", CommentCallBack)
@@ -324,7 +324,7 @@ func DBList(ctx *gin.Context) {
 // 	// SQL语法解析并校验（v2.0)  - 格式化SQL查询语句（确保规范化）
 // 	sqlRaw, err := ParseSQL(q.Statement, "select")
 // 	if err != nil {
-// 		common.DefaultResp(ctx, 1, nil, err.Error())
+// 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 // 		return
 // 	}
 // 	// 提交异步任务入队(v1.0)
@@ -357,7 +357,7 @@ func getQueryResult(ctx *gin.Context) {
 	}
 	if val, ok := userResult.(*dbo.SQLResult); ok {
 		if val.Errrrr != nil {
-			common.DefaultResp(ctx, 1, "", val.Errrrr.Error())
+			common.DefaultResp(ctx, common.RespFailed, "", val.Errrrr.Error())
 			return
 		}
 		common.SuccessResp(ctx, gin.H{
@@ -392,7 +392,7 @@ func userCreate(ctx *gin.Context) {
 	}
 	err := user.Create()
 	if err != nil {
-		common.DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 	}
 	// 返回创建信息
 	common.SuccessResp(ctx, "token=...", "Get resultMap all keys success")
@@ -408,12 +408,12 @@ func userCreate(ctx *gin.Context) {
 // 	}
 // 	userInfo, err := user.BasicLogin(loginInfo.Password)
 // 	if err != nil {
-// 		common.DefaultResp(ctx, 1, nil, err.Error())
+// 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 // 		return
 // 	}
 // 	token, err := utils.GenerateJWT(userInfo.ID, userInfo.Name, userInfo.Email)
 // 	if err != nil {
-// 		common.DefaultResp(ctx, 1, nil, err.Error())
+// 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 // 	}
 // 	common.SuccessResp(ctx, gin.H{
 // 		"user_token": token,
@@ -426,7 +426,7 @@ func userSSOLogin(ctx *gin.Context) {
 	oa2 := auth.GetOAuthConfig()
 	state, err := auth.SetState()
 	if err != nil {
-		common.DefaultResp(ctx, 1, nil, utils.GenerateError("NoStateValue", err.Error()).Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("NoStateValue", err.Error()).Error())
 		return
 	}
 	authURL := oa2.AuthCodeURL(state)
@@ -474,36 +474,35 @@ func SSOCallBack(ctx *gin.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	// log.Println("resp body>>>", resp.Body)
-	// 定义gitlab user info结构体用于获取数据
-	var gitlabUserInfo struct {
-		ID    uint   `json:"id"`
-		Name  string `json:"username"`
-		Email string `json:"email"`
-	}
-	err = json.NewDecoder(resp.Body).Decode(&gitlabUserInfo)
+
+	var oauthUser auth.GitLabUser
+	err = json.NewDecoder(resp.Body).Decode(&oauthUser)
+	fmt.Println("debug print user info -----", oauthUser)
 	if err != nil {
 		common.ErrorResp(ctx, "decode user info is failed, "+err.Error())
 		return
 	}
 	// 完成数据库相关的逻辑
-	user := dbo.User{
-		Name:  gitlabUserInfo.Name,
-		Email: gitlabUserInfo.Email,
-	}
-	userId, err := user.SSOLogin()
+	var user dbo.User
+	userId, err := user.SSOLogin(dbo.User{
+		ID:       oauthUser.ID,
+		Name:     oauthUser.Name,
+		UserName: oauthUser.UserName,
+		Email:    oauthUser.Email,
+	})
 	if err != nil {
 		common.ErrorResp(ctx, "sso login failed, "+err.Error())
 		return
 	}
 	// log.Println(gitlabUserInfo)
-	appToken, err := utils.GenerateJWT(userId, gitlabUserInfo.Name, gitlabUserInfo.Email)
+	appToken, err := utils.GenerateJWT(userId, oauthUser.Name, oauthUser.Email)
 	if err != nil {
-		common.DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 	}
 	common.SuccessResp(ctx, gin.H{
 		"user_token": appToken,
-		"user":       gitlabUserInfo.Name,
+		"user":       oauthUser.Name,
+		"role":       "...",
 	}, "sso login success")
 }
 
@@ -736,7 +735,7 @@ func showTempQueryResult(ctx *gin.Context) {
 	// 校验链接是否过期
 	dbRes, err := dbo.GetTempResult(uuKey)
 	if err != nil {
-		common.DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
 	// 插入审计日志的超时控制
@@ -784,7 +783,7 @@ func showTempQueryResult(ctx *gin.Context) {
 	// 结果集是否存在
 	userResult, exist := core.ResultMap.Get(dbRes.TaskId)
 	if !exist {
-		common.DefaultResp(ctx, 1, nil, "SQL Query result is not exist")
+		common.DefaultResp(ctx, common.RespFailed, nil, "SQL Query result is not exist")
 		return
 	}
 	if val, ok := userResult.(*dbo.SQLResultGroup); ok {
@@ -804,34 +803,55 @@ func showTempQueryResult(ctx *gin.Context) {
 	}
 }
 
-func UpdateGitLabUsers(ctx *gin.Context) {
+// 用于手动将GitLab User注册进来User
+func RegisterUsersByGitLab(ctx *gin.Context) {
+	// 校验管理员操作
+	val, exist := ctx.Get("user_id")
+	if !exist {
+		common.DefaultResp(ctx, common.IllegalRequest, nil, "User is not exist")
+		return
+	}
+	userID, ok := val.(uint)
+	if !ok {
+		common.DefaultResp(ctx, common.RespFailed, nil, "UserId type is incrroect")
+		return
+	}
+	validUser := dbo.User{
+		ID: userID,
+	}
+	if !validUser.IsAdminUser() {
+		common.DefaultResp(ctx, common.NoPermissionRequest, nil, "the user is no permission")
+		return
+	}
 	api := api.InitGitLabAPI()
 	users, err := api.UserList()
 	if err != nil {
-		common.DefaultResp(ctx, 1, nil, err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
 	for _, gu := range users {
+		// 跳过不活跃的用户
 		if gu.State != "active" {
 			continue
 		}
 		var u dbo.User
 		dbConn := dbo.HaveSelfDB().GetConn()
-		err := dbConn.Where("git_lab_identity = ?", gu.ID).First(&u).Error
-		if err != nil {
+		res := dbConn.Where("git_lab_identity = ?", gu.ID).First(&u)
+		if res.Error != nil {
+			// 不存在即创建用户
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				// 如果该用户不存在，则新建用户
 				u := dbo.User{
 					Name:           gu.Name,
 					UserName:       gu.Username,
 					GitLabIdentity: gu.ID,
 					Email:          gu.Email,
-					UserType:       2,
+					UserType:       dbo.GITLABUSER,
 				}
 				dbConn.Create(&u)
 				continue
 			}
 		}
+		// 存在即更新
 		err = dbConn.Model(&u).Updates(dbo.User{
 			ID:             u.ID,
 			Name:           gu.Name,
@@ -845,7 +865,7 @@ func UpdateGitLabUsers(ctx *gin.Context) {
 			continue
 		}
 	}
-	common.SuccessResp(ctx, users, "get users")
+	common.SuccessResp(ctx, users, "success")
 }
 
 // 创建数据库连接信息

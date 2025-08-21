@@ -39,6 +39,9 @@ const (
 	RespSuccess = 100
 	RespFailed  = 11 // 未知错误的默认失败
 
+	IllegalRequest      = 67
+	NoPermissionRequest = 88
+
 	RecordNotExist = 44
 	RecordNotFound = 45
 )

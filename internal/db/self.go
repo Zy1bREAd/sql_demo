@@ -148,16 +148,18 @@ func (usr *User) BasicLogin(inputPwd string) error {
 }
 
 // 登录（SSO gitlab）,最终返回用户id
-func (usr *User) SSOLogin() (uint, error) {
-	result := selfDB.conn.Where("name = ?", usr.Name).Where("email = ?", usr.Email).Where("user_type = ?", 2).First(&usr)
+func (usr *User) SSOLogin(cond User) (uint, error) {
+	dbConn := HaveSelfDB().GetConn()
+	result := dbConn.Model(cond).First(&usr)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			// 首次注册进入DB
 			newSSOUser := &User{
-				Name:     usr.Name,
-				Email:    usr.Email,
-				UserType: 2,
-				CreateAt: time.Now(),
+				Name:           usr.Name,
+				Email:          usr.Email,
+				UserType:       GITLABUSER,
+				GitLabIdentity: usr.ID,
+				CreateAt:       time.Now(),
 			}
 			tx := selfDB.conn.Begin()
 			if err := tx.Create(newSSOUser).Error; err != nil {
@@ -172,6 +174,25 @@ func (usr *User) SSOLogin() (uint, error) {
 	}
 	// 用户登录日志插槽
 	return usr.ID, nil
+}
+
+// 通过UserID判断
+func (usr *User) IsAdminUser() bool {
+	var resultUser User
+	dbConn := HaveSelfDB().GetConn()
+	res := dbConn.Where(User{
+		ID: usr.ID,
+	}).Last(&resultUser)
+	if res.Error != nil {
+		return false
+	}
+	if res.RowsAffected != 1 {
+		return false
+	}
+	if resultUser.Role != AdministratorRole {
+		return false
+	}
+	return true
 }
 
 // // User DTO
