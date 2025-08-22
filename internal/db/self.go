@@ -195,6 +195,15 @@ func (usr *User) IsAdminUser() bool {
 	return true
 }
 
+func (usr *User) GetGitLabUserId() uint {
+	res := selfDB.conn.Where("git_lab_identity = ?", usr.GitLabIdentity).First(&usr)
+	if res.Error != nil {
+		utils.DebugPrint("DBAPIError", "get user id is failed")
+		return 0
+	}
+	return usr.ID
+}
+
 // // User DTO
 // type UserAuditRecord struct {
 // 	// 查询的环境
@@ -293,15 +302,6 @@ func AllowResultExport(taskId string) bool {
 	return tempData.IsAllowExport
 }
 
-func (usr *User) GetGitLabUserId() uint {
-	res := selfDB.conn.Where("git_lab_identity = ?", usr.GitLabIdentity).First(&usr)
-	if res.Error != nil {
-		utils.DebugPrint("DBAPIError", "get user id is failed")
-		return 0
-	}
-	return usr.ID
-}
-
 func (v2 *AuditRecordV2) InsertOne(eventType string) error {
 	v2.EventType = eventType
 	db := HaveSelfDB()
@@ -396,23 +396,35 @@ func (env *QueryEnv) CreateOne() error {
 	return nil
 }
 
-// 默认查找全部
-func (env *QueryEnv) Find() ([]QueryEnv, error) {
+// 默认查找全部Env
+func (env *QueryEnv) FindAll() ([]QueryEnv, error) {
 	var envList []QueryEnv
 	db := HaveSelfDB().GetConn()
 	findRes := db.Find(&envList)
 	if findRes.Error != nil {
 		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
-	// resultList := make([]QueryEnv, findRes.RowsAffected+1)
 	return envList, nil
+}
+
+// 按照指定ID查找环境
+func (env *QueryEnv) FindById(uid string) (*QueryEnv, error) {
+	db := HaveSelfDB().GetConn()
+	findRes := db.Where("uid = ?", uid).First(&env)
+	if findRes.Error != nil {
+		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
+			return nil, utils.GenerateError("UpdateFailed", "the env record is not exist:"+findRes.Error.Error())
+		}
+		return nil, utils.GenerateError("FindDataErr", findRes.Error.Error())
+	}
+	return env, nil
 }
 
 // 默认查找全部
 func (env *QueryDataBase) Find() ([]QueryDataBase, error) {
 	var dbList []QueryDataBase
 	db := HaveSelfDB().GetConn()
-	findRes := db.Find(&dbList)
+	findRes := db.Preload("EnvForKey").Find(&dbList)
 	if findRes.Error != nil {
 		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
@@ -443,19 +455,6 @@ func (env *QueryEnv) UpdateOne(updateEnv *QueryEnv) error {
 	}
 	tx.Commit()
 	return nil
-}
-
-// 按照指定ID查找环境
-func (env *QueryEnv) FindById(uid string) (*QueryEnv, error) {
-	db := HaveSelfDB().GetConn()
-	findRes := db.Where("uid = ?", uid).First(&env)
-	if findRes.Error != nil {
-		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
-			return nil, utils.GenerateError("UpdateFailed", "the env record is not exist:"+findRes.Error.Error())
-		}
-		return nil, utils.GenerateError("FindDataErr", findRes.Error.Error())
-	}
-	return env, nil
 }
 
 func (dbInfo *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {

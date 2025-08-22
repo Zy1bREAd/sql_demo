@@ -2,9 +2,11 @@ package core
 
 import (
 	"crypto/rand"
+	"fmt"
 	"slices"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
+	"strings"
 	"time"
 )
 
@@ -33,11 +35,13 @@ type QueryDataBaseDTO struct {
 }
 
 type QueryEnvDTO struct {
-	UID     string `json:"uid"`
-	Name    string `json:"name"`
-	Tag     string `json:"tag"`
-	Desc    string `json:"description"`
-	IsWrite bool   `json:"is_write"`
+	IsWrite  bool   `json:"is_write"`
+	UID      string `json:"uid"`
+	Name     string `json:"name"`
+	Tag      string `json:"tag"`
+	Desc     string `json:"description"`
+	CreateAt string `json:"create_at"`
+	UpdateAt string `json:"update_at"`
 }
 
 type AuditRecordDTO struct {
@@ -61,7 +65,7 @@ func (dto *AuditRecordDTO) toORMData() *dbo.AuditRecordV2 {
 
 func (dto *AuditRecordDTO) Get() ([]AuditRecordDTO, error) {
 	orm := dto.toORMData()
-	// 查找对应的UserID
+	// 如果按照用户名查找，需要判断该用户是否存在
 	if dto.UserName != "" {
 		dbConn := dbo.HaveSelfDB().GetConn()
 		var user dbo.User
@@ -198,7 +202,7 @@ func (qdb *QueryDataBaseDTO) GetEnvDBList(env string) []string {
 }
 
 // 获取指定环境下所有db实例
-func (env *QueryEnvDTO) GetEnvList() []string {
+func (env *QueryEnvDTO) GetEnvNameList() []string {
 	dbMgr := dbo.GetDBPoolManager()
 	envList := make([]string, 0, len(dbMgr.Pool))
 	for envKey := range dbMgr.Pool {
@@ -210,12 +214,83 @@ func (env *QueryEnvDTO) GetEnvList() []string {
 	return envList
 }
 
-func AllEnvInfo() map[string][]string {
+// 获取所有环境下的db实例（若切片参数没有定义则是获取全部）
+func (env *QueryEnvDTO) GetDBList(envNameList []string) (map[string][]QueryDataBaseDTO, error) {
+	// 获取所有Env列表
+	var allDBInfoMap map[string][]QueryDataBaseDTO = make(map[string][]QueryDataBaseDTO)
+	if len(envNameList) == 0 {
+		envNameList = env.GetEnvNameList()
+	}
+	for _, env := range envNameList {
+		allDBInfoMap[env] = nil
+	}
+
+	// 添加每个Env下的db信息列表
+	var dbDTO QueryDataBaseDTO
+	dbResult, err := dbDTO.toORMData().Find()
+	if err != nil {
+		return nil, err
+	}
+	for _, data := range dbResult {
+		if data.EnvForKey.Name == "" {
+			continue
+		}
+		envKey := data.EnvForKey.Name
+		allDBInfoMap[envKey] = append(allDBInfoMap[envKey], QueryDataBaseDTO{
+			UID:          data.UID,
+			Name:         data.Name,
+			EnvName:      data.EnvForKey.Name,
+			Service:      data.Service,
+			Desc:         data.Description,
+			ExcludeDB:    strings.Split(data.ExcludeDB, ","),
+			ExcludeTable: strings.Split(data.ExcludeTable, ","),
+			MaxConn:      data.MaxConn,
+			IdleTime:     data.IdleTime,
+			IsWrite:      data.IsWrite,
+			EnvID:        data.EnvID,
+			Connection: ConnectInfo{
+				User: data.User,
+				// Password: data.Password,
+				Host: data.Host,
+				Port: data.Port,
+				TLS:  data.TLS,
+			},
+		})
+	}
+	return allDBInfoMap, nil
+}
+
+// 获取所有的Env
+func (env *QueryEnvDTO) GetAllData() ([]QueryEnvDTO, error) {
+	orm := env.toORMData()
+	res, err := orm.FindAll()
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(dbo.GetDBPoolManager().Pool)
+	// 格式化好DTO进行返回
+	resultList := make([]QueryEnvDTO, 0, len(res))
+	for _, env := range res {
+		resultList = append(resultList, QueryEnvDTO{
+			UID:      env.UID,
+			Name:     env.Name,
+			Tag:      env.Tag,
+			Desc:     env.Description,
+			CreateAt: env.CreateAt.Format("20060102150405"),
+			UpdateAt: env.UpdateAt.Format("20060102150405"),
+			IsWrite:  env.IsWrite,
+		})
+	}
+	return resultList, nil
+
+}
+
+// 仅获取不同Env下的实例名称列表
+func OnlyDBNameList() map[string][]string {
 	temp := make(map[string][]string, 10)
 	env := QueryEnvDTO{}
 	qdb := QueryDataBaseDTO{}
-	envResult := env.GetEnvList()
-	utils.DebugPrint("envListResult", envResult)
+	envResult := env.GetEnvNameList()
 	for _, e := range envResult {
 		dbsResult := qdb.GetEnvDBList(e)
 		if dbsResult == nil {

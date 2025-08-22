@@ -49,7 +49,7 @@ func InitRouter() {
 	rgPublic := r.Group("/api/v1/public")
 	rgAuth := r.Group("/api/v1/")
 	// 使用认证鉴权中间件
-	rgAuth.Use(AuthMiddleware())
+	rgAuth.Use(authMiddleware())
 	InitBaseRoutes()
 
 	// 加载路由注册函数
@@ -104,41 +104,104 @@ func InitRouter() {
 // ! 初始化基础路由
 func InitBaseRoutes() {
 	RegisterRoute(func(rgPublic, rgAuth *gin.RouterGroup) {
-		rgPublic.POST("/register", userCreate)
+		// 注册、登录认证
+		// rgPublic.POST("/register", userCreate)
 		// rgPublic.POST("/login", userLogin)
 		rgPublic.POST("/sso/login", userSSOLogin)
 		rgPublic.GET("/sso/callback", SSOCallBack)
+		rgAuth.GET("/users/register", RegisterUsersByGitLab)
 
-		// 导出文件下载
+		// 结果展示、导出与下载
+		rgAuth.GET("/result/temp-view/:identifier", showTempQueryResult)
 		rgAuth.GET("/result/export", ResultExport)
 		rgAuth.GET("/result/download", DownloadFile)
 
-		rgAuth.GET("/:taskId/result", getQueryResult)
-		rgAuth.GET("/sql/result/keys", getMapKeys)
-		rgAuth.GET("/db/list", DBList)
-
-		rgAuth.GET("/result/temp-view/:identifier", showTempQueryResult)
-		rgAuth.GET("/users/register", RegisterUsersByGitLab)
-
+		// GitLab相关Webhook回调接口
 		rgPublic.POST("/issue/callback", IssueCallBack)
 		rgPublic.POST("/comment/callback", CommentCallBack)
-		// 测试专用路由
+
+		// JSON格式请求专用路由
 		rgAuth.POST("/sql/excute", SQLExcuteTest)
 
+		// 配置管理
 		rgAuth.POST("/env/create", CreateEnvInfo)
-		rgAuth.GET("/env/list", QueryEnvInfo)
+		rgAuth.GET("/env/list", GetEnvConfigList)
 		rgAuth.PUT("/env/update/:uid", UpdateEnvInfo)
 		rgAuth.DELETE("/env/delete/:uid", DeleteEnvInfo)
 
 		rgAuth.POST("/sources/create", CreateDBInfo)
+		rgAuth.GET("/sources/list", GetDBConfigList)
 		rgAuth.PUT("/sources/update/:uid", UpdateDBInfo)
 		rgAuth.DELETE("/sources/delete/:uid", DeleteDBInfo)
 
 		// 审计日志
-		// rgAuth.GET("/record/list", getUserAuditRecordHandler)
 		rgAuth.POST("/audit/record/list", GetAuditRecord)
 	})
 }
+
+// 跨域问题
+func corsMiddleware() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")                                          //允许跨域请求的来源，这里指示前端地址。可以使用通配符*来放行全部
+		ctx.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE,OPTIONS")            //允许请求的方法，指明实际请求所允许使用的 HTTP 方法
+		ctx.Writer.Header().Set("Access-Control-Allow-Headers", "Origin,Accept,Content-Type, Authorization") // 允许的请求头字段，指明实际请求中允许携带的首部字段
+		ctx.Writer.Header().Set("Access-Control-Max-Age", "3600")                                            // OPTION请求的缓存时间，单位为秒
+		ctx.Writer.Header().Set("Access-Control-Expose-Headers", "Location")
+
+		// 预处理OPTIONS
+		if ctx.Request.Method == "OPTIONS" {
+			ctx.AbortWithStatus(200)
+			return
+		}
+
+		ctx.Next()
+	}
+}
+
+// 认证鉴权中间件
+func authMiddleware() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		reqToken := ctx.Request.Header.Get("Authorization")
+		tokenList := strings.Split(reqToken, " ")
+		if len(tokenList) != 2 || !strings.HasPrefix(tokenList[0], "Bearer") {
+			// common.ErrorResp(ctx, "Jwt token not exist")
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token is invalid,please check"})
+			return
+		}
+		userClaim, err := utils.ParseJWT(tokenList[1])
+		if err != nil {
+			// common.ErrorResp(ctx, err.Error())
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+		ctx.Set("user_id", userClaim.UserID)
+		ctx.Set("user_email", userClaim.Email)
+		ctx.Next()
+	}
+}
+
+// User obj
+type UserInfo struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+}
+
+// func userCreate(ctx *gin.Context) {
+// 	var userInfo UserInfo
+// 	ctx.ShouldBind(&userInfo)
+// 	user := dbo.User{
+// 		Name:     userInfo.Name,
+// 		Password: userInfo.Password,
+// 		Email:    userInfo.Email,
+// 	}
+// 	err := user.Create()
+// 	if err != nil {
+// 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+// 	}
+// 	// 返回创建信息
+// 	common.SuccessResp(ctx, "token=...", "Get resultMap all keys success")
+// }
 
 func SQLExcuteTest(ctx *gin.Context) {
 	fmt.Printf("处理用户请求，%s\n", time.Now().String())
@@ -248,154 +311,6 @@ func CommentCallBack(ctx *gin.Context) {
 		return
 	}
 	common.SuccessResp(ctx, nil, "Success gitlab comment callback")
-}
-
-type UserQuery struct {
-	Database  string `json:"db_name"`
-	Statement string `json:"query_sql"`
-	TaskID    string `json:"task_id"` // 任务ID
-	UserID    string `json:"user_id"`
-}
-
-// 跨域问题
-func corsMiddleware() gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")                                          //允许跨域请求的来源，这里指示前端地址。可以使用通配符*来放行全部
-		ctx.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE,OPTIONS")            //允许请求的方法，指明实际请求所允许使用的 HTTP 方法
-		ctx.Writer.Header().Set("Access-Control-Allow-Headers", "Origin,Accept,Content-Type, Authorization") // 允许的请求头字段，指明实际请求中允许携带的首部字段
-		ctx.Writer.Header().Set("Access-Control-Max-Age", "3600")                                            // OPTION请求的缓存时间，单位为秒
-		ctx.Writer.Header().Set("Access-Control-Expose-Headers", "Location")
-
-		// 预处理OPTIONS
-		if ctx.Request.Method == "OPTIONS" {
-			ctx.AbortWithStatus(200)
-			return
-		}
-
-		ctx.Next()
-	}
-}
-
-// 认证鉴权中间件
-func AuthMiddleware() gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		reqToken := ctx.Request.Header.Get("Authorization")
-		tokenList := strings.Split(reqToken, " ")
-		if len(tokenList) != 2 || !strings.HasPrefix(tokenList[0], "Bearer") {
-			// common.ErrorResp(ctx, "Jwt token not exist")
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token is invalid,please check"})
-			return
-		}
-		userClaim, err := utils.ParseJWT(tokenList[1])
-		if err != nil {
-			// common.ErrorResp(ctx, err.Error())
-			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			return
-		}
-		ctx.Set("user_id", userClaim.UserID)
-		ctx.Set("user_email", userClaim.Email)
-		ctx.Next()
-	}
-}
-
-func DBList(ctx *gin.Context) {
-	// 获取环境变量
-	_, exist := ctx.Params.Get("env")
-	if !exist {
-		common.DefaultResp(ctx, 11, nil, "Env Name is not exist")
-		return
-	}
-	// pool := dbo.newDBPoolManager()
-	common.SuccessResp(ctx, nil, "get db list success")
-}
-
-// /api/v1/query
-// func UserSQLQuery(ctx *gin.Context) {
-// 	// 防止伪造jwt请求
-// 	userID, exist := ctx.Get("user_id")
-// 	if !exist {
-// 		common.ErrorResp(ctx, "User not exist")
-// 		return
-// 	}
-// 	var q UserQuery
-// 	ctx.ShouldBind(&q)
-// 	log.Println(q)
-
-// 	// SQL语法解析并校验（v2.0)  - 格式化SQL查询语句（确保规范化）
-// 	sqlRaw, err := ParseSQL(q.Statement, "select")
-// 	if err != nil {
-// 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
-// 		return
-// 	}
-// 	// 提交异步任务入队(v1.0)
-// 	// taskID := SubmitSQLTask(sqlRaw, q.Database, userID.(string))
-
-// 	// 事件驱动：封装成Event推送到事件通道(v2.0)
-// 	task := CreateSQLQueryTask(sqlRaw, q.Database, userID.(string))
-// 	ep := GetEventProducer()
-// 	ep.Produce(Event{
-// 		Type:    "sql_query",
-// 		Payload: task,
-// 	})
-// 	common.SuccessResp(ctx, map[string]string{
-// 		"task_id": task.ID,
-// 	}, "submit sql_query event success")
-// }
-
-// 通过SSE返回结果数据 ？?
-func getQueryResult(ctx *gin.Context) {
-	taskID := ctx.Param("taskId")
-	if taskID == "" {
-		common.ErrorResp(ctx, "taskID is null")
-		return
-	}
-	userResult, exist := core.ResultMap.Get(taskID)
-	// 仅获取不到key的时候重新获取
-	if !exist {
-		common.DefaultResp(ctx, -1, nil, "SQL查询中.......")
-		return
-	}
-	if val, ok := userResult.(*dbo.SQLResult); ok {
-		if val.Errrrr != nil {
-			common.DefaultResp(ctx, common.RespFailed, "", val.Errrrr.Error())
-			return
-		}
-		common.SuccessResp(ctx, gin.H{
-			"result":     val.Results,
-			"rows_count": val.RowCount,
-			"query_time": val.QueryTime,
-		}, "SUCCESS")
-	}
-
-}
-
-func getMapKeys(ctx *gin.Context) {
-	userResult := core.ResultMap.Keys()
-	log.Println(userResult)
-	common.SuccessResp(ctx, userResult, "Get resultMap all keys success")
-}
-
-// User obj
-type UserInfo struct {
-	Name     string `json:"name"`
-	Password string `json:"password"`
-	Email    string `json:"email"`
-}
-
-func userCreate(ctx *gin.Context) {
-	var userInfo UserInfo
-	ctx.ShouldBind(&userInfo)
-	user := dbo.User{
-		Name:     userInfo.Name,
-		Password: userInfo.Password,
-		Email:    userInfo.Email,
-	}
-	err := user.Create()
-	if err != nil {
-		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
-	}
-	// 返回创建信息
-	common.SuccessResp(ctx, "token=...", "Get resultMap all keys success")
 }
 
 // 用户登录（鉴权）
@@ -709,26 +624,6 @@ func DownloadFile(ctx *gin.Context) {
 	}
 }
 
-// 获取指定用户的日志审计
-// func getUserAuditRecordHandler(ctx *gin.Context) {
-// 	val, exist := ctx.Get("user_id")
-// 	if !exist {
-// 		common.ErrorResp(ctx, "server parse user is failed")
-// 		return
-// 	}
-// 	userId, ok := val.(string)
-// 	if !ok {
-// 		common.ErrorResp(ctx, "convert type is failed")
-// 		return
-// 	}
-// 	recordData, err := dbo.GetAuditRecordByUserID(userId)
-// 	if err != nil {
-// 		common.ErrorResp(ctx, err.Error())
-// 		return
-// 	}
-// 	common.SuccessResp(ctx, recordData, "get audit records by userid")
-// }
-
 // 外链形式展示ticket任务执行结果
 func showTempQueryResult(ctx *gin.Context) {
 	uuKey := ctx.Param("identifier")
@@ -900,14 +795,25 @@ func CreateEnvInfo(ctx *gin.Context) {
 	common.SuccessResp(ctx, nil, "create success")
 }
 
-// 获取全部Env信息
-func QueryEnvInfo(ctx *gin.Context) {
-	_, exist := ctx.GetQuery("env")
-	if !exist {
-		common.DefaultResp(ctx, 555, nil, "EnvKey is not exist")
+// 获取全部数据源信息
+func GetDBConfigList(ctx *gin.Context) {
+	var env core.QueryEnvDTO
+	result, err := env.GetDBList(nil)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	result := core.AllEnvInfo()
+	common.SuccessResp(ctx, result, "get db all data success")
+}
+
+// 获取全部Env信息
+func GetEnvConfigList(ctx *gin.Context) {
+	var env core.QueryEnvDTO
+	result, err := env.GetAllData()
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
 	common.SuccessResp(ctx, result, "get env data success")
 }
 
@@ -981,6 +887,7 @@ func DeleteDBInfo(ctx *gin.Context) {
 }
 
 func GetAuditRecord(ctx *gin.Context) {
+	// 筛选条件
 	var auditRecord core.AuditRecordDTO
 	err := ctx.ShouldBindJSON(&auditRecord)
 	if err != nil {
