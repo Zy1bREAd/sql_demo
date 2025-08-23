@@ -601,3 +601,43 @@ func (t *Ticket) Find(cond Ticket) (*Ticket, error) {
 	}
 	return &resultTicket, nil
 }
+
+// 获取Ticket Status的统计
+func (t *Ticket) StatsCount() (map[string]int, error) {
+	// 临时构建Ticket状态的结构体
+	var statsCount struct {
+		CreatedCount        int `gorm:""`
+		ApprovalPassedCount int `gorm:""`
+		ApprovalRejectCount int `gorm:""`
+		ExcutePendingCount  int `gorm:""`
+		PendingCount        int `gorm:""`
+		CompletedCount      int `gorm:""`
+		FailedCount         int `gorm:""`
+		TotalCount          int `gorm:""`
+	}
+	// var resultTicket Ticket
+	dbConn := HaveSelfDB().GetConn()
+	res := dbConn.Model(&Ticket{}).Select(`
+		SUM(CASE WHEN status = 'CREATED' THEN 1 ELSE 0 END) AS created_count,
+		SUM(CASE WHEN status = 'PASSED' THEN 1 ELSE 0 END) AS passed_count,
+		SUM(CASE WHEN status = 'REJECT' THEN 1 ELSE 0 END) AS reject_count,
+		SUM(CASE WHEN status = 'EXCUTE_PENDING' THEN 1 ELSE 0 END) AS excute_pending_count,
+		SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending_count,
+		SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed_count,
+		SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed_count,
+		COUNT(*) AS total_count
+	`).Take(&statsCount)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return map[string]int{
+		"created_count":        statsCount.CreatedCount,
+		"passed_count":         statsCount.ApprovalPassedCount,
+		"reject_count":         statsCount.ApprovalRejectCount,
+		"excute_pending_count": statsCount.ExcutePendingCount,
+		"pending_count":        statsCount.PendingCount,
+		"completed_count":      statsCount.CompletedCount,
+		"failed_count":         statsCount.FailedCount,
+		"total_count":          statsCount.TotalCount,
+	}, nil
+}

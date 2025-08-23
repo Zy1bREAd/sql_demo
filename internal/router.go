@@ -136,6 +136,9 @@ func InitBaseRoutes() {
 
 		// 审计日志
 		rgAuth.POST("/audit/record/list", GetAuditRecord)
+
+		// 仪表盘
+		rgAuth.GET("/console/dashborad", GetDashboradData)
 	})
 }
 
@@ -901,5 +904,17 @@ func GetAuditRecord(ctx *gin.Context) {
 	}
 	common.SuccessResp(ctx, results, "ok", common.WithPagination(common.Pagina{
 		Total: len(results),
+	}))
+}
+
+func GetDashboradData(ctx *gin.Context) {
+	var ticket core.TicketStatusStatsDTO
+	res, err := ticket.StatsCount()
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, res, "ok", common.WithPagination(common.Pagina{
+		Total: len(res),
 	}))
 }

@@ -55,6 +55,18 @@ type AuditRecordDTO struct {
 	CreateAt  time.Time `json:"create_at"`
 }
 
+// TicketStatusStats 票据状态统计 DTO（数据传输对象）
+type TicketStatusStatsDTO struct {
+	CreatedCount        int `json:"created_count"`         // 创建状态数量
+	ApprovalPassedCount int `json:"approval_passed_count"` // 审批通过数量
+	ApprovalRejectCount int `json:"approval_reject_count"` // 审批拒绝数量
+	ExecutePendingCount int `json:"execute_pending_count"` // 执行中（待处理）数量
+	PendingCount        int `json:"pending_count"`         // 待处理数量
+	CompletedCount      int `json:"completed_count"`       // 已完成数量
+	FailedCount         int `json:"failed_count"`          // 失败数量
+	TotalCount          int `json:"total_count"`
+}
+
 func (dto *AuditRecordDTO) toORMData() *dbo.AuditRecordV2 {
 	return &dbo.AuditRecordV2{
 		TaskID:    dto.TaskID,
@@ -333,4 +345,13 @@ func (qdb *QueryDataBaseDTO) DeleteDBInfo() error {
 		}
 		return temp.DeleteOne()
 	})
+}
+
+func (dto *TicketStatusStatsDTO) StatsCount() (map[string]int, error) {
+	var t dbo.Ticket
+	resultMap, err := t.StatsCount()
+	if err != nil {
+		return nil, err
+	}
+	return resultMap, nil
 }
