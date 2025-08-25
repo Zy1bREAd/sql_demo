@@ -4,6 +4,7 @@ package dbo
 import (
 	"errors"
 	"fmt"
+	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/utils"
 	"strings"
@@ -321,11 +322,19 @@ func (v2 *AuditRecordV2) InsertOne(eventType string) error {
 	return nil
 }
 
-// 查看审计日志
-func (v2 *AuditRecordV2) Find() ([]AuditRecordV2, error) {
+func (v2 *AuditRecordV2) Find(pagni *common.Pagniation) ([]AuditRecordV2, error) {
 	var records []AuditRecordV2
-	db := HaveSelfDB()
-	res := db.conn.Where(&v2).Find(&records)
+	dbConn := HaveSelfDB().GetConn()
+	// 查询总条数
+	var total int64
+	if err := dbConn.Model(&AuditRecordV2{}).Where(&v2).Count(&total).Error; err != nil {
+		return nil, err
+	}
+	// 通过指针修改源TotalPages数量
+	pagni.SetTotal(int(total))
+
+	// 正式查询结果
+	res := dbConn.Offset(pagni.Offset).Limit(pagni.PageSize).Preload("User").Where(&v2).Find(&records)
 	if res.Error != nil {
 		return nil, utils.GenerateError("AuditRecordErr", res.Error.Error())
 	}
@@ -631,13 +640,13 @@ func (t *Ticket) StatsCount() (map[string]int, error) {
 		return nil, res.Error
 	}
 	return map[string]int{
-		"created_count":        statsCount.CreatedCount,
-		"passed_count":         statsCount.ApprovalPassedCount,
-		"reject_count":         statsCount.ApprovalRejectCount,
-		"excute_pending_count": statsCount.ExcutePendingCount,
-		"pending_count":        statsCount.PendingCount,
-		"completed_count":      statsCount.CompletedCount,
-		"failed_count":         statsCount.FailedCount,
-		"total_count":          statsCount.TotalCount,
+		"created":        statsCount.CreatedCount,
+		"passed":         statsCount.ApprovalPassedCount,
+		"reject":         statsCount.ApprovalRejectCount,
+		"excute_pending": statsCount.ExcutePendingCount,
+		"pending":        statsCount.PendingCount,
+		"completed":      statsCount.CompletedCount,
+		"failed":         statsCount.FailedCount,
+		"total":          statsCount.TotalCount,
 	}, nil
 }

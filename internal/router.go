@@ -889,24 +889,36 @@ func DeleteDBInfo(ctx *gin.Context) {
 	common.SuccessResp(ctx, nil, "delete db config success")
 }
 
+// 审计日志
 func GetAuditRecord(ctx *gin.Context) {
-	// 筛选条件
-	var auditRecord core.AuditRecordDTO
-	err := ctx.ShouldBindJSON(&auditRecord)
+	// RDTO: Request DTO ,主要接收前端的请求体数据，将其反序列化
+	type RDTO struct {
+		Page     int                 `json:"page"`
+		PageSize int                 `json:"page_size"`
+		Data     core.AuditRecordDTO `json:"conds"`
+	}
+	var dto RDTO
+	err := ctx.ShouldBindJSON(&dto)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	results, err := auditRecord.Get()
+	pagni, err := common.NewPaginatior(dto.Page, dto.PageSize)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	common.SuccessResp(ctx, results, "ok", common.WithPagination(common.Pagina{
-		Total: len(results),
-	}))
+	results, err := dto.Data.Get(&pagni)
+
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	pagni.SetTotalPages(int(pagni.Total+pagni.PageSize-1) / pagni.PageSize)
+	common.SuccessResp(ctx, results, "ok", common.WithPagination(pagni))
 }
 
+// 仪表盘数据
 func GetDashboradData(ctx *gin.Context) {
 	var ticket core.TicketStatusStatsDTO
 	res, err := ticket.StatsCount()
@@ -914,7 +926,7 @@ func GetDashboradData(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	common.SuccessResp(ctx, res, "ok", common.WithPagination(common.Pagina{
+	common.SuccessResp(ctx, res, "ok", common.WithPagination(common.Pagniation{
 		Total: len(res),
 	}))
 }

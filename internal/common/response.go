@@ -46,25 +46,17 @@ const (
 	RecordNotFound = 45
 )
 
-// 分页器
-type Pagina struct {
-	Total      int `json:"total"`
-	Page       int `json:"page"`
-	Size       int `json:"page_size"`
-	TotalPages int `json:"total_pages"`
-}
-
 type JSONResponse struct {
-	Code       int    `json:"status_code"`
-	Message    string `json:"message"`
-	Data       any    `json:"data,omitempty"` // 数据可为空
-	Pagination Pagina `json:"pagination"`
+	Code       int        `json:"status_code"`
+	Message    string     `json:"message"`
+	Data       any        `json:"data,omitempty"` // 数据可为空
+	Pagination Pagniation `json:"pagination"`
 }
 
 type Option func(*JSONResponse)
 
 // 新增分页器设置的选项
-func WithPagination(p Pagina) Option {
+func WithPagination(p Pagniation) Option {
 	return func(j *JSONResponse) {
 		j.Pagination = p
 	}
@@ -77,6 +69,7 @@ func SuccessResp(ctx *gin.Context, data any, msg string, opts ...Option) {
 		Message: msg,
 		Data:    data,
 	}
+	// 选项式函数
 	for _, opt := range opts {
 		opt(jsonResp)
 	}

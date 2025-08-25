@@ -4,11 +4,14 @@ import (
 	"crypto/rand"
 	"fmt"
 	"slices"
+	"sql_demo/internal/common"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"strings"
 	"time"
 )
+
+// DTO: Data Transfer Object + Service Layer
 
 type ConnectInfo struct {
 	Host     string `json:"host"`
@@ -67,15 +70,17 @@ type TicketStatusStatsDTO struct {
 	TotalCount          int `json:"total_count"`
 }
 
+// 部分转换
 func (dto *AuditRecordDTO) toORMData() *dbo.AuditRecordV2 {
 	return &dbo.AuditRecordV2{
 		TaskID:    dto.TaskID,
 		EventType: dto.EventType,
 		CreatAt:   dto.CreateAt,
+		//! 新增按照用户来查找
 	}
 }
 
-func (dto *AuditRecordDTO) Get() ([]AuditRecordDTO, error) {
+func (dto *AuditRecordDTO) Get(pagni *common.Pagniation) ([]AuditRecordDTO, error) {
 	orm := dto.toORMData()
 	// 如果按照用户名查找，需要判断该用户是否存在
 	if dto.UserName != "" {
@@ -90,11 +95,12 @@ func (dto *AuditRecordDTO) Get() ([]AuditRecordDTO, error) {
 		}
 		orm.UserID = user.ID
 	}
-	sqlResult, err := orm.Find()
+	sqlResult, err := orm.Find(pagni)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]AuditRecordDTO, 0, len(sqlResult))
+	// 加入分页
+	result := make([]AuditRecordDTO, 0, pagni.PageSize)
 	for _, record := range sqlResult {
 		result = append(result, AuditRecordDTO{
 			TaskID:    record.TaskID,
@@ -103,7 +109,7 @@ func (dto *AuditRecordDTO) Get() ([]AuditRecordDTO, error) {
 			TaskType:  record.TaskType,
 			ProjectID: record.ProjectID,
 			IssueID:   record.IssueID,
-			UserName:  dto.UserName,
+			UserName:  record.User.Name,
 			Payload:   record.Payload,
 		})
 	}
