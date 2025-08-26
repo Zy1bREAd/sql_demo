@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto/rand"
-	"fmt"
 	"slices"
 	"sql_demo/internal/common"
 	dbo "sql_demo/internal/db"
@@ -38,13 +37,13 @@ type QueryDataBaseDTO struct {
 }
 
 type QueryEnvDTO struct {
-	IsWrite  bool   `json:"is_write"`
-	UID      string `json:"uid"`
-	Name     string `json:"name"`
-	Tag      string `json:"tag"`
-	Desc     string `json:"description"`
-	CreateAt string `json:"create_at"`
-	UpdateAt string `json:"update_at"`
+	IsWrite  bool     `json:"is_write"`
+	UID      string   `json:"uid"`
+	Name     string   `json:"name"`
+	Tag      []string `json:"tag"`
+	Desc     string   `json:"description"`
+	CreateAt string   `json:"create_at"`
+	UpdateAt string   `json:"update_at"`
 }
 
 type AuditRecordDTO struct {
@@ -96,7 +95,7 @@ func (dto *AuditRecordDTO) toCondsData() *dbo.AuditRecordV2 {
 }
 
 func (dto *AuditRecordDTO) Get(pagni *common.Pagniation) ([]AuditRecordDTO, error) {
-	orm := dto.toCondsData()
+	orm := dto.toORMData()
 	// 如果按照用户名查找，需要判断该用户是否存在
 	if dto.UserName != "" {
 		dbConn := dbo.HaveSelfDB().GetConn()
@@ -132,10 +131,14 @@ func (dto *AuditRecordDTO) Get(pagni *common.Pagniation) ([]AuditRecordDTO, erro
 }
 
 func (env *QueryEnvDTO) toORMData() *dbo.QueryEnv {
+	var tagStr string
+	for _, t := range env.Tag {
+		tagStr += t + ","
+	}
 	return &dbo.QueryEnv{
 		UID:         env.UID,
 		Name:        env.Name,
-		Tag:         env.Tag,
+		Tag:         tagStr,
 		Description: env.Desc,
 		IsWrite:     env.IsWrite,
 	}
@@ -294,20 +297,19 @@ func (env *QueryEnvDTO) GetDBList(envNameList []string) (map[string][]QueryDataB
 }
 
 // 获取所有的Env
-func (env *QueryEnvDTO) GetAllData() ([]QueryEnvDTO, error) {
+func (env *QueryEnvDTO) Get(pagni *common.Pagniation) ([]QueryEnvDTO, error) {
 	orm := env.toORMData()
-	res, err := orm.FindAll()
+	res, err := orm.Find(pagni)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(dbo.GetDBPoolManager().Pool)
 	// 格式化好DTO进行返回
 	resultList := make([]QueryEnvDTO, 0, len(res))
 	for _, env := range res {
 		resultList = append(resultList, QueryEnvDTO{
 			UID:      env.UID,
 			Name:     env.Name,
-			Tag:      env.Tag,
+			Tag:      strings.Split(env.Tag, ","),
 			Desc:     env.Description,
 			CreateAt: env.CreateAt.Format("20060102150405"),
 			UpdateAt: env.UpdateAt.Format("20060102150405"),

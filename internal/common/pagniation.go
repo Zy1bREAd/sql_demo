@@ -13,6 +13,7 @@ type Pagniation struct {
 	// Data       []any `json:"data"`   // 当前页的数据
 }
 
+// 新建分页器，会按照Page和PageSize初始化Offset
 func NewPaginatior(page, pageSize int) (Pagniation, error) {
 	if page < 1 {
 		return Pagniation{}, utils.GenerateError("PaginatiorErr", "Page must be >= 1")

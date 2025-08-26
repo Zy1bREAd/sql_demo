@@ -125,12 +125,12 @@ func InitBaseRoutes() {
 
 		// 配置管理
 		rgAuth.POST("/env/create", CreateEnvInfo)
-		rgAuth.GET("/env/list", GetEnvConfigList)
+		rgAuth.POST("/env/list", GetEnvConfigList)
 		rgAuth.PUT("/env/update/:uid", UpdateEnvInfo)
 		rgAuth.DELETE("/env/delete/:uid", DeleteEnvInfo)
 
 		rgAuth.POST("/sources/create", CreateDBInfo)
-		rgAuth.GET("/sources/list", GetDBConfigList)
+		rgAuth.POST("/sources/list", GetDBConfigList)
 		rgAuth.PUT("/sources/update/:uid", UpdateDBInfo)
 		rgAuth.DELETE("/sources/delete/:uid", DeleteDBInfo)
 
@@ -810,13 +810,30 @@ func GetDBConfigList(ctx *gin.Context) {
 
 // 获取全部Env信息
 func GetEnvConfigList(ctx *gin.Context) {
-	var env core.QueryEnvDTO
-	result, err := env.GetAllData()
+	// RDTO: Request DTO ,主要接收前端的请求体数据，将其反序列化
+	type RDTO struct {
+		Page     int              `json:"page"`
+		PageSize int              `json:"page_size"`
+		Data     core.QueryEnvDTO `json:"conds"`
+	}
+	var dto RDTO
+	err := ctx.ShouldBindJSON(&dto)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	common.SuccessResp(ctx, result, "get env data success")
+	pagni, err := common.NewPaginatior(dto.Page, dto.PageSize)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	result, err := dto.Data.Get(&pagni)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	pagni.SetTotalPages(int(pagni.Total+pagni.PageSize-1) / pagni.PageSize)
+	common.SuccessResp(ctx, result, "get env data success", common.WithPagination(pagni))
 }
 
 func UpdateEnvInfo(ctx *gin.Context) {

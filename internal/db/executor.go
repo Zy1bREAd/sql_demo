@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/utils"
 	"strings"
@@ -63,7 +64,7 @@ func LoadInDB(isReload bool) {
 		// 新增读取数据库加载到内存中
 		var envORM QueryEnv = QueryEnv{}
 		var dbORM QueryDataBase = QueryDataBase{}
-		envList, err := envORM.FindAll()
+		envList, err := envORM.Find(&common.Pagniation{})
 		if err != nil {
 			panic(err)
 		}

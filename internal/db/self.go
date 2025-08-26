@@ -339,8 +339,10 @@ func (v2 *AuditRecordV2) Find(pagni *common.Pagniation) ([]AuditRecordV2, error)
 	}
 	// 通过指针修改源Total数量
 	//! 防止无效分页请求
-	if (int(total)/pagni.PageSize)+1 < pagni.Page {
-		return nil, utils.GenerateError("PageErr", "Page must be too big")
+	if pagni.Page != 0 && pagni.PageSize != 0 {
+		if (int(total)/pagni.PageSize)+1 < pagni.Page {
+			return nil, utils.GenerateError("PageErr", "Page must be too big")
+		}
 	}
 	pagni.SetTotal(int(total))
 
@@ -417,10 +419,25 @@ func (env *QueryEnv) CreateOne() error {
 }
 
 // 默认查找全部Env
-func (env *QueryEnv) FindAll() ([]QueryEnv, error) {
+func (env *QueryEnv) Find(pagni *common.Pagniation) ([]QueryEnv, error) {
 	var envList []QueryEnv
-	db := HaveSelfDB().GetConn()
-	findRes := db.Find(&envList)
+	dbConn := HaveSelfDB().GetConn()
+	// 构造基础查询链
+	tx := dbConn.Model(&QueryEnv{}).Where(&env)
+	// 查询总条数
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	//! 防止无效分页请求(前提是分页器有数据，像初始化时分页器无数据则无需判断)
+	if pagni.Page != 0 && pagni.PageSize != 0 {
+		if (int(total)/pagni.PageSize)+1 < pagni.Page {
+			return nil, utils.GenerateError("PageErr", "Page must be too big")
+		}
+	}
+	pagni.SetTotal(int(total))
+
+	findRes := tx.Offset(pagni.Offset).Limit(pagni.PageSize).Find(&envList)
 	if findRes.Error != nil {
 		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
