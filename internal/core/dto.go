@@ -55,7 +55,10 @@ type AuditRecordDTO struct {
 	EventType string    `json:"event_type"`
 	TaskID    string    `json:"task_id"`
 	Payload   string    `json:"payload"`
-	CreateAt  time.Time `json:"create_at"`
+	CreateAt  time.Time `json:"-"`
+	// 时间范围筛选条件项
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
 }
 
 // TicketStatusStats 票据状态统计 DTO（数据传输对象）
@@ -75,13 +78,25 @@ func (dto *AuditRecordDTO) toORMData() *dbo.AuditRecordV2 {
 	return &dbo.AuditRecordV2{
 		TaskID:    dto.TaskID,
 		EventType: dto.EventType,
-		CreatAt:   dto.CreateAt,
+		StartTime: dto.StartTime,
+		EndTime:   dto.EndTime,
+		//! 新增按照用户来查找
+	}
+}
+
+// 转化成DB查询的条件
+func (dto *AuditRecordDTO) toCondsData() *dbo.AuditRecordV2 {
+	return &dbo.AuditRecordV2{
+		TaskID:    dto.TaskID,
+		EventType: dto.EventType,
+		StartTime: dto.StartTime,
+		EndTime:   dto.EndTime,
 		//! 新增按照用户来查找
 	}
 }
 
 func (dto *AuditRecordDTO) Get(pagni *common.Pagniation) ([]AuditRecordDTO, error) {
-	orm := dto.toORMData()
+	orm := dto.toCondsData()
 	// 如果按照用户名查找，需要判断该用户是否存在
 	if dto.UserName != "" {
 		dbConn := dbo.HaveSelfDB().GetConn()
@@ -105,7 +120,7 @@ func (dto *AuditRecordDTO) Get(pagni *common.Pagniation) ([]AuditRecordDTO, erro
 		result = append(result, AuditRecordDTO{
 			TaskID:    record.TaskID,
 			EventType: record.EventType,
-			CreateAt:  record.CreatAt,
+			CreateAt:  record.CreateAt,
 			TaskType:  record.TaskType,
 			ProjectID: record.ProjectID,
 			IssueID:   record.IssueID,

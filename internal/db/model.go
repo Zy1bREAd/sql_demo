@@ -39,7 +39,7 @@ type AuditRecordV2 struct {
 	EventType string    `gorm:"type:varchar(64);not null"`
 	Payload   string    `gorm:""` // 记录审计的载体，以JSON格式
 	TaskType  int       `gorm:"type:smallint"`
-	CreatAt   time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	CreateAt  time.Time `gorm:"type:datetime(0);autoCreateTime"`
 	// 关联User表
 	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user_v2"`
 	UserID uint
@@ -47,6 +47,10 @@ type AuditRecordV2 struct {
 	// 关联GitLab
 	ProjectID uint `gorm:"type:int"`
 	IssueID   uint `gorm:"type:int"`
+
+	// 条件筛选
+	StartTime string `gorm:"-"`
+	EndTime   string `gorm:"-"`
 }
 
 func (audit *AuditRecordV2) TableName() string {

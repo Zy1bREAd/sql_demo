@@ -395,7 +395,6 @@ func SSOCallBack(ctx *gin.Context) {
 
 	var oauthUser auth.GitLabUser
 	err = json.NewDecoder(resp.Body).Decode(&oauthUser)
-	fmt.Println("debug print user info -----", oauthUser)
 	if err != nil {
 		common.ErrorResp(ctx, "decode user info is failed, "+err.Error())
 		return
@@ -587,7 +586,7 @@ func DownloadFile(ctx *gin.Context) {
 		// 日志审计插入v2
 		auditRecord.ID = 0
 		auditRecord.UserID = utils.StrToUint(userId)
-		auditRecord.CreatAt = time.Now()
+		auditRecord.CreateAt = time.Now()
 
 		err := auditRecord.InsertOne("RESULT_DOWNLOAD")
 		if err != nil {
@@ -670,7 +669,7 @@ func showTempQueryResult(ctx *gin.Context) {
 		// 日志审计插入v2
 		auditRecord.ID = 0
 		auditRecord.UserID = utils.StrToUint(userId)
-		auditRecord.CreatAt = time.Now()
+		auditRecord.CreateAt = time.Now()
 
 		err := auditRecord.InsertOne("RESULT_VIEW")
 		if err != nil {

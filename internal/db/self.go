@@ -325,16 +325,27 @@ func (v2 *AuditRecordV2) InsertOne(eventType string) error {
 func (v2 *AuditRecordV2) Find(pagni *common.Pagniation) ([]AuditRecordV2, error) {
 	var records []AuditRecordV2
 	dbConn := HaveSelfDB().GetConn()
+	// 抽象基础查询链
+	tx := dbConn.Model(&AuditRecordV2{}).Where(&v2)
+	// 判断时间范围筛选条件是否有效
+	if v2.StartTime != "" && v2.EndTime != "" {
+		//! 没有判断endtime小于starttime的情况
+		tx = tx.Where("create_at BETWEEN ? AND ?", v2.StartTime, v2.EndTime)
+	}
 	// 查询总条数
 	var total int64
-	if err := dbConn.Model(&AuditRecordV2{}).Where(&v2).Count(&total).Error; err != nil {
+	if err := tx.Count(&total).Error; err != nil {
 		return nil, err
 	}
-	// 通过指针修改源TotalPages数量
+	// 通过指针修改源Total数量
+	//! 防止无效分页请求
+	if (int(total)/pagni.PageSize)+1 < pagni.Page {
+		return nil, utils.GenerateError("PageErr", "Page must be too big")
+	}
 	pagni.SetTotal(int(total))
 
 	// 正式查询结果
-	res := dbConn.Offset(pagni.Offset).Limit(pagni.PageSize).Preload("User").Where(&v2).Find(&records)
+	res := tx.Offset(pagni.Offset).Limit(pagni.PageSize).Find(&records)
 	if res.Error != nil {
 		return nil, utils.GenerateError("AuditRecordErr", res.Error.Error())
 	}

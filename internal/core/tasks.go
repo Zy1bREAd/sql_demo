@@ -191,7 +191,7 @@ func (et *ExportTask) Submit() {
 			return
 		}
 		auditRecord.Payload = string(exportPayload)
-		auditRecord.CreatAt = time.Now()
+		auditRecord.CreateAt = time.Now()
 
 		err = auditRecord.InsertOne("RESULT_EXPORT")
 		if err != nil {
