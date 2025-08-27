@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/rand"
+	"fmt"
 	"slices"
 	"sql_demo/internal/common"
 	dbo "sql_demo/internal/db"
@@ -311,8 +312,8 @@ func (env *QueryEnvDTO) Get(pagni *common.Pagniation) ([]QueryEnvDTO, error) {
 			Name:     env.Name,
 			Tag:      strings.Split(env.Tag, ","),
 			Desc:     env.Description,
-			CreateAt: env.CreateAt.Format("20060102150405"),
-			UpdateAt: env.UpdateAt.Format("20060102150405"),
+			CreateAt: env.CreateAt.Format("2006-01-02 15:04:05"),
+			UpdateAt: env.UpdateAt.Format("2006-01-02 15:04:05"),
 			IsWrite:  env.IsWrite,
 		})
 	}
@@ -340,6 +341,7 @@ func (env *QueryEnvDTO) UpdateEnvInfo() error {
 	return hotReloadDBCfg(func() error {
 		updateData := env.toORMData()
 		tmpEnv := dbo.QueryEnv{UID: env.UID}
+		fmt.Println("debug -data", updateData)
 		return tmpEnv.UpdateOne(updateData)
 	})
 }

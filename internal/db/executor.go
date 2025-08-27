@@ -83,9 +83,10 @@ func LoadInDB(isReload bool) {
 					continue
 				}
 
+				fmt.Println("debug print-errinfo", dbConf.Password, dbConf.Salt)
 				pwd, err := utils.DecryptAES256([]byte(dbConf.Password), dbConf.Salt)
 				if err != nil {
-					utils.ErrorPrint("DecryptPwdErr", err.Error())
+					utils.ErrorPrint("DecryptPwdErr", fmt.Sprintf("%s: %s", err.Error(), dbConf.Name))
 					continue
 				}
 				istCfg := MySQLConfig{
@@ -101,7 +102,7 @@ func LoadInDB(isReload bool) {
 				// 处理Exclude列表(分库和表)
 				excludeTableList := strings.Split(strings.TrimSuffix(dbConf.ExcludeTable, ","), ",")
 				excludeDBList := strings.Split(strings.TrimSuffix(dbConf.ExcludeDB, ","), ",")
-				// Split至少会返回一个元素(!)
+				// Split至少会返回一个元素(!), 因此需要处理单个空元素的情况。
 				if excludeTableList[0] == "" {
 					istCfg.ExcludeTable = nil
 				} else {
@@ -128,7 +129,7 @@ func LoadInDB(isReload bool) {
 			panic(err)
 		}
 	}
-	fmt.Println(config.Databases)
+	// fmt.Println(config.Databases)
 	// 注册DB实例进入池子
 	err := registerPool(isReload, &config)
 	if err != nil {

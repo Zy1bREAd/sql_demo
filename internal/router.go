@@ -770,12 +770,12 @@ func CreateDBInfo(ctx *gin.Context) {
 	var dbInfo core.QueryDataBaseDTO
 	err := ctx.ShouldBindJSON(&dbInfo)
 	if err != nil {
-		common.DefaultResp(ctx, 555, nil, err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
 	err = dbInfo.Create()
 	if err != nil {
-		common.DefaultResp(ctx, 555, nil, err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
 	common.SuccessResp(ctx, nil, "create success")
@@ -786,12 +786,21 @@ func CreateEnvInfo(ctx *gin.Context) {
 	var envInfo core.QueryEnvDTO
 	err := ctx.ShouldBindJSON(&envInfo)
 	if err != nil {
-		common.DefaultResp(ctx, 555, nil, err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	// 表单校验
+	if envInfo.Name == "" {
+		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("ValidateError", "data is not null").Error())
+		return
+	}
+	if len(envInfo.Name) < 2 || len(envInfo.Name) > 16 {
+		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("ValidateError", "data length should be 2 to 16").Error())
 		return
 	}
 	err = envInfo.Create()
 	if err != nil {
-		common.DefaultResp(ctx, 555, nil, err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
 	common.SuccessResp(ctx, nil, "create success")
@@ -839,14 +848,14 @@ func GetEnvConfigList(ctx *gin.Context) {
 func UpdateEnvInfo(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 	if uid == "" {
-		common.DefaultResp(ctx, 555, nil, "Invalid UID")
+		common.DefaultResp(ctx, common.RespFailed, nil, "Invalid UID")
 		return
 	}
 	// 解析用户要更新的数据体
 	var envInfo core.QueryEnvDTO
 	err := ctx.ShouldBindJSON(&envInfo)
 	if err != nil {
-		common.DefaultResp(ctx, 555, nil, "request body is error: "+err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
 		return
 	}
 	envInfo.UID = uid
@@ -857,20 +866,20 @@ func UpdateEnvInfo(ctx *gin.Context) {
 func UpdateDBInfo(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 	if uid == "" {
-		common.DefaultResp(ctx, 555, nil, "Invalid UID")
+		common.DefaultResp(ctx, common.RespFailed, nil, "Invalid UID")
 		return
 	}
 	// 解析用户数据体
 	var envInfo core.QueryDataBaseDTO
 	err := ctx.ShouldBindJSON(&envInfo)
 	if err != nil {
-		common.DefaultResp(ctx, 555, nil, "request body is error: "+err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
 		return
 	}
 	envInfo.UID = uid
 	err = envInfo.UpdateDBInfo()
 	if err != nil {
-		common.DefaultResp(ctx, 555, nil, "request body is error: "+err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
 		return
 	}
 	common.SuccessResp(ctx, nil, "update db config success")
@@ -879,7 +888,7 @@ func UpdateDBInfo(ctx *gin.Context) {
 func DeleteEnvInfo(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 	if uid == "" {
-		common.DefaultResp(ctx, 555, nil, "Invalid  UID")
+		common.DefaultResp(ctx, common.RespFailed, nil, "Invalid  UID")
 		return
 	}
 	// 解析用户要更新的数据体
@@ -892,14 +901,14 @@ func DeleteEnvInfo(ctx *gin.Context) {
 func DeleteDBInfo(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 	if uid == "" {
-		common.DefaultResp(ctx, 555, nil, "Invalid UID")
+		common.DefaultResp(ctx, common.RespFailed, nil, "Invalid UID")
 		return
 	}
 	var envInfo core.QueryDataBaseDTO
 	envInfo.UID = uid
 	err := envInfo.DeleteDBInfo()
 	if err != nil {
-		common.DefaultResp(ctx, 555, nil, "request body is error: "+err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
 		return
 	}
 	common.SuccessResp(ctx, nil, "delete db config success")

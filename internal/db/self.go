@@ -343,11 +343,12 @@ func (v2 *AuditRecordV2) Find(pagni *common.Pagniation) ([]AuditRecordV2, error)
 		if (int(total)/pagni.PageSize)+1 < pagni.Page {
 			return nil, utils.GenerateError("PageErr", "Page must be too big")
 		}
+		tx = tx.Offset(pagni.Offset).Limit(pagni.PageSize)
 	}
 	pagni.SetTotal(int(total))
 
 	// 正式查询结果
-	res := tx.Offset(pagni.Offset).Limit(pagni.PageSize).Find(&records)
+	res := tx.Find(&records)
 	if res.Error != nil {
 		return nil, utils.GenerateError("AuditRecordErr", res.Error.Error())
 	}
@@ -434,10 +435,11 @@ func (env *QueryEnv) Find(pagni *common.Pagniation) ([]QueryEnv, error) {
 		if (int(total)/pagni.PageSize)+1 < pagni.Page {
 			return nil, utils.GenerateError("PageErr", "Page must be too big")
 		}
+		tx = tx.Offset(pagni.Offset).Limit(pagni.PageSize)
 	}
 	pagni.SetTotal(int(total))
 
-	findRes := tx.Offset(pagni.Offset).Limit(pagni.PageSize).Find(&envList)
+	findRes := tx.Find(&envList)
 	if findRes.Error != nil {
 		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
