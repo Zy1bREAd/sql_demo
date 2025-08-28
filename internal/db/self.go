@@ -446,6 +446,21 @@ func (env *QueryEnv) Find(pagni *common.Pagniation) ([]QueryEnv, error) {
 	return envList, nil
 }
 
+// 从DB中查找EnvName
+func (env *QueryEnv) FindEnvName() ([]string, error) {
+	db := HaveSelfDB().GetConn()
+	var envNames []QueryEnv
+	findRes := db.Select("name").Order("name").Find(&envNames)
+	if findRes.Error != nil {
+		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+	}
+	var result []string
+	for _, e := range envNames {
+		result = append(result, e.Name)
+	}
+	return result, nil
+}
+
 // 按照指定ID查找环境
 func (env *QueryEnv) FindById(uid string) (*QueryEnv, error) {
 	db := HaveSelfDB().GetConn()
@@ -459,15 +474,43 @@ func (env *QueryEnv) FindById(uid string) (*QueryEnv, error) {
 	return env, nil
 }
 
-// 默认查找全部
-func (env *QueryDataBase) Find() ([]QueryDataBase, error) {
+func (dbInfo *QueryDataBase) FindEnvID(envName string) error {
+	db := HaveSelfDB().GetConn()
+	var envResult QueryEnv
+	res := db.Model(&QueryEnv{}).Where("name = ?", envName).Last(&envResult)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return utils.GenerateError("FindError", "The env is not exist")
+	}
+	dbInfo.EnvID = envResult.ID
+	return nil
+}
+
+// 查找全部
+func (dbInfo *QueryDataBase) Find(pagni *common.Pagniation) ([]QueryDataBase, error) {
 	var dbList []QueryDataBase
 	db := HaveSelfDB().GetConn()
-	findRes := db.Preload("EnvForKey").Find(&dbList)
+	// 构造基础查询链
+	tx := db.Model(&QueryDataBase{}).Preload("EnvForKey")
+	// 查询总条数
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	//! 防止无效分页请求(前提是分页器有数据，像初始化时分页器无数据则无需判断)
+	if pagni.Page != 0 && pagni.PageSize != 0 {
+		if (int(total)/pagni.PageSize)+1 < pagni.Page {
+			return nil, utils.GenerateError("PageErr", "Page must be too big")
+		}
+		tx = tx.Offset(pagni.Offset).Limit(pagni.PageSize)
+	}
+	pagni.SetTotal(int(total))
+	findRes := tx.Find(&dbList)
 	if findRes.Error != nil {
 		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
-	// resultList := make([]QueryEnv, findRes.RowsAffected+1)
 	return dbList, nil
 }
 

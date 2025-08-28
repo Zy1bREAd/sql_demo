@@ -16,6 +16,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type ConnectInfo struct {
+	Host     string `json:"host"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	Port     string `json:"port"`
+	TLS      bool   `json:"tls"`
+	MaxConn  int    `json:"max_conn"`
+	IdleTime int    `json:"idle_time"`
+}
+
 // 业务数据库配置（从特定源读取）
 type AllEnvDBConfig struct {
 	Databases map[string]map[string]MySQLConfig `yaml:"databases"` // env -> service -> db_config
@@ -68,7 +78,7 @@ func LoadInDB(isReload bool) {
 		if err != nil {
 			panic(err)
 		}
-		dbList, err := dbORM.Find()
+		dbList, err := dbORM.Find(&common.Pagniation{})
 		if err != nil {
 			panic(err)
 		}
@@ -360,16 +370,16 @@ func GetDBPoolManager() *DBPoolManager {
 }
 
 // 打开数据库实例连接
-func newDBInstance(usr, pwd, host, port string, maxConn, idleTime int) (*DBInstance, error) {
+func newDBInstance(conn ConnectInfo) (*DBInstance, error) {
 	// e.g: zabbix:zabbix_password@tcp(124.220.17.5:23366)/zabbix
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/mysql", usr, pwd, host, port)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/mysql", conn.User, conn.Password, conn.Host, conn.Port)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return nil, err
 	}
-	db.SetConnMaxIdleTime(time.Duration(idleTime) * time.Second)
-	db.SetMaxOpenConns(maxConn)
-	db.SetMaxIdleConns(maxConn)
+	db.SetConnMaxIdleTime(time.Duration(conn.IdleTime) * time.Second)
+	db.SetMaxOpenConns(conn.MaxConn)
+	db.SetMaxIdleConns(conn.MaxConn)
 	err = db.Ping()
 	if err != nil {
 		fmt.Println(dsn)
@@ -380,6 +390,22 @@ func newDBInstance(usr, pwd, host, port string, maxConn, idleTime int) (*DBInsta
 	}, nil
 }
 
+// 建立并测试数据库实例连接
+func TestDBIstConn(conn ConnectInfo) error {
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/mysql", conn.User, conn.Password, conn.Host, conn.Port)
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return err
+	}
+	err = db.Ping()
+	if err != nil {
+		utils.DebugPrint("DBPingErr", err.Error())
+		return err
+	}
+	defer db.Close()
+	return nil
+}
+
 // 解析配置并注册
 func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
 	manager.exclude = make([]string, 0, 20)
@@ -388,7 +414,14 @@ func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
 			manager.Pool[env] = make(map[string]*DBInstance, len(dbList))
 		}
 		for istName, dbConf := range dbList {
-			db, err := newDBInstance(dbConf.User, dbConf.Password, dbConf.Host, dbConf.Port, dbConf.MaxConn, dbConf.IdleTime)
+			db, err := newDBInstance(ConnectInfo{
+				User:     dbConf.User,
+				Password: dbConf.Password,
+				Host:     dbConf.Host,
+				Port:     dbConf.Port,
+				MaxConn:  dbConf.MaxConn,
+				IdleTime: dbConf.IdleTime,
+			})
 			if err != nil {
 				utils.ErrorPrint("DBRegisterError", istName+" database register is failed, "+err.Error())
 				continue

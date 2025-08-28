@@ -126,6 +126,7 @@ func InitBaseRoutes() {
 		// 配置管理
 		rgAuth.POST("/env/create", CreateEnvInfo)
 		rgAuth.POST("/env/list", GetEnvConfigList)
+		rgAuth.GET("/env/name/list", GetEnvNameList)
 		rgAuth.PUT("/env/update/:uid", UpdateEnvInfo)
 		rgAuth.DELETE("/env/delete/:uid", DeleteEnvInfo)
 
@@ -133,6 +134,7 @@ func InitBaseRoutes() {
 		rgAuth.POST("/sources/list", GetDBConfigList)
 		rgAuth.PUT("/sources/update/:uid", UpdateDBInfo)
 		rgAuth.DELETE("/sources/delete/:uid", DeleteDBInfo)
+		rgAuth.POST("/sources/connection/test", SourceConnTest)
 
 		// 审计日志
 		rgAuth.POST("/audit/record/list", GetAuditRecord)
@@ -773,6 +775,21 @@ func CreateDBInfo(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
+	// 表单校验
+	portInt, err := strconv.ParseInt(dbInfo.Connection.Port, 10, 64)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("ValidateErr", err.Error()).Error())
+		return
+	}
+	if portInt <= 0 || portInt > 65535 {
+		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("ValidateErr", "Port Range is 0 to 65535").Error())
+		return
+	}
+	pwdLength := len(dbInfo.Connection.Password)
+	if pwdLength < 6 && pwdLength > 16 {
+		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("ValidateErr", "Password Length is 6 to 16").Error())
+		return
+	}
 	err = dbInfo.Create()
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -808,13 +825,49 @@ func CreateEnvInfo(ctx *gin.Context) {
 
 // 获取全部数据源信息
 func GetDBConfigList(ctx *gin.Context) {
-	var env core.QueryEnvDTO
-	result, err := env.GetDBList(nil)
+	// RDTO: Request DTO ,主要接收前端的请求体数据，将其反序列化
+	type RDTO struct {
+		Page     int              `json:"page"`
+		PageSize int              `json:"page_size"`
+		Data     core.QueryEnvDTO `json:"conds"`
+	}
+	var dto RDTO
+	err := ctx.ShouldBindJSON(&dto)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	common.SuccessResp(ctx, result, "get db all data success")
+	pagni, err := common.NewPaginatior(dto.Page, dto.PageSize)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	var env core.QueryEnvDTO
+	result, err := env.GetDBList(nil, &pagni)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	pagni.SetTotalPages(int(pagni.Total+pagni.PageSize-1) / pagni.PageSize)
+	common.SuccessResp(ctx, result, "get db all data success", common.WithPagination(pagni))
+}
+
+func SourceConnTest(ctx *gin.Context) {
+	var connInfo dbo.ConnectInfo
+	ctx.ShouldBindJSON(&connInfo)
+	err := dbo.TestDBIstConn(connInfo)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, "ConnectError: "+err.Error())
+		return
+	}
+	common.SuccessResp(ctx, "OK", "source connection is OK")
+}
+
+// 仅获取Env名字的函数
+func GetEnvNameList(ctx *gin.Context) {
+	var dto core.QueryEnvDTO
+	result := dto.GetEnvNameList()
+	common.SuccessResp(ctx, result, "get env name list success")
 }
 
 // 获取全部Env信息

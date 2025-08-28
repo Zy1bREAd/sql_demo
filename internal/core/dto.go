@@ -13,28 +13,20 @@ import (
 
 // DTO: Data Transfer Object + Service Layer
 
-type ConnectInfo struct {
-	Host     string `json:"host"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	Port     string `json:"port"`
-	TLS      bool   `json:"tls"`
-}
-
 type QueryDataBaseDTO struct {
-	EnvID        uint        `json:"env_id"` // 关键指定EnvID
-	MaxConn      int         `json:"max_conn"`
-	IdleTime     int         `json:"idle_time"`
-	IsWrite      bool        `json:"is_write"`
-	Name         string      `json:"name"`
-	UID          string      `json:"uid"`
-	EnvName      string      `json:"env_name"`
-	Service      string      `json:"service"`
-	Desc         string      `json:"description,omitempty"`
-	UpdateAt     time.Time   `json:"-"`
-	ExcludeDB    []string    `json:"exclude_db"`    // 排除的数据库名
-	ExcludeTable []string    `json:"exclude_table"` // 排除的数据表名
-	Connection   ConnectInfo `json:"connection"`    // 连接信息
+	EnvID        uint            `json:"env_id"` // 关键指定EnvID
+	IsWrite      bool            `json:"is_write"`
+	Name         string          `json:"name"`
+	UID          string          `json:"uid"`
+	EnvName      string          `json:"env_name"`
+	Service      string          `json:"service"`
+	Desc         string          `json:"description,omitempty"`
+	CreateAt     string          `json:"create_at"`
+	UpdateAt     string          `json:"update_at"`
+	ExcludeDB    []string        `json:"exclude_db"`    // 排除的数据库名
+	ExcludeTable []string        `json:"exclude_table"` // 排除的数据表名
+	Connection   dbo.ConnectInfo `json:"connection"`    // 连接信息
+
 }
 
 type QueryEnvDTO struct {
@@ -170,13 +162,13 @@ func (qdb *QueryDataBaseDTO) toORMData() *dbo.QueryDataBase {
 	return &dbo.QueryDataBase{
 		EnvID:        qdb.EnvID,
 		UID:          qdb.UID,
-		MaxConn:      qdb.MaxConn,
-		IdleTime:     qdb.IdleTime,
+		MaxConn:      qdb.Connection.MaxConn,
+		IdleTime:     qdb.Connection.IdleTime,
 		IsWrite:      qdb.IsWrite,
 		Name:         qdb.Name,
 		Service:      qdb.Service,
 		Description:  qdb.Desc,
-		UpdateAt:     qdb.UpdateAt,
+		UpdateAt:     time.Now(),
 		ExcludeDB:    excludeDBStr,
 		ExcludeTable: excludeTableStr,
 		Host:         qdb.Connection.Host,
@@ -213,6 +205,10 @@ func (qdb *QueryDataBaseDTO) Create() error {
 	return hotReloadDBCfg(func() error {
 		orm := qdb.toORMData()
 		orm.UID = utils.GenerateUUIDKey()
+		err := orm.FindEnvID(qdb.EnvName)
+		if err != nil {
+			return err
+		}
 		return orm.CreateOne()
 	})
 }
@@ -252,19 +248,20 @@ func (env *QueryEnvDTO) GetEnvNameList() []string {
 }
 
 // 获取所有环境下的db实例（若切片参数没有定义则是获取全部）
-func (env *QueryEnvDTO) GetDBList(envNameList []string) (map[string][]QueryDataBaseDTO, error) {
+func (env *QueryEnvDTO) GetDBList(envNameList []string, pagni *common.Pagniation) (map[string][]QueryDataBaseDTO, error) {
 	// 获取所有Env列表
 	var allDBInfoMap map[string][]QueryDataBaseDTO = make(map[string][]QueryDataBaseDTO)
-	if len(envNameList) == 0 {
-		envNameList = env.GetEnvNameList()
-	}
-	for _, env := range envNameList {
-		allDBInfoMap[env] = nil
-	}
+	// if len(envNameList) == 0 {
+	// 	envNameList = env.GetEnvNameList()
+	// }
+	// 决定是否要将没有数据源信息的Env给添加进来
+	// for _, env := range envNameList {
+	// 	allDBInfoMap[env] = nil
+	// }
 
 	// 添加每个Env下的db信息列表
 	var dbDTO QueryDataBaseDTO
-	dbResult, err := dbDTO.toORMData().Find()
+	dbResult, err := dbDTO.toORMData().Find(pagni)
 	if err != nil {
 		return nil, err
 	}
@@ -281,17 +278,19 @@ func (env *QueryEnvDTO) GetDBList(envNameList []string) (map[string][]QueryDataB
 			Desc:         data.Description,
 			ExcludeDB:    strings.Split(data.ExcludeDB, ","),
 			ExcludeTable: strings.Split(data.ExcludeTable, ","),
-			MaxConn:      data.MaxConn,
-			IdleTime:     data.IdleTime,
 			IsWrite:      data.IsWrite,
 			EnvID:        data.EnvID,
-			Connection: ConnectInfo{
+			Connection: dbo.ConnectInfo{
 				User: data.User,
 				// Password: data.Password,
-				Host: data.Host,
-				Port: data.Port,
-				TLS:  data.TLS,
+				Host:     data.Host,
+				Port:     data.Port,
+				TLS:      data.TLS,
+				MaxConn:  data.MaxConn,
+				IdleTime: data.IdleTime,
 			},
+			CreateAt: data.CreateAt.Format("2006-01-02 15:04:05"),
+			UpdateAt: data.UpdateAt.Format("2006-01-02 15:04:05"),
 		})
 	}
 	return allDBInfoMap, nil
