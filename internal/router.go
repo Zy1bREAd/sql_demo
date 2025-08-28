@@ -131,10 +131,11 @@ func InitBaseRoutes() {
 		rgAuth.DELETE("/env/delete/:uid", DeleteEnvInfo)
 
 		rgAuth.POST("/sources/create", CreateDBInfo)
-		rgAuth.POST("/sources/list", GetDBConfigList)
+		rgAuth.POST("/sources/list", GetDBConfig)
 		rgAuth.PUT("/sources/update/:uid", UpdateDBInfo)
 		rgAuth.DELETE("/sources/delete/:uid", DeleteDBInfo)
 		rgAuth.POST("/sources/connection/test", SourceConnTest)
+		rgAuth.GET("/sources/search", SearchDBConfig)
 
 		// 审计日志
 		rgAuth.POST("/audit/record/list", GetAuditRecord)
@@ -824,7 +825,7 @@ func CreateEnvInfo(ctx *gin.Context) {
 }
 
 // 获取全部数据源信息
-func GetDBConfigList(ctx *gin.Context) {
+func GetDBConfig(ctx *gin.Context) {
 	// RDTO: Request DTO ,主要接收前端的请求体数据，将其反序列化
 	type RDTO struct {
 		Page     int              `json:"page"`
@@ -842,14 +843,45 @@ func GetDBConfigList(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	var env core.QueryEnvDTO
-	result, err := env.GetDBList(nil, &pagni)
+	var source core.QueryDataBaseDTO
+	result, err := source.GetorSearch("", &pagni)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
 	pagni.SetTotalPages(int(pagni.Total+pagni.PageSize-1) / pagni.PageSize)
 	common.SuccessResp(ctx, result, "get db all data success", common.WithPagination(pagni))
+}
+
+// 获取全部数据源信息
+func SearchDBConfig(ctx *gin.Context) {
+	// 依靠URL上的Params作为参数
+	kw := ctx.Query("keyword")
+	page := ctx.Query("page")
+	pageSize := ctx.Query("page_size")
+	pageInt, err := strconv.ParseInt(page, 10, 64)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	pageSizeInt, err := strconv.ParseInt(pageSize, 10, 64)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	pagni, err := common.NewPaginatior(int(pageInt), int(pageSizeInt))
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	var source core.QueryDataBaseDTO
+	result, err := source.GetorSearch(kw, &pagni)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	pagni.SetTotalPages(int(pagni.Total+pagni.PageSize-1) / pagni.PageSize)
+	common.SuccessResp(ctx, result, "search db configs success", common.WithPagination(pagni))
 }
 
 func SourceConnTest(ctx *gin.Context) {

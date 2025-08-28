@@ -248,23 +248,24 @@ func (env *QueryEnvDTO) GetEnvNameList() []string {
 }
 
 // 获取所有环境下的db实例（若切片参数没有定义则是获取全部）
-func (env *QueryEnvDTO) GetDBList(envNameList []string, pagni *common.Pagniation) (map[string][]QueryDataBaseDTO, error) {
+func (source *QueryDataBaseDTO) GetorSearch(keyword string, pagni *common.Pagniation) (map[string][]QueryDataBaseDTO, error) {
 	// 获取所有Env列表
 	var allDBInfoMap map[string][]QueryDataBaseDTO = make(map[string][]QueryDataBaseDTO)
-	// if len(envNameList) == 0 {
-	// 	envNameList = env.GetEnvNameList()
-	// }
-	// 决定是否要将没有数据源信息的Env给添加进来
-	// for _, env := range envNameList {
-	// 	allDBInfoMap[env] = nil
-	// }
-
+	var dbResult []dbo.QueryDataBase
+	var err error
 	// 添加每个Env下的db信息列表
 	var dbDTO QueryDataBaseDTO
-	dbResult, err := dbDTO.toORMData().Find(pagni)
+	orm := dbDTO.toORMData()
+	//! 判断是否以关键词进行查询
+	if keyword == "" {
+		dbResult, err = orm.Find(pagni)
+	} else {
+		dbResult, err = orm.FindByKeyWord(keyword, pagni)
+	}
 	if err != nil {
 		return nil, err
 	}
+
 	for _, data := range dbResult {
 		if data.EnvForKey.Name == "" {
 			continue

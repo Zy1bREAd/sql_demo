@@ -366,13 +366,13 @@ func (v2 *AuditRecordV2) FindByTime(start, end time.Time) ([]AuditRecordV2, erro
 	return records, nil
 }
 
-func (dbInfo *QueryDataBase) CreateOne() error {
+func (source *QueryDataBase) CreateOne() error {
 	db := HaveSelfDB().GetConn()
 
-	dbIst := dbInfo.Service
-	envId := dbInfo.EnvID
+	dbIst := source.Service
+	envId := source.EnvID
 	// 不存在则创建，反之不创建
-	findRes := db.Where("env_id = ? AND service = ?", envId, dbIst).First(&dbInfo)
+	findRes := db.Where("env_id = ? AND service = ?", envId, dbIst).First(&source)
 	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 		return utils.GenerateError("FindError", findRes.Error.Error())
 	}
@@ -380,7 +380,7 @@ func (dbInfo *QueryDataBase) CreateOne() error {
 		return utils.GenerateError("CreateError", "the db instance is exist")
 	}
 	tx := db.Begin()
-	insertRes := db.Create(&dbInfo)
+	insertRes := db.Create(&source)
 	if insertRes.Error != nil {
 		tx.Rollback()
 		return utils.GenerateError("CreateError", insertRes.Error.Error())
@@ -474,7 +474,7 @@ func (env *QueryEnv) FindById(uid string) (*QueryEnv, error) {
 	return env, nil
 }
 
-func (dbInfo *QueryDataBase) FindEnvID(envName string) error {
+func (source *QueryDataBase) FindEnvID(envName string) error {
 	db := HaveSelfDB().GetConn()
 	var envResult QueryEnv
 	res := db.Model(&QueryEnv{}).Where("name = ?", envName).Last(&envResult)
@@ -484,12 +484,12 @@ func (dbInfo *QueryDataBase) FindEnvID(envName string) error {
 	if res.RowsAffected != 1 {
 		return utils.GenerateError("FindError", "The env is not exist")
 	}
-	dbInfo.EnvID = envResult.ID
+	source.EnvID = envResult.ID
 	return nil
 }
 
 // 查找全部
-func (dbInfo *QueryDataBase) Find(pagni *common.Pagniation) ([]QueryDataBase, error) {
+func (source *QueryDataBase) Find(pagni *common.Pagniation) ([]QueryDataBase, error) {
 	var dbList []QueryDataBase
 	db := HaveSelfDB().GetConn()
 	// 构造基础查询链
@@ -512,6 +512,34 @@ func (dbInfo *QueryDataBase) Find(pagni *common.Pagniation) ([]QueryDataBase, er
 		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
 	return dbList, nil
+}
+
+func (source *QueryDataBase) FindByKeyWord(kw string, pagni *common.Pagniation) ([]QueryDataBase, error) {
+	dbConn := HaveSelfDB().GetConn()
+	tx := dbConn.Model(&QueryDataBase{}).Preload("EnvForKey")
+	subTx := dbConn.Model(&QueryEnv{})
+	var findRes []QueryDataBase
+	// 基础查询链
+	kw = "%" + kw + "%"
+	tx = tx.Where("name LIKE ?", kw).Or("service LIKE ?", kw).Or("env_id IN (?)", subTx.Select("id").Where("name LIKE ?", kw))
+	// 查询总条数
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	//! 防止无效分页请求(前提是分页器有数据，像初始化时分页器无数据则无需判断)
+	if pagni.Page != 0 && pagni.PageSize != 0 {
+		if (int(total)/pagni.PageSize)+1 < pagni.Page {
+			return nil, utils.GenerateError("PageErr", "Page must be too big")
+		}
+		tx = tx.Offset(pagni.Offset).Limit(pagni.PageSize)
+	}
+	pagni.SetTotal(int(total))
+	res := tx.Find(&findRes)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return findRes, nil
 }
 
 func (env *QueryEnv) UpdateOne(updateEnv *QueryEnv) error {
@@ -539,10 +567,10 @@ func (env *QueryEnv) UpdateOne(updateEnv *QueryEnv) error {
 	return nil
 }
 
-func (dbInfo *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
+func (source *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
 	db := HaveSelfDB().GetConn()
 	// 要事先确定外键ID，确保唯一性。
-	findRes := db.Where("uid = ?", dbInfo.UID).First(&dbInfo)
+	findRes := db.Where("uid = ?", source.UID).First(&source)
 	if findRes.Error != nil {
 		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 			return utils.GenerateError("UpdateFailed", "the db record is not exist:"+findRes.Error.Error())
@@ -550,9 +578,9 @@ func (dbInfo *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
 		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
 	tx := db.Begin()
-	updateDB.ID = dbInfo.ID
+	updateDB.ID = source.ID
 	updateDB.UpdateAt = time.Now()
-	updateRes := db.Model(&dbInfo).Updates(updateDB)
+	updateRes := db.Model(&source).Updates(updateDB)
 	if updateRes.Error != nil {
 		tx.Rollback()
 		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
