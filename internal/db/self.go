@@ -284,7 +284,7 @@ func GetTempResult(uuKey string) (*TempResultMap, error) {
 	}
 	if tempData.IsDeleted != 0 || time.Now().After(tempData.ExpireAt) {
 		// 标识过期已被删除
-		return nil, errors.New("result link is deleted due to expired")
+		return nil, utils.GenerateError("ResultExpiredErr", "Results and Result-Link is deleted due to expired")
 	}
 	return &tempData, nil
 }
@@ -677,6 +677,7 @@ func (t *Ticket) FristOrCreate() error {
 		IssueID:   t.IssueID,
 		AuthorID:  t.AuthorID,
 	}).Assign(Ticket{
+		UID:    t.UID,
 		Status: t.Status,
 		Link:   t.Link,
 	}).FirstOrCreate(&tk)

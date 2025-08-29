@@ -109,6 +109,8 @@ func (gitlab *GitLabAPI) IssueView(projectId, issueIId uint) (*Issue, error) {
 		return nil, utils.GenerateError("IssueViewError", err.Error())
 	}
 	req.Header.Set("PRIVATE-TOKEN", gitlab.AccessToken)
+
+	// 构造并发起请求
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -231,7 +233,7 @@ func ParseIssueDesc(desc string) (*SQLIssueTemplate, error) {
 	} else {
 		descBytes = []byte(desc)
 	}
-	// 解析并替换换行符
+	// 格式化：正则替换换行符
 	reg, err := regexp.Compile("\n")
 	if err != nil {
 		return nil, err

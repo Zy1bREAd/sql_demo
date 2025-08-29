@@ -12,6 +12,9 @@ import (
 const (
 	QTaskGroupType = 1
 	IssueQTaskType = 2
+
+	SelectDDL = 90  // 默认查询为90秒、其他为300秒
+	OtherDDL  = 300 // 默认查询为90秒、其他为300秒
 )
 
 // 数据源连接状态

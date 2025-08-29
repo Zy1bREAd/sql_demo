@@ -41,7 +41,7 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 			// "database_crud":     NewDBEventHandler,
 		}
 		for k, handler := range registerMap {
-			err := ed.RegisterHandler(k, handler(), 3)
+			err := ed.RegisterHandler(k, handler(), 5)
 			if err != nil {
 				panic(err)
 			}
@@ -71,7 +71,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		utils.DebugPrint("不再支持该类型SQL", t.ID)
 
 	case *QTaskGroup: // 支持多SQL
-		// 需要Ticket前置状态判断
+		// Ticket前置状态判断（符合状态流转约束）
 		var tk dbo.Ticket
 		condTicket := dbo.Ticket{
 			UID:      t.TicketID,
@@ -106,6 +106,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			})
 			return nil
 		}
+		// 存储查询任务Map
 		utils.DebugPrint("SQL查询Group事件消费", t.GID)
 		QueryTaskMap.Set(t.GID, t, 300, 1)
 		// 解析SQL语法V2
@@ -135,7 +136,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			taskGroup = append(taskGroup, &qTask)
 		}
 		t.QTasks = taskGroup
-		t.Deadline = len(taskGroup) * t.Deadline
+		t.Deadline = len(taskGroup) * t.Deadline // 更新为正确的任务组超时时间
 		// （更新）Ticket记录
 		err = tk.UpdateStatus(condTicket, common.PendingStatus)
 		if err != nil {
@@ -164,7 +165,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			UID:      t.QTG.TicketID,
 			AuthorID: int(t.QTG.UserID),
 		}
-		// 需要Ticket前置状态判断
+		// Ticket前置状态判断
 		resultTicket, err := tk.Find(condTicket)
 		if err != nil {
 			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.QTG.GID, err.Error())
@@ -194,8 +195,9 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			})
 			return nil
 		}
-		utils.DebugPrint("GItlab Issue SQL查询事件消费", t.QTG.GID)
-		QueryTaskMap.Set(t.QTG.GID, t, 300, 1) // 存储查询任务信息
+		// 存储查询任务Map
+		utils.DebugPrint("Gitlab Issue SQL查询事件消费", t.QTG.GID)
+		QueryTaskMap.Set(t.QTG.GID, t, 300, 1)
 		// Issue评论情况更新并开始执行任务
 		glab := glbapi.InitGitLabAPI()
 		updateMsg := fmt.Sprintf("TaskId=%s is start work...", t.QTG.GID)
@@ -209,16 +211,35 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 		// 构造任务组(缺少对deadline的默认设置)
 		taskGroup := make([]*QueryTask, 0)
+		var maxDeadline int
 		for _, s := range stmtList {
+			// 分别定义每个SQL语句的超时时间，SELECT和其他DML的不同超时时间
+			var ddl int
+			if t.QTG.LongTime {
+				if s.Action == "select" {
+					ddl = 90
+				} else {
+					ddl = 300
+				}
+			} else {
+				if s.Action == "select" {
+					ddl = 180
+				} else {
+					ddl = 600
+				}
+			}
 			qTask := QueryTask{
 				ID:       utils.GenerateUUIDKey(),
 				SafeSQL:  s,
-				Deadline: t.QTG.Deadline,
+				Deadline: ddl,
 			}
 			taskGroup = append(taskGroup, &qTask)
+			maxDeadline += ddl
 		}
 		t.QTG.QTasks = taskGroup
-		t.QTG.Deadline = len(taskGroup) * t.QTG.Deadline
+		t.QTG.Deadline = maxDeadline + 60
+		fmt.Println("max deadline=", maxDeadline+60)
+		fmt.Println("debug print 每个sql的ddl,", t.QTG.QTasks)
 		// （更新）Ticket记录
 		// err = tk.UpdateStatus(condTicket, common.PendingStatus)
 		err = tk.Update(condTicket, dbo.Ticket{
@@ -228,6 +249,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		if err != nil {
 			return utils.GenerateError("TicketErr", err.Error())
 		}
+		// 执行查询任务组v2
 		t.QTG.ExcuteTask(ctx)
 		// 日志审计插入v2
 		jsonBytes, err := json.Marshal(taskGroup)
@@ -299,6 +321,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 				if err != nil {
 					utils.DebugPrint("CommentError", "query task result comment is failed"+err.Error())
 				}
+				// Ticket状态：失败
 				err = tk.UpdateStatus(dbo.Ticket{
 					UID:      v.QTG.TicketID,
 					AuthorID: int(v.QTG.UserID),
@@ -310,6 +333,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 				return nil
 			}
 		}
+		// Ticket状态：成功
 		err := tk.UpdateStatus(dbo.Ticket{
 			UID:      v.QTG.TicketID,
 			AuthorID: int(v.QTG.UserID),
@@ -324,11 +348,6 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			utils.DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
 		}
 		glab.CommentCreate(v.IssProjectID, v.IssIID, tempURL)
-		// // 导出结果(同步)
-		// if v.QTG.IsExport {
-		// 	exportTask := SubmitExportTask(res.GID, "csv", v.IssAuthorID)
-		// 	<-exportTask.Result.Done
-		// }
 		// 自动关闭issue（表示完成）
 		// err = glab.IssueClose(v.IssProjectID, v.IssIID)
 		// if err != nil {
@@ -471,7 +490,6 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
-	gid := utils.GenerateUUIDKey() // UUID
 	// 审批or驳回的逻辑
 	switch body.Webhook {
 	case glbapi.CommentHandle:
@@ -479,6 +497,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		if !ok {
 			return utils.GenerateError("PayloadErr", "payload is invalid")
 		}
+		gid := utils.GenerateUUIDKey() // UUID
 		switch payload.Action {
 		case glbapi.CommentApprovalPassed:
 			sqlt := payload.IssuePayload.Desc //  获取SQLIssueTemplate
@@ -517,7 +536,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 						Service:  sqlt.Service,
 						StmtRaw:  sqlt.Statement,
 						IsExport: sqlt.IsExport,
-						Deadline: sqlt.Deadline * 5,
+						Deadline: 90,
 					},
 					IssProjectID:  issue.ProjectID,
 					IssIID:        issue.IID,
@@ -551,7 +570,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		userId := user.GetGitLabUserId()
 		// （创建）Ticket记录
 		ticket := dbo.Ticket{
-			UID:       gid,
+			UID:       fmt.Sprintf("ticket_%d%d%d", payload.Issue.ProjectID, payload.Issue.IID, userId), // ProjectID + IssueID + AuthorID
 			Status:    common.CreatedStatus,
 			AuthorID:  int(userId),
 			ProjectID: int(payload.Issue.ProjectID),
@@ -560,6 +579,8 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 		err := ticket.FristOrCreate()
 		if err != nil {
+			glab := glbapi.InitGitLabAPI()
+			glab.CommentCreate(uint(payload.Issue.ProjectID), uint(payload.Issue.IID), "Create Ticket Error::"+err.Error())
 			return err
 		}
 	}

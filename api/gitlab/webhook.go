@@ -2,7 +2,6 @@ package api
 
 import (
 	"fmt"
-	"log"
 	"slices"
 	"sql_demo/api"
 	"sql_demo/internal/conf"
@@ -156,31 +155,26 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
 	if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
 		robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
-		err := glab.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
-		if err != nil {
-			log.Println(err.Error())
-		}
-		return utils.GenerateError("AssigneerNotMatch", "assigneer is not match robot user")
+		// err := glab.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
+		// if err != nil {
+		// 	log.Println(err.Error())
+		// }
+		return utils.GenerateError("AssigneerNotMatch", robotMsg)
 	}
 	// 解析指定Issue
 	iss, err := glab.IssueView(c.Project.ID, c.Issue.IID)
 	if err != nil {
-		utils.DebugPrint("GitLabAPIError", err.Error())
-		return err
+		return utils.GenerateError("ParseIssueErr", err.Error())
 	}
 	// 检查issue状态是否关闭
-	if iss.State == "closed" {
-		return utils.GenerateError("IsClosed", "The issue was closed")
+	if strings.ToLower(iss.State) == "closed" {
+		return utils.GenerateError("IssueClosed", "Issue已关闭")
 	}
 	// 解析Issue详情
 	issContent, err := ParseIssueDesc(iss.Description)
 	if err != nil {
 		utils.DebugPrint("ParseError", err.Error())
 		return err
-	}
-	//设置默认超时时间
-	if issContent.Deadline == 0 {
-		issContent.Deadline = 60
 	}
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
@@ -276,8 +270,8 @@ type SQLIssueTemplate struct {
 	Statement string `json:"statement"`
 	DBName    string `json:"db_name"`
 	Service   string `json:"service"`
-	// DML       string `json:"dml"`
-	Deadline int  `json:"deadline,omitempty"`
+	// Deadline int  `json:"deadline,omitempty"`
+	LongTime bool `json:"long_time"`
 	IsExport bool `json:"is_export"`
 }
 

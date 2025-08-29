@@ -30,7 +30,7 @@ type ExportResult struct {
 
 type ExportTask struct {
 	UserID    uint
-	ResultIdx int    `json:"result_idx" query:"result_idx"` // 仅导出结果的索引
+	ResultIdx int    `json:"result_idx" query:"result_idx"` // 用于仅导出指定结果集的索引（前端传递）
 	deadline  int    // task timeout
 	IsOnly    bool   `json:"is_only" query:"is_only"`
 	GID       string `json:"task_id" query:"task_id"`
@@ -43,11 +43,11 @@ type ExportTask struct {
 func (et *ExportTask) GetResult() error {
 	val, exist := ExportWorkMap.Get(et.GID)
 	if !exist {
-		return utils.GenerateError("SyncMapKeyErr", "ExportTask is not exist")
+		return utils.GenerateError("ResultsError", "ExportTask is not exist")
 	}
 	resultVal, ok := val.(*ExportResult)
 	if !ok {
-		return utils.GenerateError("AssertTypeErr", "ExportTask type is error")
+		return utils.GenerateError("ResultsError", "ExportTask type is not match")
 	}
 	et.Result = resultVal
 	return nil
@@ -71,8 +71,9 @@ type QueryTask struct {
 }
 type QTaskGroup struct {
 	IsExport bool
+	LongTime bool
 	UserID   uint // 关联执行用户id
-	Deadline int  //整个任务组的超时时间
+	Deadline int  //整个任务组的超时时间，默认: (用户SQL条数*用户定义的时间)+用户定义的时间
 	GID      string
 	TicketID string
 	DML      string
@@ -209,11 +210,11 @@ func (et *ExportTask) Submit() {
 	if et.IsOnly {
 		fileName := fmt.Sprintf("result_export_%s_%s", et.GID, today)
 		et.FileName = fileName + ".csv"
-		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName + ".csv"
+		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName
 	} else {
-		fileName := fmt.Sprintf("result_export_%s_%s", et.GID, today)
+		fileName := fmt.Sprintf("result_export_all_%s_%s", et.GID, today)
 		et.FileName = fileName + ".xlsx"
-		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName + ".xlsx"
+		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName
 	}
 	et.Result = taskResult
 	et.deadline = 300

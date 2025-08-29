@@ -370,7 +370,7 @@ func (env *QueryEnvDTO) DeleteEnvInfo() error {
 	})
 }
 
-func (qdb *QueryDataBaseDTO) DeleteDBInfo() error {
+func (qdb *QueryDataBaseDTO) Delete() error {
 	return hotReloadDBCfg(func() error {
 		temp := dbo.QueryDataBase{
 			UID: qdb.UID,

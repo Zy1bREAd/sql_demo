@@ -94,7 +94,7 @@ func (exr *ExcelResult) Convert() error {
 	}
 	f.SetActiveSheet(s)
 	if exr.Data == nil {
-		DebugPrint("DataIsNull", "SQL Data is null")
+		// 空数据直接返回
 		if err := f.SaveAs(filePath); err != nil {
 			return GenerateError("ExcelDataSaveErr", err.Error())
 		}
@@ -124,7 +124,6 @@ func (exr *ExcelResult) Convert() error {
 func writeRow(f *excelize.File, sheetName string, rowNum int, data []string) error {
 	// 将数据转换为单元格格式（A1, B1, ...）
 	cell, err := excelize.CoordinatesToCellName(1, rowNum)
-	fmt.Println("cellName=", cell)
 	if err != nil {
 		return err
 	}
@@ -158,7 +157,7 @@ func (cr *CSVResult) Convert() error {
 	w := csv.NewWriter(f)
 	defer w.Flush()
 	if cr.Data == nil {
-		DebugPrint("DataIsNull", "SQL Data is null")
+		// 空数据直接返回
 		return nil
 	}
 	colsName := getHeadersData(cr.Data[0])

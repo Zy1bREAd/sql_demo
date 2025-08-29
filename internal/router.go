@@ -239,7 +239,7 @@ func SQLExcuteTest(ctx *gin.Context) {
 		Env:      content.Env,
 		Service:  content.Service,
 		IsExport: content.IsExport,
-		Deadline: content.Deadline * 5,
+		Deadline: 90,
 	}
 	// 事件驱动：封装成Event推送到事件通道(v2.0)
 	ep := event.GetEventProducer()
@@ -446,7 +446,6 @@ func ResultExport(ctx *gin.Context) {
 	}
 	// 解析URL上的query信息（手动解析，因为ShouldBind失效）
 	var t core.ExportTask
-	// err := ctx.ShouldBindWith(&t, binding.Query)
 	queryVals := ctx.Request.URL.Query()
 	taskIdVal := queryVals.Get("task_id")
 	isOnlyVal := queryVals.Get("is_only")
@@ -454,35 +453,37 @@ func ResultExport(ctx *gin.Context) {
 	t.GID = taskIdVal
 	isOnlyBool, err := strconv.ParseBool(isOnlyVal)
 	if err != nil {
-		utils.DebugPrint("StrConvErr", err.Error())
+		common.ErrorResp(ctx, "StrConvErr"+err.Error())
+		return
 	}
 	if t.GID == "" {
-		common.ErrorResp(ctx, "TaskID is invalid "+err.Error())
+		common.ErrorResp(ctx, "TaskID is invalid ")
 		return
 	}
 	if isOnlyBool {
 		resultIdxVal := queryVals.Get("result_idx")
 		idxInt64, err := strconv.ParseInt(resultIdxVal, 10, 32)
-		t.ResultIdx = int(idxInt64)
 		if err != nil {
 			common.ErrorResp(ctx, "resultIdx is invalid "+err.Error())
 			return
 		}
+		t.ResultIdx = int(idxInt64)
 	}
 	t.UserID = utils.StrToUint(idStr)
 	t.IsOnly = isOnlyBool
+	// 生产导出任务的事件
 	t.Submit()
-	common.SuccessResp(ctx, nil, "export task is start working....")
 
 	// 设置超时控制
 	timeCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
 	defer cancel()
+	// 检测结果集是否存在：只有在结果集存在时，才会进入 SSE通知阶段。
 	if err := t.GetResult(); err != nil {
-		common.ErrorResp(ctx, "Export Result is Null "+err.Error())
+		common.ErrorResp(ctx, err.Error())
 		return
 	}
 	if t.Result == nil {
-		common.ErrorResp(ctx, "Export Result is Null "+err.Error())
+		common.ErrorResp(ctx, "Export Result is Null")
 		return
 	}
 	select {
@@ -1027,9 +1028,9 @@ func DeleteDBInfo(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, "Invalid UID")
 		return
 	}
-	var envInfo core.QueryDataBaseDTO
-	envInfo.UID = uid
-	err := envInfo.DeleteDBInfo()
+	var source core.QueryDataBaseDTO
+	source.UID = uid
+	err := source.Delete()
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
 		return
