@@ -579,20 +579,16 @@ func (source *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
 		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
 	tx := db.Begin()
-	// 修改密码
-	fmt.Println("debug print", updateDB.Password, updateDB.ConfirmPassword)
-	if updateDB.Password != "" {
+	// 修改密码(新旧密码都必须要填写)
+	if updateDB.ConfirmPassword != "" && updateDB.Password != "" {
 		// 更新时，若密码不为空，则代表要更新数据源的连接密码
-		// 判断旧密码和新密码是否相同
-		inputOldPwd, err := utils.EncryptAES256([]byte(updateDB.Password), source.Salt)
+		// 判断旧密码和新密码是否相同(使用解密出来对比)
+		pwd, err := utils.DecryptAES256([]byte(source.Password), source.Salt)
 		if err != nil {
 			return utils.GenerateError("EncryptPWDErr", err.Error())
 		}
-		if inputOldPwd != source.Password {
+		if pwd != updateDB.ConfirmPassword {
 			return utils.GenerateError("PasswordError", "Input Old Password and Original Password is not match")
-		}
-		if source.ConfirmPassword == "" {
-			return utils.GenerateError("PasswordError", "New Password is Null")
 		}
 		// 开始校验并存储新密码
 		secretKey := make([]byte, 32)
@@ -600,7 +596,7 @@ func (source *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
 		if err != nil {
 			return utils.GenerateError("PasswordError", "Encrypt Password Error"+err.Error())
 		}
-		newPwd, err := utils.EncryptAES256([]byte(source.ConfirmPassword), secretKey)
+		newPwd, err := utils.EncryptAES256([]byte(updateDB.Password), secretKey)
 		if err != nil {
 			return utils.GenerateError("EncryptPWDErr", err.Error())
 		}

@@ -136,6 +136,7 @@ func InitBaseRoutes() {
 		rgAuth.DELETE("/sources/delete/:uid", DeleteDBInfo)
 		rgAuth.POST("/sources/connection/test", SourceConnTest)
 		rgAuth.GET("/sources/search", SearchDBConfig)
+		rgAuth.GET("/sources/health-check", HealthCheckSources)
 
 		// 审计日志
 		rgAuth.POST("/audit/record/list", GetAuditRecord)
@@ -835,9 +836,9 @@ func CreateEnvInfo(ctx *gin.Context) {
 func GetDBConfig(ctx *gin.Context) {
 	// RDTO: Request DTO ,主要接收前端的请求体数据，将其反序列化
 	type RDTO struct {
-		Page     int              `json:"page"`
-		PageSize int              `json:"page_size"`
-		Data     core.QueryEnvDTO `json:"conds"`
+		Page     int `json:"page"`
+		PageSize int `json:"page_size"`
+		// Data     core.QueryEnvDTO `json:"conds"`
 	}
 	var dto RDTO
 	err := ctx.ShouldBindJSON(&dto)
@@ -858,6 +859,32 @@ func GetDBConfig(ctx *gin.Context) {
 	}
 	pagni.SetTotalPages(int(pagni.Total+pagni.PageSize-1) / pagni.PageSize)
 	common.SuccessResp(ctx, result, "get db all data success", common.WithPagination(pagni))
+}
+
+// 健康检查-数据源(alphe)
+func HealthCheckSources(ctx *gin.Context) {
+	pool := dbo.GetDBPoolManager()
+	type HealthCheck struct {
+		Env     string `json:"env_name"`
+		Service string `json:"service"`
+		Status  int    `json:"status"`
+		Msg     string `json:"msg"`
+	}
+	result := make([]HealthCheck, 0)
+	for env, services := range pool.Pool {
+		for srv, dbIst := range services {
+			if dbIst == nil {
+				continue
+			}
+			result = append(result, HealthCheck{
+				Env:     env,
+				Service: srv,
+				Status:  dbIst.StatusCode,
+				Msg:     dbIst.Errrr,
+			})
+		}
+	}
+	common.SuccessResp(ctx, result, "ok")
 }
 
 // 获取全部数据源信息
@@ -968,10 +995,14 @@ func UpdateDBInfo(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
 		return
 	}
+	if envInfo.ConfirmedPassword == "" || envInfo.Connection.Password == "" {
+		common.DefaultResp(ctx, common.RespFailed, nil, "Password Item is cannot be null")
+		return
+	}
 	envInfo.UID = uid
 	err = envInfo.UpdateDBInfo()
 	if err != nil {
-		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
 	common.SuccessResp(ctx, nil, "update db config success")

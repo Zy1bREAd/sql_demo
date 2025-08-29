@@ -16,19 +16,19 @@ import (
 // DTO: Data Transfer Object + Service Layer
 
 type QueryDataBaseDTO struct {
-	EnvID           uint            `json:"env_id"` // 关键指定EnvID
-	IsWrite         bool            `json:"is_write"`
-	Name            string          `json:"name"`
-	UID             string          `json:"uid"`
-	EnvName         string          `json:"env_name"`
-	Service         string          `json:"service"`
-	Desc            string          `json:"description,omitempty"`
-	CreateAt        string          `json:"create_at"`
-	UpdateAt        string          `json:"update_at"`
-	ExcludeDB       []string        `json:"exclude_db"`       // 排除的数据库名
-	ExcludeTable    []string        `json:"exclude_table"`    // 排除的数据表名
-	Connection      dbo.ConnectInfo `json:"connection"`       // 连接信息
-	ConfirmPassword string          `json:"confirm_password"` // 二次验证新密码
+	EnvID             uint            `json:"env_id"` // 关键指定EnvID
+	IsWrite           bool            `json:"is_write"`
+	Name              string          `json:"name"`
+	UID               string          `json:"uid"`
+	EnvName           string          `json:"env_name"`
+	Service           string          `json:"service"`
+	Desc              string          `json:"description,omitempty"`
+	CreateAt          string          `json:"create_at"`
+	UpdateAt          string          `json:"update_at"`
+	ExcludeDB         []string        `json:"exclude_db"`    // 排除的数据库名
+	ExcludeTable      []string        `json:"exclude_table"` // 排除的数据表名
+	Connection        dbo.ConnectInfo `json:"connection"`    // 连接信息
+	ConfirmedPassword string          `json:"confirm_pwd"`   // 二次验证新密码
 
 }
 
@@ -183,7 +183,7 @@ func (qdb *QueryDataBaseDTO) toORMData() *dbo.QueryDataBase {
 		Port:            qdb.Connection.Port,
 		TLS:             qdb.Connection.TLS,
 		Salt:            secretKey,
-		ConfirmPassword: qdb.ConfirmPassword,
+		ConfirmPassword: qdb.ConfirmedPassword, // 用户输入的旧密码，需要校验的
 	}
 }
 

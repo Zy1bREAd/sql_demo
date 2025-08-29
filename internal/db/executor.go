@@ -137,7 +137,6 @@ func LoadInDB(isReload bool) {
 			panic(err)
 		}
 	}
-	// fmt.Println(config.Databases)
 	// 注册DB实例进入池子
 	err := registerPool(isReload, &config)
 	if err != nil {
@@ -170,9 +169,11 @@ var dbPool *DBPoolManager
 
 // 多数据库连接的新实例
 type DBInstance struct {
-	conn    *sql.DB
-	name    string // 数据库名称
-	exclude []string
+	conn       *sql.DB
+	name       string // 数据库名称
+	StatusCode int
+	Errrr      string
+	exclude    []string
 }
 
 // 数据库连接的池子
@@ -378,14 +379,23 @@ func newDBInstance(conn ConnectInfo) (*DBInstance, error) {
 	db.SetConnMaxIdleTime(time.Duration(conn.IdleTime) * time.Second)
 	db.SetMaxOpenConns(conn.MaxConn)
 	db.SetMaxIdleConns(conn.MaxConn)
-	err = db.Ping()
-	if err != nil {
-		fmt.Println(dsn)
-		return nil, err
+	// 异步测试连通性
+	dbIst := &DBInstance{
+		conn:       db,
+		StatusCode: common.Connecting,
 	}
-	return &DBInstance{
-		conn: db,
-	}, nil
+	go func() {
+		err = db.Ping()
+		if err != nil {
+			utils.ErrorPrint("DBIstPingErr", dsn)
+			dbIst.Errrr = err.Error()
+			dbIst.StatusCode = common.ConnectFailed
+			return
+		}
+		dbIst.StatusCode = common.Connected
+	}()
+
+	return dbIst, nil
 }
 
 // 建立并测试数据库实例连接

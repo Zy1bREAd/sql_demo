@@ -14,6 +14,13 @@ const (
 	IssueQTaskType = 2
 )
 
+// 数据源连接状态
+const (
+	Connected     = 1
+	ConnectFailed = 0
+	Connecting    = 8
+)
+
 // Ticket Status
 const (
 	CreatedStatus        = "CREATED"
