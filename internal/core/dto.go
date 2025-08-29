@@ -9,7 +9,6 @@ import (
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"strings"
-	"time"
 
 	"gorm.io/gorm"
 )
@@ -17,18 +16,19 @@ import (
 // DTO: Data Transfer Object + Service Layer
 
 type QueryDataBaseDTO struct {
-	EnvID        uint            `json:"env_id"` // 关键指定EnvID
-	IsWrite      bool            `json:"is_write"`
-	Name         string          `json:"name"`
-	UID          string          `json:"uid"`
-	EnvName      string          `json:"env_name"`
-	Service      string          `json:"service"`
-	Desc         string          `json:"description,omitempty"`
-	CreateAt     string          `json:"create_at"`
-	UpdateAt     string          `json:"update_at"`
-	ExcludeDB    []string        `json:"exclude_db"`    // 排除的数据库名
-	ExcludeTable []string        `json:"exclude_table"` // 排除的数据表名
-	Connection   dbo.ConnectInfo `json:"connection"`    // 连接信息
+	EnvID           uint            `json:"env_id"` // 关键指定EnvID
+	IsWrite         bool            `json:"is_write"`
+	Name            string          `json:"name"`
+	UID             string          `json:"uid"`
+	EnvName         string          `json:"env_name"`
+	Service         string          `json:"service"`
+	Desc            string          `json:"description,omitempty"`
+	CreateAt        string          `json:"create_at"`
+	UpdateAt        string          `json:"update_at"`
+	ExcludeDB       []string        `json:"exclude_db"`       // 排除的数据库名
+	ExcludeTable    []string        `json:"exclude_table"`    // 排除的数据表名
+	Connection      dbo.ConnectInfo `json:"connection"`       // 连接信息
+	ConfirmPassword string          `json:"confirm_password"` // 二次验证新密码
 
 }
 
@@ -152,9 +152,10 @@ func (qdb *QueryDataBaseDTO) toORMData() *dbo.QueryDataBase {
 		excludeTableStr += t + ","
 	}
 	var pwd string
-	secretKey := make([]byte, 32)
+	var secretKey []byte
 	if qdb.Connection.Password != "" {
 		// 密码加密(AES256)
+		secretKey = make([]byte, 32)
 		_, err := rand.Read(secretKey)
 		if err != nil {
 			return nil
@@ -166,23 +167,23 @@ func (qdb *QueryDataBaseDTO) toORMData() *dbo.QueryDataBase {
 		}
 	}
 	return &dbo.QueryDataBase{
-		EnvID:        qdb.EnvID,
-		UID:          qdb.UID,
-		MaxConn:      qdb.Connection.MaxConn,
-		IdleTime:     qdb.Connection.IdleTime,
-		IsWrite:      qdb.IsWrite,
-		Name:         qdb.Name,
-		Service:      qdb.Service,
-		Description:  qdb.Desc,
-		UpdateAt:     time.Now(),
-		ExcludeDB:    excludeDBStr,
-		ExcludeTable: excludeTableStr,
-		Host:         qdb.Connection.Host,
-		User:         qdb.Connection.User,
-		Password:     pwd,
-		Port:         qdb.Connection.Port,
-		TLS:          qdb.Connection.TLS,
-		Salt:         secretKey,
+		EnvID:           qdb.EnvID,
+		UID:             qdb.UID,
+		MaxConn:         qdb.Connection.MaxConn,
+		IdleTime:        qdb.Connection.IdleTime,
+		IsWrite:         qdb.IsWrite,
+		Name:            qdb.Name,
+		Service:         qdb.Service,
+		Description:     qdb.Desc,
+		ExcludeDB:       excludeDBStr,
+		ExcludeTable:    excludeTableStr,
+		Host:            qdb.Connection.Host,
+		User:            qdb.Connection.User,
+		Password:        pwd,
+		Port:            qdb.Connection.Port,
+		TLS:             qdb.Connection.TLS,
+		Salt:            secretKey,
+		ConfirmPassword: qdb.ConfirmPassword,
 	}
 }
 

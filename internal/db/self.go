@@ -2,6 +2,7 @@
 package dbo
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"sql_demo/internal/common"
@@ -578,6 +579,35 @@ func (source *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
 		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
 	tx := db.Begin()
+	// 修改密码
+	fmt.Println("debug print", updateDB.Password, updateDB.ConfirmPassword)
+	if updateDB.Password != "" {
+		// 更新时，若密码不为空，则代表要更新数据源的连接密码
+		// 判断旧密码和新密码是否相同
+		inputOldPwd, err := utils.EncryptAES256([]byte(updateDB.Password), source.Salt)
+		if err != nil {
+			return utils.GenerateError("EncryptPWDErr", err.Error())
+		}
+		if inputOldPwd != source.Password {
+			return utils.GenerateError("PasswordError", "Input Old Password and Original Password is not match")
+		}
+		if source.ConfirmPassword == "" {
+			return utils.GenerateError("PasswordError", "New Password is Null")
+		}
+		// 开始校验并存储新密码
+		secretKey := make([]byte, 32)
+		_, err = rand.Read(secretKey)
+		if err != nil {
+			return utils.GenerateError("PasswordError", "Encrypt Password Error"+err.Error())
+		}
+		newPwd, err := utils.EncryptAES256([]byte(source.ConfirmPassword), secretKey)
+		if err != nil {
+			return utils.GenerateError("EncryptPWDErr", err.Error())
+		}
+		updateDB.Salt = secretKey
+		updateDB.Password = newPwd
+		fmt.Println("修改密码成功")
+	}
 	updateDB.ID = source.ID
 	updateDB.UpdateAt = time.Now()
 	updateRes := db.Model(&source).Updates(updateDB)

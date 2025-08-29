@@ -92,8 +92,6 @@ func LoadInDB(isReload bool) {
 				if env.ID != dbConf.EnvID {
 					continue
 				}
-
-				fmt.Println("debug print-errinfo", dbConf.Password, dbConf.Salt)
 				pwd, err := utils.DecryptAES256([]byte(dbConf.Password), dbConf.Salt)
 				if err != nil {
 					utils.ErrorPrint("DecryptPwdErr", fmt.Sprintf("%s: %s", err.Error(), dbConf.Name))

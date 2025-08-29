@@ -791,6 +791,13 @@ func CreateDBInfo(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("ValidateErr", "Password Length is 6 to 16").Error())
 		return
 	}
+	// 默认值
+	if dbInfo.Connection.Port == "" {
+		dbInfo.Connection.Port = "3306"
+	}
+	if dbInfo.Connection.User == "" {
+		dbInfo.Connection.User = "root"
+	}
 	err = dbInfo.Create()
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
