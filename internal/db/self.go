@@ -326,7 +326,7 @@ func (v2 *AuditRecordV2) Find(pagni *common.Pagniation) ([]AuditRecordV2, error)
 	var records []AuditRecordV2
 	dbConn := HaveSelfDB().GetConn()
 	// 抽象基础查询链
-	tx := dbConn.Model(&AuditRecordV2{}).Where(&v2)
+	tx := dbConn.Model(&AuditRecordV2{}).Preload("User").Where(&v2)
 	// 判断时间范围筛选条件是否有效
 	if v2.StartTime != "" && v2.EndTime != "" {
 		//! 没有判断endtime小于starttime的情况

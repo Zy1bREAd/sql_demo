@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"slices"
 	"sql_demo/internal/common"
@@ -9,6 +10,8 @@ import (
 	"sql_demo/internal/utils"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // DTO: Data Transfer Object + Service Layer
@@ -40,14 +43,14 @@ type QueryEnvDTO struct {
 }
 
 type AuditRecordDTO struct {
-	ProjectID uint      `json:"project_id"`
-	IssueID   uint      `json:"issue_id"`
-	TaskType  int       `json:"task_type"`
-	UserName  string    `json:"username"`
-	EventType string    `json:"event_type"`
-	TaskID    string    `json:"task_id"`
-	Payload   string    `json:"payload"`
-	CreateAt  time.Time `json:"-"`
+	ProjectID uint   `json:"project_id"`
+	IssueID   uint   `json:"issue_id"`
+	TaskType  int    `json:"task_type"`
+	UserName  string `json:"username"`
+	EventType string `json:"event_type"`
+	TaskID    string `json:"task_id"`
+	Payload   string `json:"payload"`
+	CreateAt  string `json:"create_at"`
 	// 时间范围筛选条件项
 	StartTime string `json:"start_time"`
 	EndTime   string `json:"end_time"`
@@ -95,6 +98,9 @@ func (dto *AuditRecordDTO) Get(pagni *common.Pagniation) ([]AuditRecordDTO, erro
 		var user dbo.User
 		res := dbConn.Where("name = ?", dto.UserName).Last(&user)
 		if res.Error != nil {
+			if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+				return nil, utils.GenerateError("UserNotFound", dto.UserName+" The user is not exist")
+			}
 			return nil, res.Error
 		}
 		if res.RowsAffected == 0 {
@@ -112,7 +118,7 @@ func (dto *AuditRecordDTO) Get(pagni *common.Pagniation) ([]AuditRecordDTO, erro
 		result = append(result, AuditRecordDTO{
 			TaskID:    record.TaskID,
 			EventType: record.EventType,
-			CreateAt:  record.CreateAt,
+			CreateAt:  record.CreateAt.Format("2006-01-02 15:04:05"),
 			TaskType:  record.TaskType,
 			ProjectID: record.ProjectID,
 			IssueID:   record.IssueID,
