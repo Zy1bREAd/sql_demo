@@ -50,7 +50,7 @@ func (exr *ExcelResult) ExtName() string {
 }
 
 func (exr *ExcelResult) CreateFile() error {
-	filePath := exr.BasePath + "/" + exr.FileName + exr.ExtName()
+	filePath := exr.BasePath + "/" + exr.FileName
 	err := pathIsExist(exr.BasePath)
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func (cr *CSVResult) Convert() error {
 		return err
 	}
 
-	filePath := cr.BasePath + "/" + cr.FileName + cr.ExtName()
+	filePath := cr.BasePath + "/" + cr.FileName
 	f, err := os.Create(filePath)
 	if err != nil {
 		return GenerateError("CreateFileErr", err.Error())
@@ -185,21 +185,21 @@ func FileClean(filepath string) {
 	fileInfo, err := os.Stat(filepath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Println("[FileNotExist]", fileInfo.Name(), "is not exist")
+			ErrorPrint("FileCleanErr", filepath+" is not exist")
 			return
 		}
-		log.Println("[FileError]", err.Error())
+		ErrorPrint("FileCleanErr", err.Error())
 		return
 	}
 	if fileInfo.IsDir() {
-		log.Println("[Error]", fileInfo.Name(), "is not a file")
+		ErrorPrint("FileCleanErr", filepath+" is not a file")
 		return
 	}
 	err = os.Remove(filepath)
 	if err != nil {
-		log.Println("[RemoveFailed]", fileInfo.Name(), "remove occur a error", err.Error())
+		ErrorPrint("FileRemoveErr", err.Error())
 	}
-	log.Println("[Completed]", fileInfo.Name(), "is cleaned up")
+	DebugPrint("FileClean", fileInfo.Name()+" is cleaned up")
 }
 
 // 制造表头

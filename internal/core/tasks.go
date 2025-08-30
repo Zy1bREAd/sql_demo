@@ -94,16 +94,10 @@ type IssueQTask struct {
 	// IssDesc       *gapi.SQLIssueTemplate
 }
 
-// func (qtg *QTaskGroup) PreCheck(ctx context.Context) {
-
-// }
-
 // 多SQL执行(可Query可Excute), 遇到错误立即退出后续执行
 func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is working...", qtg.GID))
 	//! 执行任务函数只当只关心任务处理逻辑本身
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(qtg.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
-	defer cancel()
 
 	ep := event.GetEventProducer()
 	rg := &dbo.SQLResultGroup{
@@ -113,6 +107,9 @@ func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
 
 outerLoop:
 	for _, task := range qtg.QTasks {
+		// 子任务超时控制
+		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
+		defer cancel()
 		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is working...", task.ID))
 		var result dbo.SQLResult = dbo.SQLResult{
 			ID:   task.ID,
@@ -150,12 +147,14 @@ outerLoop:
 		} else {
 			result = op.Excute(timeoutCtx, task.SafeSQL.SafeStmt, task.ID)
 		}
-		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is completed", task.ID))
+
 		rg.ResGroup = append(rg.ResGroup, &result)
 		// 如果该条SQL遇到ERROR立即中止后续执行
 		if result.Errrrr != nil {
+			utils.ErrorPrint("TaskDetails", fmt.Sprintf("Task IID=%s is failed", task.ID))
 			break
 		}
+		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is completed", task.ID))
 	}
 	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is completed", qtg.GID))
 	ep.Produce(event.Event{

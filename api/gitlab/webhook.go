@@ -98,7 +98,6 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			utils.DebugPrint("InformError", err.Error())
 		}
 	case "update":
-		utils.DebugPrint("UpdateIssueHandle", "update a issue")
 		desc, exist := i.Changes["description"]
 		if exist {
 			if _, ok := desc.Current.(string); ok {

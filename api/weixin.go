@@ -87,7 +87,7 @@ func (robot *RobotNotice) InformRobot() error {
 	}
 	req.Header.Add("Content-Type", "application/json")
 	client := http.Client{
-		Timeout: 60 * time.Second,
+		Timeout: 60 * time.Second, // 微信机器人Webhook 过期时间
 	}
 	resp, err := client.Do(req)
 	if err != nil {

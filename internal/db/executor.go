@@ -276,7 +276,8 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 
 	select {
 	case <-ctx.Done():
-		res.Errrrr = utils.GenerateError("TaskTimeOut", "excute sql task is timeout"+taskId)
+		res.Errrrr = utils.GenerateError("TaskTimeout", "SQL Task is failed due to timeout")
+		res.ErrMsg = res.Errrrr.Error()
 	case err := <-errCh:
 		if err != nil {
 			res.Errrrr = err
@@ -289,7 +290,7 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 // 对内暴露的查询SQL接口
 func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) SQLResult {
 	errCh := make(chan error, 1)
-	queryResult := SQLResult{
+	res := SQLResult{
 		Stmt: sqlRaw,
 		ID:   taskId,
 	}
@@ -305,7 +306,7 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 		}
 		defer rows.Close()
 		end := time.Since(start)
-		queryResult.QueryTime = end.Seconds()
+		res.QueryTime = end.Seconds()
 
 		//! 结果集处理
 		start = time.Now()
@@ -337,24 +338,25 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 					rowResultMap[colName] = conf.DataMaskHandle(colName, value)
 				}
 			}
-			queryResult.Results = append(queryResult.Results, rowResultMap)
-			queryResult.RowCount = len(queryResult.Results)
+			res.Results = append(res.Results, rowResultMap)
+			res.RowCount = len(res.Results)
 		}
 		end = time.Since(start)
-		queryResult.HandleTime = end.Seconds()
+		res.HandleTime = end.Seconds()
 		errCh <- nil
 	}()
 
 	select {
 	case <-ctx.Done():
-		queryResult.Errrrr = utils.GenerateError("Task TimeOut", "query sql task is failed ,query timeout")
+		res.Errrrr = utils.GenerateError("TaskTimeout", "SQL Task is failed due to timeout")
+		res.ErrMsg = res.Errrrr.Error()
 	case err := <-errCh:
 		if err != nil {
-			queryResult.Errrrr = err
-			queryResult.ErrMsg = queryResult.Errrrr.Error()
+			res.Errrrr = err
+			res.ErrMsg = res.Errrrr.Error()
 		}
 	}
-	return queryResult
+	return res
 	// 最终要返回的结果是[]map[string]any,也就是说切片里每个元素都是一行数据
 }
 

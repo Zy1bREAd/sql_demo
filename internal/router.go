@@ -558,7 +558,7 @@ func DownloadFile(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, "URL query taskid is invalid")
 		return
 	}
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*30)
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*common.DownloadFileDDL)
 	defer cancel()
 	auditChan := make(chan struct{}, 1)
 	// 插入记录V2
@@ -616,7 +616,7 @@ func DownloadFile(ctx *gin.Context) {
 	}
 	if _, err := os.Stat(exportResult.FilePath); err != nil {
 		fmt.Println("file error:", err.Error())
-		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Result File is not exist"})
+		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Result File is not exist " + exportResult.FilePath})
 		return
 	}
 	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", exportResult.FilePath))

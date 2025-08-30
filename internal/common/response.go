@@ -13,8 +13,12 @@ const (
 	QTaskGroupType = 1
 	IssueQTaskType = 2
 
-	SelectDDL = 90  // 默认查询为90秒、其他为300秒
-	OtherDDL  = 300 // 默认查询为90秒、其他为300秒
+	SelectDDL     = 90  // 默认查询为90秒、其他为300秒
+	OtherDDL      = 300 // 默认查询为90秒、其他为300秒
+	LongSelectDDL = 180
+	LongOtherDDL  = 600
+
+	DownloadFileDDL = 60
 )
 
 // 数据源连接状态

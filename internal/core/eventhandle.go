@@ -217,15 +217,15 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			var ddl int
 			if t.QTG.LongTime {
 				if s.Action == "select" {
-					ddl = 90
+					ddl = common.LongSelectDDL
 				} else {
-					ddl = 300
+					ddl = common.LongOtherDDL
 				}
 			} else {
 				if s.Action == "select" {
-					ddl = 180
+					ddl = common.SelectDDL
 				} else {
-					ddl = 600
+					ddl = common.OtherDDL
 				}
 			}
 			qTask := QueryTask{
@@ -238,8 +238,6 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 		t.QTG.QTasks = taskGroup
 		t.QTG.Deadline = maxDeadline + 60
-		fmt.Println("max deadline=", maxDeadline+60)
-		fmt.Println("debug print 每个sql的ddl,", t.QTG.QTasks)
 		// （更新）Ticket记录
 		// err = tk.UpdateStatus(condTicket, common.PendingStatus)
 		err = tk.Update(condTicket, dbo.Ticket{
@@ -536,7 +534,8 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 						Service:  sqlt.Service,
 						StmtRaw:  sqlt.Statement,
 						IsExport: sqlt.IsExport,
-						Deadline: 90,
+						// Deadline: 90,
+						LongTime: sqlt.LongTime,
 					},
 					IssProjectID:  issue.ProjectID,
 					IssIID:        issue.IID,
