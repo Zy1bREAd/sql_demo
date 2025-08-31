@@ -31,11 +31,13 @@ const (
 // Ticket Status
 const (
 	CreatedStatus        = "CREATED"
+	EditedStatus         = "EDITED"
 	ReInitedStatus       = "REINITED" // 用于完成TIcket后二次更新Issue后的状态
-	ApprovalPassedStatus = "PASSED"
-	ApprovalRejectStatus = "REJECT"
-	ExcutePendingStatus  = "EXCUTE_PENDING" // 等待确认上线
-	PendingStatus        = "PENDING"        // 执行任务中
+	ApprovalPassedStatus = "APPROVAL_PASSED"
+	ApprovalRejectStatus = "APPROVAL_REJECT"
+	OnlinePendingStatus  = "ONLINE_PENDING" // 等待确认上线
+	OnlinePassedStatus   = "ONLINE_PASSED"
+	PendingStatus        = "PENDING" // 执行任务中
 	CompletedStatus      = "COMPLETED"
 	FailedStatus         = "FAILED"
 	UnknownStatus        = "UNKNOWN"

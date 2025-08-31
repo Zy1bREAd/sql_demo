@@ -177,7 +177,7 @@ func (wrapper *EventHandlerWrapper) workLoop() {
 		select {
 		case event, ok := <-wrapper.queue:
 			if !ok {
-				fmt.Println("队列已被关闭")
+				utils.ErrorPrint("WorkQueueErr", "Worker Queue is Full")
 				return
 			}
 			ctx, cancel := context.WithCancel(context.Background()) // 正常取决于Event中的事件超时

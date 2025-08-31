@@ -667,27 +667,71 @@ func (t *Ticket) Create() error {
 	return nil
 }
 
-// 不存在时创建记录，存在则更新
-func (t *Ticket) FristOrCreate() error {
+func (t *Ticket) ValidateTargetStatus(originalTicket Ticket, targetStats string) error {
 	dbConn := HaveSelfDB().GetConn()
-	tx := dbConn.Begin()
 	var tk Ticket
-	res := tx.Where(Ticket{
-		ProjectID: t.ProjectID,
-		IssueID:   t.IssueID,
-		AuthorID:  t.AuthorID,
-	}).Assign(Ticket{
-		UID:    t.UID,
-		Status: t.Status,
-		Link:   t.Link,
-	}).FirstOrCreate(&tk)
+	res := dbConn.Where(&originalTicket).Last(&tk)
 	if res.Error != nil {
-		tx.Rollback()
 		return res.Error
 	}
 	if res.RowsAffected != 1 {
+		return utils.GenerateError("TicketNotExist", "Ticket is not exist")
+	}
+	if tk.Status == targetStats {
+		return nil
+	}
+	// 疑似修改Ticket记录
+	if tk.Status == common.EditedStatus {
+		return utils.GenerateError("StatsNotMatch", "The Ticket has been modified. Please re-approve.")
+	}
+	return utils.GenerateError("StatsNotMatch", "Ticket Status is not match")
+}
+
+// 不存在时创建记录，存在则更新
+func (t *Ticket) LastAndCreateOrUpdate() error {
+	dbConn := HaveSelfDB().GetConn()
+	tx := dbConn.Begin()
+	var tk Ticket
+	// 检查是否存在该Issue对应的Ticket
+	findRes := tx.Where(Ticket{
+		ProjectID: t.ProjectID,
+		IssueID:   t.IssueID,
+		AuthorID:  t.AuthorID,
+	}).Last(&tk)
+	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 		tx.Rollback()
-		return utils.GenerateError("TicketCreateErr", "create rows is not 1")
+		return findRes.Error
+	}
+	if findRes.RowsAffected != 1 {
+		// 直接创建
+		createRes := tx.Create(&t)
+		if createRes.Error != nil {
+			tx.Rollback()
+			return createRes.Error
+		}
+		if createRes.RowsAffected != 1 {
+			tx.Rollback()
+			return utils.GenerateError("TicketCreateErr", "Create row data count is not 1")
+		}
+
+	} else {
+		// 存在记录，则更新状态
+		updateRes := tx.Model(Ticket{}).Where(Ticket{
+			UID:       tk.UID,
+			ProjectID: tk.ProjectID,
+			IssueID:   tk.IssueID,
+		}).Updates(Ticket{
+			Status: common.EditedStatus, // 修改为Edited状态
+			Link:   t.Link,
+		})
+		if updateRes.Error != nil {
+			tx.Rollback()
+			return updateRes.Error
+		}
+		if updateRes.RowsAffected != 1 {
+			tx.Rollback()
+			return utils.GenerateError("TicketUpdateErr", "Update row data count is not 1")
+		}
 	}
 	tx.Commit()
 	return nil

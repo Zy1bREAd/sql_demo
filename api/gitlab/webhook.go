@@ -14,8 +14,9 @@ import (
 )
 
 const (
+	CommentOnlineExcute   = 2
 	CommentApprovalPassed = 1
-	CommentApprovalReject = 0
+	CommentApprovalReject = -1
 
 	IssueOpenFlag   = 1
 	IssueUpdateFlag = 0
@@ -26,15 +27,15 @@ const (
 
 // Issue问题事件的回调
 type IssueWebhook struct {
-	EventType  string                `json:"event_type"`
-	User       GUser                 `json:"user"`
-	ObjectAttr Issue                 `json:"object_attributes"`
-	Project    Project               `json:"project"`
-	Changes    map[string]ChangeInfo `json:"changes"` // 记录变更内容
+	EventType  string             `json:"event_type"`
+	User       GUser              `json:"user"`
+	ObjectAttr Issue              `json:"object_attributes"`
+	Project    Project            `json:"project"`
+	Changes    map[string]Changes `json:"changes"` // 记录变更内容
 }
 
 // 变更记录
-type ChangeInfo struct {
+type Changes struct {
 	// 由于变更内容有uint有string，所以使用空接口代替
 	Previous any `json:"previous"`
 	Current  any `json:"current"`
@@ -51,7 +52,8 @@ type CommentWebhook struct {
 
 // 评论内容
 type CommentContent struct {
-	Approval uint   `json:"approval"`
+	Approval int    `json:"approval"`
+	Online   int    `json:"online"`
 	Reason   string `json:"reason"`
 }
 
@@ -75,6 +77,7 @@ func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
 	return nil
 }
 
+// 仅用于调用API, 其余事情由事件驱动者完成
 func (i *IssueWebhook) OpenIssueHandle() error {
 	// 区分Issue是open还是update操作,企业微信通知,发送消息通知至企业微信机器人
 	issueActionMap := map[string]int{
@@ -103,7 +106,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			if _, ok := desc.Current.(string); ok {
 				// 是否需要强制不能query转excute呢？？
 				rob := api.NewRobotNotice(&api.TicketInformBody{
-					Action:   "Create",
+					Action:   "Update",
 					Title:    i.ObjectAttr.Title,
 					DueDate:  i.ObjectAttr.DueDate,
 					Desc:     i.ObjectAttr.Description,
@@ -154,10 +157,6 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
 	if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
 		robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
-		// err := glab.CommentCreate(c.Project.ID, c.Issue.IID, robotMsg)
-		// if err != nil {
-		// 	log.Println(err.Error())
-		// }
 		return utils.GenerateError("AssigneerNotMatch", robotMsg)
 	}
 	// 解析指定Issue
@@ -244,6 +243,59 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 	return nil
 }
 
+func (c *CommentWebhook) handleOnlineExcute() error {
+	// 同意申请
+	glab := InitGitLabAPI()
+	// 检查审批人是否合法
+	approvalUserMap := conf.GetAppConf().GetBaseConfig().ApprovalMap
+	approverID, exist := approvalUserMap[c.User.Name]
+	if !exist {
+		return utils.GenerateError("ApprovalUserNotExist", "该用户不是审批人")
+	}
+	if c.User.ID != approverID {
+		// error: 不相同的userid
+		return utils.GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
+	}
+	// 确认签派给SQL Handle User
+	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
+	if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
+		robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
+		return utils.GenerateError("AssigneerNotMatch", robotMsg)
+	}
+	// 解析指定Issue
+	iss, err := glab.IssueView(c.Project.ID, c.Issue.IID)
+	if err != nil {
+		return utils.GenerateError("ParseIssueErr", err.Error())
+	}
+	// 检查issue状态是否关闭
+	if strings.ToLower(iss.State) == "closed" {
+		return utils.GenerateError("IssueClosed", "Issue已关闭")
+	}
+
+	// 解析Issue详情
+	issContent, err := ParseIssueDesc(iss.Description)
+	if err != nil {
+		utils.DebugPrint("ParseError", err.Error())
+		return err
+	}
+
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
+		Type: "gitlab_webhook",
+		Payload: &GitLabWebhook{
+			Webhook: CommentHandle,
+			Payload: &CommentPayload{
+				Action: CommentOnlineExcute,
+				IssuePayload: &IssuePayload{
+					Issue: &c.Issue,
+					Desc:  issContent,
+				},
+			},
+		},
+	})
+	return nil
+}
+
 func (c *CommentWebhook) CommentIssueHandle() error {
 	var content CommentContent
 	err := json.Unmarshal([]byte(c.ObjectAttr.Note), &content)
@@ -251,13 +303,24 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		utils.DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string. "+c.ObjectAttr.Note)
 		return nil
 	}
-	switch content.Approval {
-	case CommentApprovalPassed:
-		return c.handleApprovalPassed()
-	case CommentApprovalReject:
+	// switch content.Approval {
+	// case CommentApprovalPassed:
+	// 	return c.handleApprovalPassed()
+	// case CommentApprovalReject:
+	// 	return c.handleApprovalRejected(content.Reason)
+	// case CommentOnlineExcute:
+	// 	return c.handleOnlineExcute()
+	// default:
+	// 	return utils.GenerateError("ActionErr", "Unknown Action")
+	// }
+	if content.Approval == CommentApprovalReject {
 		return c.handleApprovalRejected(content.Reason)
-	default:
-		return utils.GenerateError("ApprovalError", "Unknown Approval Status")
+	} else if content.Approval == CommentApprovalPassed {
+		return c.handleApprovalPassed()
+	} else if content.Online == CommentOnlineExcute {
+		return c.handleOnlineExcute()
+	} else {
+		return utils.GenerateError("ActionErr", "Unknown Action")
 	}
 }
 
@@ -287,10 +350,10 @@ type IssuePayload struct {
 	Desc   *SQLIssueTemplate
 }
 
-// 集成批准、驳回两大数据的结构体
+// 评论结构体
 type CommentPayload struct {
 	Reason       string
-	Action       int // approval、reject
+	Action       int // approval、reject、online
 	CommentDesc  *CommentWebhook
 	IssuePayload *IssuePayload
 }

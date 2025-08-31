@@ -92,7 +92,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			})
 			return nil
 		}
-		if resultTicket.Status != common.ApprovalPassedStatus && resultTicket.Status != common.ExcutePendingStatus {
+		if resultTicket.Status != common.ApprovalPassedStatus && resultTicket.Status != common.OnlinePassedStatus {
 			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.GID, "Ticket Status is invalid")
 			rg := &dbo.SQLResultGroup{
 				GID:      t.GID,
@@ -160,6 +160,17 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			return utils.GenerateError("AuditRecordErr", err.Error())
 		}
 	case *IssueQTask:
+		// 处理ERROR推送到Gitlab Comment
+		defer func() {
+			if ok := recover(); ok != nil {
+				glab := glbapi.InitGitLabAPI()
+				errText := fmt.Sprintln(ok)
+				commentErr := glab.CommentCreate(t.IssProjectID, t.IssIID, errText)
+				if commentErr != nil {
+					utils.ErrorPrint("CommentFailed", commentErr)
+				}
+			}
+		}()
 		var tk dbo.Ticket
 		condTicket := dbo.Ticket{
 			UID:      t.QTG.TicketID,
@@ -181,7 +192,8 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			})
 			return nil
 		}
-		if resultTicket.Status != common.ApprovalPassedStatus && resultTicket.Status != common.ExcutePendingStatus {
+		fmt.Println("debug print ?", resultTicket.Status, resultTicket)
+		if resultTicket.Status != common.ApprovalPassedStatus && resultTicket.Status != common.OnlinePassedStatus {
 			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.QTG.GID, "Ticket Status is invalid")
 			rg := &dbo.SQLResultGroup{
 				GID:      t.QTG.GID,
@@ -495,9 +507,20 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		if !ok {
 			return utils.GenerateError("PayloadErr", "payload is invalid")
 		}
+		// 处理ERROR推送到Gitlab Comment
+		defer func() {
+			if ok := recover(); ok != nil {
+				glab := glbapi.InitGitLabAPI()
+				errText := fmt.Sprintln(ok)
+				commentErr := glab.CommentCreate(payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID, errText)
+				if commentErr != nil {
+					utils.ErrorPrint("CommentFailed", commentErr)
+				}
+			}
+		}()
 		gid := utils.GenerateUUIDKey() // UUID
 		switch payload.Action {
-		case glbapi.CommentApprovalPassed:
+		case glbapi.CommentOnlineExcute: //! 执行上线
 			sqlt := payload.IssuePayload.Desc //  获取SQLIssueTemplate
 			issue := payload.IssuePayload.Issue
 			// 获取USer真实ID
@@ -507,12 +530,20 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			userId := user.GetGitLabUserId()
 			ep := event.GetEventProducer()
 
-			// （更新）Ticket记录
+			//! 检测审批后和上线前是否有修改痕迹
 			var tk dbo.Ticket
+			if err := tk.ValidateTargetStatus(dbo.Ticket{
+				ProjectID: int(payload.IssuePayload.Issue.ProjectID),
+				IssueID:   int(payload.IssuePayload.Issue.IID),
+			}, common.OnlinePendingStatus); err != nil {
+				panic(err)
+			}
+
+			// （更新）Ticket记录
 			err := tk.UpdateStatus(dbo.Ticket{
 				ProjectID: int(issue.ProjectID),
 				IssueID:   int(issue.IID),
-			}, common.ApprovalPassedStatus)
+			}, common.OnlinePassedStatus)
 			if err != nil {
 				return err
 			}
@@ -520,6 +551,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			if err != nil {
 				return err
 			}
+
 			// 审批通过进入查询阶段
 			ep.Produce(event.Event{
 				Type: "sql_query",
@@ -544,6 +576,19 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				},
 			})
 			utils.DebugPrint("TaskEnqueue", fmt.Sprintf("task id=%s is enqueue", gid))
+		case glbapi.CommentApprovalPassed:
+			issue := payload.IssuePayload.Issue
+
+			// （更新）Ticket记录
+			var tk dbo.Ticket
+			err := tk.UpdateStatus(dbo.Ticket{
+				ProjectID: int(issue.ProjectID),
+				IssueID:   int(issue.IID),
+			}, common.OnlinePendingStatus)
+			if err != nil {
+				return err
+			}
+			//! Gitlab评论方式通知更新情况
 		case glbapi.CommentApprovalReject:
 			// （更新）Ticket记录
 			var tk dbo.Ticket
@@ -574,13 +619,14 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			AuthorID:  int(userId),
 			ProjectID: int(payload.Issue.ProjectID),
 			IssueID:   int(payload.Issue.IID),
-			Link:      fmt.Sprintf("http://159.75.119.146:28660/infra/demo_1/-/issues/%d", int(payload.Issue.IID)),
+			Link:      payload.Issue.URL,
 		}
-		err := ticket.FristOrCreate()
+		err := ticket.LastAndCreateOrUpdate()
 		if err != nil {
-			glab := glbapi.InitGitLabAPI()
-			glab.CommentCreate(uint(payload.Issue.ProjectID), uint(payload.Issue.IID), "Create Ticket Error::"+err.Error())
-			return err
+			// glab := glbapi.InitGitLabAPI()
+			// glab.CommentCreate(uint(payload.Issue.ProjectID), uint(payload.Issue.IID), fmt.Sprintf("[CreateTicketErr] **%s**", err.Error()))
+			// return err
+			panic(err)
 		}
 	}
 
