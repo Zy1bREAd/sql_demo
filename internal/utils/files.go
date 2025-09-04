@@ -80,7 +80,7 @@ func (exr *ExcelResult) CreateFile() error {
 
 func (exr *ExcelResult) Convert() error {
 	var f *excelize.File
-	filePath := exr.BasePath + "/" + exr.FileName + exr.ExtName()
+	filePath := exr.BasePath + "/" + exr.FileName
 	f, err := excelize.OpenFile(filePath)
 	if err != nil {
 		return err

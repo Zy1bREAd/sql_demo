@@ -14,15 +14,185 @@ import (
 	"vitess.io/vitess/go/vt/sqlparser"
 )
 
-type SQLParser struct {
+type SQLForParse struct {
 	Action   string // 代表DML类型
-	DBName   string
 	Table    string
+	DBName   string
 	SafeStmt string // 经过语法检验的原生SQL
 }
 
-func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
-	parseRes := make([]SQLParser, 0)
+type SQLForParseV2 struct {
+	// IsDerivedTable bool
+	Action   string // 代表DML类型
+	SafeStmt string // 经过语法检验的原生SQL
+	From     []FromParse
+}
+
+// From
+type FromParse struct {
+	IsDerivedTable bool
+	DBName         string
+	TableName      string
+	AsName         string
+	DerivedExpr    string
+	JoinOnConds    string
+	SubFrom        []FromParse // 子查询的 FROM 解析结果（仅派生表需要）
+}
+
+// ! 解析拆解SQL语句为结构体
+func ParseV3(sqlRaw string) ([]SQLForParseV2, error) {
+	stmtList, err := parseSQLs(sqlRaw)
+	if err != nil {
+		return nil, err
+	}
+	buf := sqlparser.NewTrackedBuffer(nil)
+	result := make([]SQLForParseV2, 0)
+	// 抽象成结构体
+	for _, stmt := range stmtList {
+
+		sqlfp, err := parseStmt(stmt)
+		if err != nil {
+			return nil, err
+		}
+		stmt.Format(buf)
+		sqlfp.SafeStmt = buf.String()
+		buf.Reset()
+
+		result = append(result, sqlfp)
+	}
+	return result, nil
+}
+
+// 解析该Stmt的SQLNode节点
+func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
+	sql := SQLForParseV2{}
+	switch s := stmt.(type) {
+	case *sqlparser.Select:
+		sql.Action = "select"
+		froms, ok := sql.parseSQLFrom(s.GetFrom())
+		if !ok {
+			return SQLForParseV2{}, nil
+		}
+		sql.From = froms
+	case *sqlparser.Update:
+	case *sqlparser.Insert:
+	case *sqlparser.TruncateTable:
+	default:
+		utils.ErrorPrint("UnknownSQLErr", "The SQLForParse Type is Unknown")
+	}
+	return sql, nil
+}
+
+// 将字符串解析成Statement
+func parseSQLs(stmts string) ([]sqlparser.Statement, error) {
+	parseRes := make([]sqlparser.Statement, 0)
+	p, err := sqlparser.New(sqlparser.Options{
+		TruncateUILen:  512,
+		TruncateErrLen: 1024,
+	})
+	if err != nil {
+		return nil, utils.GenerateError("NewParserErr", err.Error())
+	}
+
+	token := p.NewStringTokenizer(stmts)
+	// 尝试解析多条SQL语句
+	for {
+		stmt, err := sqlparser.ParseNext(token)
+		if err != nil {
+			// 已读取完所有SQL语句，跳出解析SQL的Loop
+			if err == io.EOF {
+				break
+			}
+			return nil, utils.GenerateError("ParseStmtErr", err.Error())
+		}
+		// 抽象成结构体
+		parseRes = append(parseRes, stmt)
+	}
+	return parseRes, nil
+}
+
+func (s *SQLForParseV2) parseSQLFrom(tableExprs []sqlparser.TableExpr) ([]FromParse, bool) {
+	parseList := make([]FromParse, 0, 2)
+	buf := sqlparser.NewTrackedBuffer(nil)
+	for _, from := range tableExprs {
+		fromResult := FromParse{}
+		switch f := from.(type) {
+		// 别名表
+		case *sqlparser.AliasedTableExpr:
+			switch sub := f.Expr.(type) {
+			// 普通表名
+			case sqlparser.TableName:
+				if !sub.Qualifier.IsEmpty() {
+					fromResult.DBName = sub.Qualifier.String()
+				}
+				fromResult.TableName = sub.Name.String()
+				fromResult.AsName = f.As.CompliantName()
+				fmt.Println("AS-Name:", f.As.CompliantName())
+				parseList = append(parseList, fromResult)
+			// 派生表
+			case *sqlparser.DerivedTable:
+				switch subSelect := sub.Select.(type) {
+				case *sqlparser.Select:
+					// 递归
+					fmt.Println("debug print-子查询")
+					// 记录派生表（子查询）内容
+					subSelect.Format(buf)
+					derivedExpr := buf.String()
+					buf.Reset()
+
+					subFromRes, ok := s.parseSQLFrom(subSelect.GetFrom())
+					if !ok {
+						return nil, false
+					}
+					//! 构建当前派生表的FromParse实例（解析派生表的FROM情况）
+					derivedTable := FromParse{
+						AsName:         f.As.CompliantName(), // 外层别名
+						DerivedExpr:    derivedExpr,
+						IsDerivedTable: true,
+						SubFrom:        subFromRes,
+					}
+					parseList = append(parseList, derivedTable)
+
+				default:
+					// 未知！
+					tempBuf := sqlparser.NewTrackedBuffer(nil)
+					subSelect.Format(tempBuf)
+					utils.DebugPrint("UnknownSQL", "Oops:: "+tempBuf.String())
+					return nil, false
+				}
+			default:
+				utils.ErrorPrint("UnknownTableExpr", "仅支持解析普通Table和派生表")
+				return nil, false
+			}
+		// 左右Join表
+		case *sqlparser.JoinTableExpr:
+			tmpJoinExprs := []sqlparser.TableExpr{
+				f.LeftExpr,
+				f.RightExpr,
+			}
+			joinFromRes, ok := s.parseSQLFrom(tmpJoinExprs)
+			if !ok {
+				return nil, false
+			}
+			for i, _ := range joinFromRes {
+				f.Condition.On.Format(buf)
+				joinFromRes[i].JoinOnConds = buf.String()
+				buf.Reset()
+			}
+			parseList = append(parseList, joinFromRes...)
+		case *sqlparser.ParenTableExpr:
+			utils.ErrorPrint("UnknownTableExpr", f.Exprs)
+			return nil, false
+		default:
+			utils.ErrorPrint("UnknownTableExpr", "仅支持As、Join形式")
+			return nil, false
+		}
+	}
+	return parseList, true
+}
+
+func ParseV2(dbName, sqlRaw string) ([]SQLForParse, error) {
+	parseRes := make([]SQLForParse, 0)
 	p, err := sqlparser.New(sqlparser.Options{
 		TruncateUILen:  512,
 		TruncateErrLen: 1024,
@@ -44,7 +214,7 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 		parseBuf := sqlparser.NewTrackedBuffer(nil)
 		stmt.Format(parseBuf)
 		// 抽象成结构体
-		psr := SQLParser{
+		psr := SQLForParse{
 			SafeStmt: parseBuf.String(),
 		}
 		switch s := stmt.(type) {
@@ -58,7 +228,7 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 			}
 			// 判断是否完整的表名
 			if !psr.validateFullTableNameV2(s.GetFrom()) {
-				errMsg := fmt.Sprintf("DB name for your SQL TableExpr is not included.\n> %s\n", sqlparser.String(s))
+				errMsg := fmt.Sprintf("DB name for your SQLForParse TableExpr is not included.\n> %s\n", sqlparser.String(s))
 				return nil, utils.GenerateError("DBNameIsNotFound", errMsg)
 			}
 			// 手动设置From并且重新生成SQL语句
@@ -69,7 +239,7 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 		case *sqlparser.Update:
 			// 判断是否完整的表名
 			if !psr.validateFullTableNameV2(s.GetFrom()) {
-				errMsg := fmt.Sprintf("DB name for your SQL TableExpr is not included.\n> %s\n", sqlparser.String(s))
+				errMsg := fmt.Sprintf("DB name for your SQLForParse TableExpr is not included.\n> %s\n", sqlparser.String(s))
 				return nil, utils.GenerateError("DBNameIsNotFound", errMsg)
 			}
 			// 手动设置From并且重新生成SQL语句
@@ -86,7 +256,7 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 			}
 			// 判断是否携带数据库名
 			if table.Qualifier.IsEmpty() {
-				errMsg := fmt.Sprintf("DB name for your SQL TableExpr is not included.\n> %s\n", sqlparser.String(s))
+				errMsg := fmt.Sprintf("DB name for your SQLForParse TableExpr is not included.\n> %s\n", sqlparser.String(s))
 				return nil, utils.GenerateError("DBNameIsNotFound", errMsg)
 				// 先不修改，暂时直接抛出来
 				// s.Table.Expr = sqlparser.NewTableNameWithQualifier(originalTable, dbName)
@@ -106,7 +276,7 @@ func ParseV2(dbName, sqlRaw string) ([]SQLParser, error) {
 }
 
 // 校验LIMIT子句约束
-func (s *SQLParser) validateLimit(limitExprs string) bool {
+func (s *SQLForParse) validateLimit(limitExprs string) bool {
 	re, err := regexp.Compile(`\s+limit\s+([0-9]+$)`)
 	if err != nil {
 		utils.DebugPrint("RegexpError", err.Error())
@@ -130,7 +300,7 @@ func (s *SQLParser) validateLimit(limitExprs string) bool {
 }
 
 // ! 递归检查是否完整表名（强制约束）
-func (s *SQLParser) validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
+func (s *SQLForParse) validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
 	for _, from := range tableExprs {
 		tempBuf := sqlparser.NewTrackedBuffer(nil)
 		from.Format(tempBuf)
@@ -183,7 +353,7 @@ func (s *SQLParser) validateFullTableNameV2(tableExprs sqlparser.TableExprs) boo
 }
 
 // 判断Table表达式是否符合完整的数据库名+表名的格式
-func (s *SQLParser) validateTableIsFull(tableExprs string) bool {
+func (s *SQLForParse) validateTableIsFull(tableExprs string) bool {
 	// split 和 正则表达式
 	splitRes := strings.Split(tableExprs, ".")
 	if len(splitRes) == 0 {
@@ -217,7 +387,7 @@ func parseWithVitess(statement string) (string, error) {
 	stmt, err := sqlparser.ParseNext(token)
 	if err != nil {
 		if err == io.EOF {
-			return "", errors.New("SQL Statement is Null")
+			return "", errors.New("SQLForParse Statement is Null")
 		}
 		log.Println("使用Vitess解析器解析出错: ", err)
 		return "", err
@@ -232,7 +402,7 @@ func ParseSQL(statement string, dml string) (string, error) {
 	if strings.Contains(dml, "delete") {
 		return "", utils.GenerateError("IllegalDML", "dml(DELTE) is not allowed")
 	}
-	var parse SQLParser
+	var parse SQLForParse
 	stmt, err := parseWithVitess(statement)
 	if err != nil {
 		return "", utils.GenerateError("SQLParseError", err.Error())
@@ -246,16 +416,16 @@ func ParseSQL(statement string, dml string) (string, error) {
 	return parse.SafeStmt, nil
 }
 
-func (p *SQLParser) validate() error {
+func (p *SQLForParse) validate() error {
 	// 不允许SELECT除外的操作
 	p.Action = strings.Split(p.SafeStmt, " ")[0]
 	lowerStr := strings.ToLower(p.Action)
 	if lowerStr != "select" {
-		return utils.GenerateError("SQL Validate Failed", "Only `SELECT` sql query is supported")
+		return utils.GenerateError("SQLForParse Validate Failed", "Only `SELECT` sql query is supported")
 	}
 	// 暂时禁止?符号，疑似注入参数查询
 	if slices.Contains([]byte(p.SafeStmt), 63) {
-		return utils.GenerateError("SQL Validate Failed", "The carrying of question marks is temporarily prohibited")
+		return utils.GenerateError("SQLForParse Validate Failed", "The carrying of question marks is temporarily prohibited")
 	}
 
 	return nil

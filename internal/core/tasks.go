@@ -67,7 +67,7 @@ type QTasker interface {
 type QueryTask struct {
 	ID       string
 	Deadline int // 单个SQL的超时时间（单位为秒）
-	SafeSQL  SQLParser
+	SafeSQL  SQLForParse
 }
 type QTaskGroup struct {
 	IsExport bool

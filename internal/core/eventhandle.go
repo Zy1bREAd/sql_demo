@@ -92,7 +92,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			})
 			return nil
 		}
-		if resultTicket.Status != common.ApprovalPassedStatus && resultTicket.Status != common.OnlinePassedStatus {
+		if resultTicket.Status != common.OnlinePassedStatus {
 			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.GID, "Ticket Status is invalid")
 			rg := &dbo.SQLResultGroup{
 				GID:      t.GID,
@@ -192,8 +192,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			})
 			return nil
 		}
-		fmt.Println("debug print ?", resultTicket.Status, resultTicket)
-		if resultTicket.Status != common.ApprovalPassedStatus && resultTicket.Status != common.OnlinePassedStatus {
+		if resultTicket.Status != common.OnlinePassedStatus {
 			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.QTG.GID, "Ticket Status is invalid")
 			rg := &dbo.SQLResultGroup{
 				GID:      t.QTG.GID,
@@ -359,10 +358,10 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 		glab.CommentCreate(v.IssProjectID, v.IssIID, tempURL)
 		// 自动关闭issue（表示完成）
-		// err = glab.IssueClose(v.IssProjectID, v.IssIID)
-		// if err != nil {
-		// 	utils.DebugPrint("GitLabAPIError", err.Error())
-		// }
+		err = glab.IssueClose(v.IssProjectID, v.IssIID)
+		if err != nil {
+			utils.DebugPrint("GitLabAPIError", err.Error())
+		}
 		// 完成通知
 		iss, err := glab.IssueView(v.IssProjectID, v.IssIID)
 		if err != nil {
