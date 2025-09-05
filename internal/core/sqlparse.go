@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"reflect"
 	"regexp"
 	"slices"
 	"sql_demo/internal/utils"
@@ -22,10 +23,15 @@ type SQLForParse struct {
 }
 
 type SQLForParseV2 struct {
-	// IsDerivedTable bool
-	Action   string // 代表DML类型
-	SafeStmt string // 经过语法检验的原生SQL
-	From     []FromParse
+	Action     string // 代表DML类型
+	SafeStmt   string // 经过语法检验的原生SQL
+	WhereExpr  string
+	HavingExpr string
+	Order      []string
+	Limit      LimitParse
+	Cols       []ColParse
+	ColVals    []ColValsParse
+	From       []FromParse
 }
 
 // From
@@ -37,6 +43,30 @@ type FromParse struct {
 	DerivedExpr    string
 	JoinOnConds    string
 	SubFrom        []FromParse // 子查询的 FROM 解析结果（仅派生表需要）
+}
+
+// Cols
+type ColParse struct {
+	Table string
+	Name  string
+	As    string
+}
+
+// ColVals
+type ColValsParse struct {
+	Tuple []string // (2, 'Alice', 'alice@example.com')
+	Expr  string   // 类似子查询的Expr
+}
+
+// Limit
+type LimitParse struct {
+	LimitCount int
+	Offset     int
+}
+
+type WhereParse struct {
+	Expr    string
+	SubStmt SQLForParseV2
 }
 
 // ! 解析拆解SQL语句为结构体
@@ -66,24 +96,106 @@ func ParseV3(sqlRaw string) ([]SQLForParseV2, error) {
 // 解析该Stmt的SQLNode节点
 func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 	sql := SQLForParseV2{}
+	buf := sqlparser.NewTrackedBuffer(nil)
 	switch s := stmt.(type) {
 	case *sqlparser.Select:
 		sql.Action = "select"
 		froms, ok := sql.parseSQLFrom(s.GetFrom())
 		if !ok {
-			return SQLForParseV2{}, nil
+			utils.ErrorPrint("ParseFROMErr", "Parse FROM is failed")
 		}
 		sql.From = froms
+		// Where 和 Having
+		where := s.GetWherePredicate()
+		if where != nil {
+			where.Format(buf)
+			sql.WhereExpr = buf.String()
+			buf.Reset()
+		}
+		if having := s.Having; having != nil {
+			sql.HavingExpr = sqlparser.String(having.Expr)
+		}
+
+		// Order
+		orders := s.GetOrderBy()
+		orderVals := make([]string, 0, len(orders))
+		for _, order := range orders {
+			order.Format(buf)
+			orderVals = append(orderVals, buf.String())
+			buf.Reset()
+		}
+		sql.Order = orderVals
+
+		// 列名
+		cols := sql.parseSQLSelectColumns(s.GetColumns())
+		sql.Cols = cols
+		// Limit/Offset
+		if s.GetLimit() != nil {
+			limit, err := sql.parseSQLLimit(s.GetLimit())
+			if err != nil {
+				return SQLForParseV2{}, err
+			}
+			sql.Limit = limit
+		}
+
 	case *sqlparser.Update:
+		sql.Action = "update"
+		froms, ok := sql.parseSQLFrom(s.GetFrom())
+		if !ok {
+			utils.ErrorPrint("ParseFROMErr", "Parse FROM is failed")
+		}
+		sql.From = froms
+		// Where解析
+		where := s.GetWherePredicate()
+		if where != nil {
+			where.Format(buf)
+			sql.WhereExpr = buf.String()
+			buf.Reset()
+		}
+		// Order
+		orderVals := make([]string, 0, len(s.OrderBy))
+		for _, order := range s.OrderBy {
+			order.Format(buf)
+			orderVals = append(orderVals, buf.String())
+			buf.Reset()
+		}
+		sql.Order = orderVals
+		// Limit/Offset
+		if s.Limit != nil {
+			limit, err := sql.parseSQLLimit(s.Limit)
+			if err != nil {
+				return SQLForParseV2{}, err
+			}
+			sql.Limit = limit
+		}
+
 	case *sqlparser.Insert:
+		sql.Action = "insert"
+		table, err := s.Table.TableName()
+		if err != nil {
+			utils.ErrorPrint("InsertTableErr", err.Error())
+			return SQLForParseV2{}, err
+		}
+		froms := []FromParse{{
+			DBName:    table.Qualifier.String(),
+			AsName:    s.Table.As.CompliantName(),
+			TableName: s.Table.TableNameString(),
+		},
+		}
+		sql.From = froms
+		sql.ColVals = sql.parseSQLInsertVals(s.Rows)
 	case *sqlparser.TruncateTable:
+		return SQLForParseV2{}, utils.GenerateError("TruncateNotAllow", "The Truncate DML is not allow")
+	case *sqlparser.Delete:
+		// 不允许删除
+		return SQLForParseV2{}, utils.GenerateError("DeleteNotAllow", "The Delete DML is not allow")
 	default:
-		utils.ErrorPrint("UnknownSQLErr", "The SQLForParse Type is Unknown")
+		return SQLForParseV2{}, utils.GenerateError("UnknownSQLErr", "The SQLForParse Type is Unknown")
 	}
 	return sql, nil
 }
 
-// 将字符串解析成Statement
+// 将原生字符串解析成Statement
 func parseSQLs(stmts string) ([]sqlparser.Statement, error) {
 	parseRes := make([]sqlparser.Statement, 0)
 	p, err := sqlparser.New(sqlparser.Options{
@@ -111,6 +223,50 @@ func parseSQLs(stmts string) ([]sqlparser.Statement, error) {
 	return parseRes, nil
 }
 
+func (s *SQLForParseV2) parseSQLSelectColumns(colsExpr []sqlparser.SelectExpr) []ColParse {
+	colsRes := make([]ColParse, 0, len(colsExpr))
+	for _, col := range colsExpr {
+		switch c := col.(type) {
+		case *sqlparser.StarExpr:
+			colsRes = append(colsRes, ColParse{
+				Name:  "*",
+				Table: c.TableName.Name.String(),
+			})
+		case *sqlparser.AliasedExpr:
+			col := ColParse{}
+			if c.As.NotEmpty() {
+				col.As = c.As.CompliantName()
+			}
+			// 获取原始col值
+			switch node := c.Expr.(type) {
+			case *sqlparser.ColName:
+				col.Name = node.Name.String()
+			case *sqlparser.Literal:
+				if node.Type == sqlparser.StrVal {
+					col.Name = node.Val
+				}
+			default:
+				col.Name = sqlparser.String(c.Expr)
+			}
+			colsRes = append(colsRes, col)
+			//! TODO：若列的Expr是SelectExpr则再次进入相对应的逻辑。
+		case *sqlparser.Nextval:
+			utils.ErrorPrint("NextValErr", "Dont Support Next For Value")
+			buf := sqlparser.NewTrackedBuffer(nil)
+			c.Format(buf)
+			colsRes = append(colsRes, ColParse{
+				Name: buf.String(),
+			})
+			buf.Reset()
+		default:
+			utils.ErrorPrint("UnknownColsExpr", "Unknown Col Type"+reflect.TypeOf(c).String())
+		}
+	}
+
+	return colsRes
+}
+
+// 解析Select语句的FROM
 func (s *SQLForParseV2) parseSQLFrom(tableExprs []sqlparser.TableExpr) ([]FromParse, bool) {
 	parseList := make([]FromParse, 0, 2)
 	buf := sqlparser.NewTrackedBuffer(nil)
@@ -127,7 +283,6 @@ func (s *SQLForParseV2) parseSQLFrom(tableExprs []sqlparser.TableExpr) ([]FromPa
 				}
 				fromResult.TableName = sub.Name.String()
 				fromResult.AsName = f.As.CompliantName()
-				fmt.Println("AS-Name:", f.As.CompliantName())
 				parseList = append(parseList, fromResult)
 			// 派生表
 			case *sqlparser.DerivedTable:
@@ -189,6 +344,65 @@ func (s *SQLForParseV2) parseSQLFrom(tableExprs []sqlparser.TableExpr) ([]FromPa
 		}
 	}
 	return parseList, true
+}
+
+func (s *SQLForParseV2) parseSQLInsertVals(colVals sqlparser.InsertRows) []ColValsParse {
+	colValsRes := make([]ColValsParse, 0)
+	// 解析Insert的Cols Vals
+	buf := sqlparser.NewTrackedBuffer(nil)
+	switch insertCols := colVals.(type) {
+	case *sqlparser.Select:
+		//! 此处可扩展
+		insertCols.Format(buf)
+		colValsRes = append(colValsRes, ColValsParse{
+			Expr: buf.String(),
+		})
+	case *sqlparser.Union:
+		utils.ErrorPrint("UnknownSQLErr", "The Insert Col Type is Union???")
+	case sqlparser.Values:
+		// 使用元组的方式
+		for _, ic := range insertCols {
+			ic.Format(buf)
+			fmt.Println("debug print -8", buf.String())
+			buf.Reset()
+			// 将元祖序列化成Slice
+			val := make([]string, 0, len(ic))
+			for _, c := range ic {
+				val = append(val, sqlparser.String(c))
+			}
+			colValsRes = append(colValsRes, ColValsParse{
+				Tuple: val,
+			})
+		}
+	default:
+		utils.ErrorPrint("UnknownSQLErr", "The Insert Col Type is Unknown")
+	}
+	return colValsRes
+}
+
+// 解析Limit和Offset(转换Int)
+func (s *SQLForParseV2) parseSQLLimit(limit *sqlparser.Limit) (LimitParse, error) {
+	buf := sqlparser.NewTrackedBuffer(nil)
+	// LimitCounts
+	limit.Rowcount.Format(buf)
+	tmpVal := buf.String()
+	limitVal, err := strconv.ParseInt(tmpVal, 10, 64)
+	buf.Reset()
+	if err != nil {
+		return LimitParse{}, utils.GenerateError("LimitParseErr", err.Error())
+	}
+	// Offset
+	limit.Offset.Format(buf)
+	tmpVal = buf.String()
+	offsetVal, err := strconv.ParseInt(tmpVal, 10, 64)
+	buf.Reset()
+	if err != nil {
+		return LimitParse{}, utils.GenerateError("LimitParseErr", err.Error())
+	}
+	return LimitParse{
+		LimitCount: int(limitVal),
+		Offset:     int(offsetVal),
+	}, nil
 }
 
 func ParseV2(dbName, sqlRaw string) ([]SQLForParse, error) {
