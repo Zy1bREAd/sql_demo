@@ -111,6 +111,22 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 			where.Format(buf)
 			sql.WhereExpr = buf.String()
 			buf.Reset()
+			// ! 扩展：将Where中的Expr实现解析
+			// switch w := where.(type) {
+			// case *sqlparser.BetweenExpr:
+			// 	w.Left.Format(buf)
+			// 	fmt.Println("debug print where(left)=", buf.String())
+			// 	buf.Reset()
+			// 	w.Format(buf)
+			// 	fmt.Println("debug print where(all)=", buf.String())
+			// 	buf.Reset()
+			// case *sqlparser.Subquery:
+			// 	w.Format(buf)
+			// 	fmt.Println("debug print where(sub)=", buf.String())
+			// 	buf.Reset()
+			// default:
+			// 	fmt.Println("????")
+			// }
 		}
 		if having := s.Having; having != nil {
 			sql.HavingExpr = sqlparser.String(having.Expr)
@@ -189,6 +205,10 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 	case *sqlparser.Delete:
 		// 不允许删除
 		return SQLForParseV2{}, utils.GenerateError("DeleteNotAllow", "The Delete DML is not allow")
+	// EXPLAIN 执行计划
+	case *sqlparser.ExplainStmt:
+		fmt.Println("debug print - explain:", s.Statement)
+		return parseStmt(s.Statement)
 	default:
 		return SQLForParseV2{}, utils.GenerateError("UnknownSQLErr", "The SQLForParse Type is Unknown")
 	}
@@ -644,3 +664,9 @@ func (p *SQLForParse) validate() error {
 
 	return nil
 }
+
+// EXPLAIN 执行计划解析
+// func (s *SQLForParseV2) Explain() {
+// 	dbConn := dbo.HaveSelfDB().GetConn()
+// 	// dbConn.
+// }

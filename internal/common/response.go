@@ -19,6 +19,15 @@ const (
 	LongOtherDDL  = 600
 
 	DownloadFileDDL = 60
+
+	// 默认CacheMap清理时间
+	DefaultCacheMapDDL = 600
+
+	// CleanMap
+	ResultMapCleanTaskFlag     = 0
+	QueryTaskMapCleanTaskFlag  = 1
+	SessionMapCleanTaskFlag    = 2
+	ExportWorkMapCleanTaskFlag = 3
 )
 
 // 数据源连接状态
@@ -30,17 +39,20 @@ const (
 
 // Ticket Status
 const (
-	CreatedStatus        = "CREATED"
-	EditedStatus         = "EDITED"
-	ReInitedStatus       = "REINITED" // 用于完成TIcket后二次更新Issue后的状态
-	ApprovalPassedStatus = "APPROVAL_PASSED"
-	ApprovalRejectStatus = "APPROVAL_REJECT"
-	OnlinePendingStatus  = "ONLINE_PENDING" // 等待确认上线
-	OnlinePassedStatus   = "ONLINE_PASSED"
-	PendingStatus        = "PENDING" // 执行任务中
-	CompletedStatus      = "COMPLETED"
-	FailedStatus         = "FAILED"
-	UnknownStatus        = "UNKNOWN"
+	CreatedStatus         = "CREATED"
+	EditedStatus          = "EDITED"
+	ReInitedStatus        = "REINITED" // 用于完成TIcket后二次更新Issue后的状态
+	PreCheckPendingStatus = "PRECHECK_PENDING"
+	PreCheckSuccessStatus = "PRECHECK_SUCCESS"
+	PreCheckFailedStatus  = "PRECHECK_FAILED"
+	ApprovalPassedStatus  = "APPROVAL_PASSED"
+	ApprovalRejectStatus  = "APPROVAL_REJECT"
+	OnlinePendingStatus   = "ONLINE_PENDING" // 等待确认上线
+	OnlinePassedStatus    = "ONLINE_PASSED"
+	PendingStatus         = "PENDING" // 执行任务中
+	CompletedStatus       = "COMPLETED"
+	FailedStatus          = "FAILED"
+	UnknownStatus         = "UNKNOWN"
 )
 
 // ! 封装响应数据

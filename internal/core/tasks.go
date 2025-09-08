@@ -143,7 +143,7 @@ outerLoop:
 		}
 		// 主要分查询和执行，核心通过解析SQL语句的类型来实现对应的逻辑
 		if task.SafeSQL.Action == "select" {
-			result = op.Query(timeoutCtx, task.SafeSQL.SafeStmt, task.ID)
+			result = op.Query(timeoutCtx, task.SafeSQL.SafeStmt, task.ID, conf.DataMaskHandle)
 		} else {
 			result = op.Excute(timeoutCtx, task.SafeSQL.SafeStmt, task.ID)
 		}

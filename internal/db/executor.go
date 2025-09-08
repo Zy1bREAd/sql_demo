@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sql_demo/internal/common"
-	"sql_demo/internal/conf"
 	"sql_demo/internal/utils"
 	"strings"
 	"sync"
@@ -48,8 +47,8 @@ type MySQLConfig struct {
 // type SQLError struct
 // 查询和执行SQL的结果集
 type SQLResult struct {
-	RowCount   int // 返回结果条数
-	LastId     int64
+	RowCount   int     // 返回结果条数
+	LastId     int64   // 用于Excute的最新ID
 	QueryTime  float64 // 查询花费的时间
 	HandleTime float64 // 处理结果集的时间
 	ID         string  // task id
@@ -59,10 +58,27 @@ type SQLResult struct {
 	Results    []map[string]any // 结果集列表
 }
 
+// 后期转泛型
 type SQLResultGroup struct {
 	GID      string
 	ResGroup []*SQLResult
 	Errrr    error
+}
+
+type PreCheckResult struct {
+	RowCount   int     // 返回结果条数
+	QueryTime  float64 // 查询花费的时间
+	HandleTime float64 // 处理结果集的时间
+	ID         string  // task id
+	GID        string
+	Stmt       string           // 查询的原生SQL
+	Results    []map[string]any // 结果集列表
+}
+
+type ResultGroupV2[T SQLResult | PreCheckResult] struct {
+	GID      string
+	Errrr    error
+	ResGroup []*T
 }
 
 // 读取配置，加载数据库池
@@ -287,8 +303,13 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 	return res
 }
 
+func (ist *DBInstance) Explain(ctx context.Context, sqlRaw string, taskId string) SQLResult {
+	// 不操作脱敏加密
+	return ist.Query(ctx, "EXPLAIN "+sqlRaw, taskId, nil)
+}
+
 // 对内暴露的查询SQL接口
-func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) SQLResult {
+func (ist *DBInstance) Query(ctx context.Context, sqlRaw, taskId string, dataMaskFunc func(col string, val *sql.RawBytes) string) SQLResult {
 	errCh := make(chan error, 1)
 	res := SQLResult{
 		Stmt: sqlRaw,
@@ -315,11 +336,11 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 		// 遍历结果集，逐行处理结果
 		for rows.Next() {
 			if rows.Err() != nil {
-				utils.DebugPrint("RowError", "该行数据出现问题")
+				utils.ErrorPrint("RowDataErr", "该行数据有问题")
 				break
 			}
-
-			values := make([]any, len(cols)) // 每一行都创建结果集容器的切片,按照列的顺序进行存储
+			// 每一行都创建结果集容器的切片,按照列的顺序进行存储
+			values := make([]any, len(cols))
 			// 初始化结果集容器；将该切片中的元素都初始化为sql.RawBytes容器，用于存放列值
 			for i := range values {
 				values[i] = new(sql.RawBytes) // 原始SQL语句最终以字节切片的方式进行存储；type RawBytes []byte
@@ -335,7 +356,11 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw string, taskId string) 
 				// 列名切片顺序和values顺序一致，断言结果类型，然后进行存储
 				if value, ok := values[i].(*sql.RawBytes); ok {
 					//! 数据处理（数据脱敏，过滤等）
-					rowResultMap[colName] = conf.DataMaskHandle(colName, value)
+					if dataMaskFunc != nil {
+						rowResultMap[colName] = dataMaskFunc(colName, value)
+						continue
+					}
+					rowResultMap[colName] = string(*value)
 				}
 			}
 			res.Results = append(res.Results, rowResultMap)
@@ -371,7 +396,7 @@ func GetDBPoolManager() *DBPoolManager {
 }
 
 // 打开数据库实例连接
-func newDBInstance(conn ConnectInfo) (*DBInstance, error) {
+func NewDBInstance(conn ConnectInfo) (*DBInstance, error) {
 	// e.g: zabbix:zabbix_password@tcp(124.220.17.5:23366)/zabbix
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/mysql", conn.User, conn.Password, conn.Host, conn.Port)
 	db, err := sql.Open("mysql", dsn)
@@ -424,7 +449,7 @@ func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
 			manager.Pool[env] = make(map[string]*DBInstance, len(dbList))
 		}
 		for istName, dbConf := range dbList {
-			db, err := newDBInstance(ConnectInfo{
+			db, err := NewDBInstance(ConnectInfo{
 				User:     dbConf.User,
 				Password: dbConf.Password,
 				Host:     dbConf.Host,

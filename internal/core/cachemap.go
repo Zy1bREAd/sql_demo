@@ -8,20 +8,21 @@ import (
 )
 
 // ! CahceMap 内存Map集，用作全局变量。
-var ResultMap *CachesMap = &CachesMap{cache: &sync.Map{}}
+var ResultMap *CachesMap = &CachesMap{cache: &sync.Map{}}      // 存储结果集（TaskID -> Result）
 var SessionMap *CachesMap = &CachesMap{cache: &sync.Map{}}     // 存储SSO登录State参数的Map
 var QueryTaskMap *CachesMap = &CachesMap{cache: &sync.Map{}}   // 存储查询任务相关信息的映射表（任务 -> 详细QueryTask数据)
 var ExportWorkMap *CachesMap = &CachesMap{cache: &sync.Map{}}  //导出工作的映射表(任务 -> 结果)
 var GitLabIssueMap *CachesMap = &CachesMap{cache: &sync.Map{}} // GitLab Issue和Task Id的映射表(任务 -> GitLab Issue)
+var SQLStmtMap *CachesMap = &CachesMap{cache: &sync.Map{}}     // 存储解析后的SQL结构体数据。以切片的形式存储SQLForParseV2
 
-// 仅针对QueryResult结果集的并发安全哈希表
+// 并发安全哈希表
 type CachesMap struct {
 	cache *sync.Map
 }
 
 // ! 使用uint来避免负数，使用0代表无限，大于0都是正常的过期时间。
 func (rc *CachesMap) Set(key string, values any, expireTime uint, taskType int) {
-	rc.cache.Store(key, values) // 应该存储结果集结构体
+	rc.cache.Store(key, values)
 	if expireTime > 0 {
 		go func() {
 			task := cleanTask{

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"slices"
 	api "sql_demo/api"
 	glbapi "sql_demo/api/gitlab"
 	"sql_demo/internal/common"
@@ -39,6 +40,7 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 			"file_housekeeping": NewHousekeepingEventHandler,
 			"gitlab_webhook":    NewGitLabEventHandler,
 			// "database_crud":     NewDBEventHandler,
+			"sql_check": NewCheckEventHandler,
 		}
 		for k, handler := range registerMap {
 			err := ed.RegisterHandler(k, handler(), 5)
@@ -550,7 +552,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			if err != nil {
 				return err
 			}
-
+			// TODO：先进入预检阶段，并非直接查询
 			// 审批通过进入查询阶段
 			ep.Produce(event.Event{
 				Type: "sql_query",
@@ -629,5 +631,155 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 	}
 
+	return nil
+}
+
+// 检查事件(用于检查SQL阶段)
+type PreCheckEventHandler struct {
+}
+
+func NewCheckEventHandler() event.EventHandler {
+	return &PreCheckEventHandler{}
+}
+
+func (eh *PreCheckEventHandler) Name() string {
+	return "检查事件处理者"
+}
+
+func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
+	errCh := make(chan error, 1)
+	ep := event.GetEventProducer()
+	switch t := e.Payload.(type) {
+	case *QTaskGroupV2:
+		// goroutine
+		go func(context.Context) {
+			err := t.CheckTicketStats([]string{common.CreatedStatus, common.EditedStatus, common.ReInitedStatus})
+			if err != nil {
+				errCh <- err
+				return
+			}
+			// 更新Ticket信息
+			err = t.UpdateTicketStats(common.PreCheckPendingStatus)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			// 解析SQL
+			parseStmts, err := ParseV3(t.StmtRaw)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			// 存储查询任务Map
+			SQLStmtMap.Set(t.GID, parseStmts, 300, 1)
+
+			// EXPLAIN解析
+			ist, err := dbo.HaveDBIst(t.Env, t.DBName, t.Service)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			explainResult := make([]dbo.SQLResult, 0)
+			for _, stmt := range parseStmts {
+				explainResult = append(explainResult, ist.Explain(ctx, stmt.SafeStmt, t.GID))
+			}
+			fmt.Println("explain result:", explainResult)
+
+			// TODO：SOAR 分析（利用系统层面SOAR操作实现，捕获屏幕输出流）
+
+			// TODO：是否要加入SELECT COUNT(*)的数据量对比
+
+			// 自定义规则解析
+			// 1. 检查黑名单（数据库和数据表）
+			dbPool := dbo.GetDBPoolManager()
+			illegalDBs := dbPool.ExcludeDBList()
+			for _, stmt := range parseStmts {
+				for _, f := range stmt.From {
+					// 需要处理派生表的情况（subFrom出现违规表)
+					if slices.Contains(illegalDBs, f.DBName) {
+						errCh <- utils.GenerateError("IllegalTable", f.DBName+" SQL DB Name is illegal")
+						return
+					}
+				}
+			}
+			illegalTables := ist.ExcludeTableList()
+			// 普通不全版
+			for _, stmt := range parseStmts {
+				for _, f := range stmt.From {
+					// 需要处理派生表的情况（subFrom出现违规表)
+					if slices.Contains(illegalTables, f.TableName) {
+						errCh <- utils.GenerateError("IllegalTable", f.TableName+" SQL Table Name is illegal")
+						return
+					}
+				}
+			}
+			// 递归版
+			// var recu func([]FromParse)
+			// for _, stmt := range parseStmts {
+			// 	recu = func([]FromParse) {
+			// 		for _, f := range stmt.From {
+			// 			// 需要处理派生表的情况（subFrom出现违规表)
+			// 			if slices.Contains(illegalTables, f.TableName) {
+			// 				errCh <- utils.GenerateError("IllegalTable", f.TableName+" SQL Table Name is illegal")
+			// 				return
+			// 			}
+			// 			if f.IsDerivedTable {
+			// 				recu(f.SubFrom)
+			// 			}
+			// 		}
+			// 	}
+			// }
+
+			// 构造SQL任务
+			sqlTasks := make([]*SQLTask, 0)
+			for _, stmt := range parseStmts {
+				sqlTask := SQLTask{
+					ID:        utils.GenerateUUIDKey(), // 该条SQL的单独IID
+					Deadline:  t.Deadline,
+					ParsedSQL: stmt,
+				}
+				sqlTasks = append(sqlTasks, &sqlTask)
+			}
+			t.QTasks = sqlTasks
+			t.Deadline = len(sqlTasks) * t.Deadline // 更新为正确的任务组超时时间
+			fmt.Println("debug print -test 最终的taskGroup:", *t, &t)
+			// 存储SQL任务组信息
+			QueryTaskMap.Set(t.GID, t, common.DefaultCacheMapDDL, common.QueryTaskMapCleanTaskFlag)
+			// 更新Ticket信息
+			err = t.UpdateTicketStats(common.PreCheckSuccessStatus)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			// 表示正常完成
+			errCh <- nil
+
+		}(ctx)
+
+		// 统一错误处理
+		select {
+		case err := <-errCh:
+			if err != nil {
+				rg := &dbo.ResultGroupV2[dbo.PreCheckResult]{
+					GID:      t.GID,
+					ResGroup: make([]*dbo.PreCheckResult, 0),
+					Errrr:    err,
+				}
+				ep.Produce(event.Event{
+					Type:    "save_result",
+					Payload: rg,
+				})
+				// 更新Ticket信息
+				err = t.UpdateTicketStats(common.PreCheckFailedStatus)
+				if err != nil {
+					utils.ErrorPrint("TicketStatsErr", "Update Ticket Status is failed")
+				}
+			}
+		case <-ctx.Done():
+			utils.ErrorPrint("GoroutineErr", "goroutine is error")
+		default:
+			utils.ErrorPrint("UnknownErr", "The error is unknown")
+		}
+	}
 	return nil
 }
