@@ -15,18 +15,19 @@ type SQLTask struct {
 }
 
 type QTaskGroupV2 struct {
-	IsExport bool
-	LongTime bool
-	UserID   uint // 关联执行用户id
-	Deadline int  //整个任务组的超时时间，默认: (用户SQL条数*用户定义的时间)+用户定义的时间
-	GID      string
-	TicketID string
-	DML      string
-	Env      string // 所执行环境
-	DBName   string
-	Service  string
-	StmtRaw  string // 原生的SQL语句
-	QTasks   []*SQLTask
+	IsSoarAnalysis bool
+	IsExport       bool
+	IsLongTime     bool
+	UserID         uint // 关联执行用户id
+	Deadline       int  //整个任务组的超时时间，默认: (用户SQL条数*用户定义的时间)+用户定义的时间
+	GID            string
+	TicketID       string
+	DML            string
+	Env            string // 所执行环境
+	DBName         string
+	Service        string
+	StmtRaw        string // 原生的SQL语句
+	QTasks         []*SQLTask
 }
 
 // Ticket前置状态判断（符合状态流转约束）

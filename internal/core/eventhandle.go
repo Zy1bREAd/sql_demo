@@ -686,6 +686,19 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			fmt.Println("explain result:", explainResult)
 
 			// TODO：SOAR 分析（利用系统层面SOAR操作实现，捕获屏幕输出流）
+			if t.IsSoarAnalysis {
+				soar := NewSoarAnalyzer(
+					WithReportFormat("json"),
+					WithSQLContent(t.StmtRaw),
+					WithCommandPath("/tmp"),
+					WithCommand("soar.linux-amd64_v11"),
+				)
+				_, err = soar.Analysis()
+				if err != nil {
+					errCh <- err
+					return
+				}
+			}
 
 			// TODO：是否要加入SELECT COUNT(*)的数据量对比
 
