@@ -207,7 +207,6 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 		return SQLForParseV2{}, utils.GenerateError("DeleteNotAllow", "The Delete DML is not allow")
 	// EXPLAIN 执行计划
 	case *sqlparser.ExplainStmt:
-		fmt.Println("debug print - explain:", s.Statement)
 		return parseStmt(s.Statement)
 	default:
 		return SQLForParseV2{}, utils.GenerateError("UnknownSQLErr", "The SQLForParse Type is Unknown")
@@ -306,10 +305,9 @@ func (s *SQLForParseV2) parseSQLFrom(tableExprs []sqlparser.TableExpr) ([]FromPa
 				parseList = append(parseList, fromResult)
 			// 派生表
 			case *sqlparser.DerivedTable:
+				// 递归
 				switch subSelect := sub.Select.(type) {
 				case *sqlparser.Select:
-					// 递归
-					fmt.Println("debug print-子查询")
 					// 记录派生表（子查询）内容
 					subSelect.Format(buf)
 					derivedExpr := buf.String()
@@ -383,7 +381,6 @@ func (s *SQLForParseV2) parseSQLInsertVals(colVals sqlparser.InsertRows) []ColVa
 		// 使用元组的方式
 		for _, ic := range insertCols {
 			ic.Format(buf)
-			fmt.Println("debug print -8", buf.String())
 			buf.Reset()
 			// 将元祖序列化成Slice
 			val := make([]string, 0, len(ic))

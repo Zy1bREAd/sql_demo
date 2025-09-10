@@ -60,6 +60,11 @@ type cleanTask struct {
 	ID   string
 }
 
+type SnowKeyCleanTask struct {
+	Type int
+	ID   int64
+}
+
 type QTasker interface {
 	Execute()
 }

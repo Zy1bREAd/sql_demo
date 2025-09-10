@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"slices"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/utils"
@@ -667,36 +668,14 @@ func (t *Ticket) Create() error {
 	return nil
 }
 
-func (t *Ticket) ValidateTargetStatus(originalTicket Ticket, targetStats string) error {
-	dbConn := HaveSelfDB().GetConn()
-	var tk Ticket
-	res := dbConn.Where(&originalTicket).Last(&tk)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected != 1 {
-		return utils.GenerateError("TicketNotExist", "Ticket is not exist")
-	}
-	if tk.Status == targetStats {
-		return nil
-	}
-	// 疑似修改Ticket记录
-	if tk.Status == common.EditedStatus {
-		return utils.GenerateError("StatsNotMatch", "The Ticket has been modified. Please re-approve.")
-	}
-	return utils.GenerateError("StatsNotMatch", "Ticket Status is not match")
-}
-
-// 不存在时创建记录，存在则更新
+// 不存在时创建记录，存在则更新 （根据SourceRef）
 func (t *Ticket) LastAndCreateOrUpdate() error {
 	dbConn := HaveSelfDB().GetConn()
 	tx := dbConn.Begin()
 	var tk Ticket
 	// 检查是否存在该Issue对应的Ticket
 	findRes := tx.Where(Ticket{
-		ProjectID: t.ProjectID,
-		IssueID:   t.IssueID,
-		AuthorID:  t.AuthorID,
+		SourceRef: fmt.Sprintf("%s:%d:%d:%d", t.Source, t.AuthorID, t.ProjectID, t.IssueID),
 	}).Last(&tk)
 	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 		tx.Rollback()
@@ -717,12 +696,9 @@ func (t *Ticket) LastAndCreateOrUpdate() error {
 	} else {
 		// 存在记录，则更新状态
 		updateRes := tx.Model(Ticket{}).Where(Ticket{
-			UID:       tk.UID,
-			ProjectID: tk.ProjectID,
-			IssueID:   tk.IssueID,
+			SourceRef: fmt.Sprintf("%s:%d:%d:%d", t.Source, t.AuthorID, t.ProjectID, t.IssueID),
 		}).Updates(Ticket{
 			Status: common.EditedStatus, // 修改为Edited状态
-			Link:   t.Link,
 		})
 		if updateRes.Error != nil {
 			tx.Rollback()
@@ -737,20 +713,36 @@ func (t *Ticket) LastAndCreateOrUpdate() error {
 	return nil
 }
 
+// 获取查找结果
+func (t *Ticket) FindOne(cond Ticket) (*Ticket, error) {
+	var resultTicket Ticket
+	dbConn := HaveSelfDB().GetConn()
+	findRes := dbConn.Where(&cond).Last(&resultTicket)
+	if findRes.Error != nil {
+		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
+			return nil, utils.GenerateError("TicketErr", "the db record is not exist:"+findRes.Error.Error())
+		}
+		return nil, findRes.Error
+	}
+	if findRes.RowsAffected != 1 {
+		return nil, utils.GenerateError("TicketErr", "rows is not 1")
+	}
+	return &resultTicket, nil
+}
+
+// 按照指定CondTicket进行更新
 func (t *Ticket) Update(cond, updateTicket Ticket) error {
 	dbConn := HaveSelfDB().GetConn()
 	// 根据ProjectID + IssueID作为条件，进行更新操作
-	findRes := dbConn.Where(&cond).First(&t)
-	if findRes.Error != nil {
-		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
-			return utils.GenerateError("UpdateFailed", "the db record is not exist:"+findRes.Error.Error())
-		}
-		return utils.GenerateError("UpdateFailed", findRes.Error.Error())
+	tk, err := t.FindOne(cond)
+	if err != nil {
+		return err
 	}
+
 	updateTicket.UID = t.UID
 	// UpdateAt
 	tx := dbConn.Begin()
-	res := tx.Model(&t).Updates(&updateTicket)
+	res := tx.Model(&tk).Updates(&updateTicket)
 	if res.Error != nil {
 		tx.Rollback()
 		return res.Error
@@ -763,24 +755,32 @@ func (t *Ticket) Update(cond, updateTicket Ticket) error {
 	return nil
 }
 
-func (t *Ticket) UpdateStatus(cond Ticket, status string) error {
+// 检查前置状态
+func (t *Ticket) ValidateStatus(cond Ticket, targetStatus ...string) error {
+	if len(targetStatus) == 0 {
+		return nil
+	}
+	// 根据ProjectID + IssueID作为条件，进行更新操作
+	tk, err := t.FindOne(cond)
+	if err != nil {
+		return err
+	}
+	// 检查前置Ticket状态
+	if slices.Contains(targetStatus, tk.Status) {
+		return nil
+	}
+	return utils.GenerateError("TicketStatusNotMatch", fmt.Sprintf("Ticket Status:%s is not match", tk.Status))
+}
+
+func (t *Ticket) ValidateAndUpdateStatus(cond Ticket, status string, targetStatus ...string) error {
+	err := t.ValidateStatus(cond, targetStatus...)
+	if err != nil {
+		return err
+	}
 	var statusTicket Ticket = Ticket{
 		Status: status,
 	}
 	return t.Update(cond, statusTicket)
-}
-
-func (t *Ticket) Find(cond Ticket) (*Ticket, error) {
-	var resultTicket Ticket
-	dbConn := HaveSelfDB().GetConn()
-	res := dbConn.Where(&cond).Last(&resultTicket)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected != 1 {
-		return nil, utils.GenerateError("TicketUpdateErr", "create rows is not 1")
-	}
-	return &resultTicket, nil
 }
 
 // 获取Ticket Status的统计

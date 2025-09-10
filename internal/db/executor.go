@@ -65,22 +65,6 @@ type SQLResultGroup struct {
 	Errrr    error
 }
 
-type PreCheckResult struct {
-	RowCount   int     // 返回结果条数
-	QueryTime  float64 // 查询花费的时间
-	HandleTime float64 // 处理结果集的时间
-	ID         string  // task id
-	GID        string
-	Stmt       string           // 查询的原生SQL
-	Results    []map[string]any // 结果集列表
-}
-
-type ResultGroupV2[T SQLResult | PreCheckResult] struct {
-	GID      string
-	Errrr    error
-	ResGroup []*T
-}
-
 // 读取配置，加载数据库池
 func LoadInDB(isReload bool) {
 	var config AllEnvDBConfig

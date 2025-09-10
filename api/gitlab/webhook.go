@@ -84,8 +84,18 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 		"open":   IssueOpenFlag,
 		"update": IssueUpdateFlag,
 	}
+	// 初始化
+	var issContent *SQLIssueTemplate
+	ep := event.GetEventProducer()
+
 	switch i.ObjectAttr.Action {
 	case "open":
+		issDesc, err := ParseIssueDesc(i.ObjectAttr.Description)
+		if err != nil {
+			utils.DebugPrint("ParseError", err.Error())
+			return err
+		}
+		issContent = issDesc
 		utils.DebugPrint("OpenIssueHandle", "open new a issue")
 		rob := api.NewRobotNotice(&api.TicketInformBody{
 			Action:   "Create",
@@ -96,15 +106,34 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			UserName: i.User.Username,
 		})
 		// 发送消息给通知机器人
-		err := rob.InformRobot()
+		err = rob.InformRobot()
 		if err != nil {
 			utils.DebugPrint("InformError", err.Error())
 		}
+		// 事件驱动下一阶段
+		ep.Produce(event.Event{
+			Type: "gitlab_webhook",
+			Payload: &GitLabWebhook{
+				Webhook: IssueHandle,
+				Payload: &IssuePayload{
+					Issue:  &i.ObjectAttr,
+					Action: issueActionMap[i.ObjectAttr.Action],
+					Desc:   issContent,
+				},
+			},
+		})
 	case "update":
 		desc, exist := i.Changes["description"]
 		if exist {
+			// 仅针对Issue详情内容修改的检测
 			if _, ok := desc.Current.(string); ok {
-				// 是否需要强制不能query转excute呢？？
+				// 解析Issue详情内容
+				issDesc, err := ParseIssueDesc(i.ObjectAttr.Description)
+				if err != nil {
+					utils.DebugPrint("ParseError", err.Error())
+					return err
+				}
+				issContent = issDesc
 				rob := api.NewRobotNotice(&api.TicketInformBody{
 					Action:   "Update",
 					Title:    i.ObjectAttr.Title,
@@ -114,29 +143,27 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 					UserName: i.User.Username,
 				})
 				// 发送消息给通知机器人
-				err := rob.InformRobot()
+				err = rob.InformRobot()
 				if err != nil {
 					utils.DebugPrint("InformError", err.Error())
 				}
+				// 事件驱动下一阶段
+				ep.Produce(event.Event{
+					Type: "gitlab_webhook",
+					Payload: &GitLabWebhook{
+						Webhook: IssueHandle,
+						Payload: &IssuePayload{
+							Issue:  &i.ObjectAttr,
+							Action: issueActionMap[i.ObjectAttr.Action],
+							Desc:   issContent,
+						},
+					},
+				})
 			}
 		}
 	default:
-		utils.DebugPrint("", "nothing to do")
-		return nil
+		utils.DebugPrint("???", "nothing to do")
 	}
-	// 事件驱动完成其他事情
-	ep := event.GetEventProducer()
-	ep.Produce(event.Event{
-		Type: "gitlab_webhook",
-		Payload: &GitLabWebhook{
-			Webhook: IssueHandle,
-			Payload: &IssuePayload{
-				Issue:  &i.ObjectAttr,
-				Action: issueActionMap[i.ObjectAttr.Action],
-			},
-		},
-	})
-	// 存储DB？？
 	return nil
 }
 
@@ -303,16 +330,7 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 		utils.DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string. "+c.ObjectAttr.Note)
 		return nil
 	}
-	// switch content.Approval {
-	// case CommentApprovalPassed:
-	// 	return c.handleApprovalPassed()
-	// case CommentApprovalReject:
-	// 	return c.handleApprovalRejected(content.Reason)
-	// case CommentOnlineExcute:
-	// 	return c.handleOnlineExcute()
-	// default:
-	// 	return utils.GenerateError("ActionErr", "Unknown Action")
-	// }
+	// 控制分支
 	if content.Approval == CommentApprovalReject {
 		return c.handleApprovalRejected(content.Reason)
 	} else if content.Approval == CommentApprovalPassed {
@@ -333,8 +351,9 @@ type SQLIssueTemplate struct {
 	DBName    string `json:"db_name"`
 	Service   string `json:"service"`
 	// Deadline int  `json:"deadline,omitempty"`
-	LongTime bool `json:"long_time"`
-	IsExport bool `json:"is_export"`
+	LongTime       bool `json:"long_time"`
+	IsExport       bool `json:"is_export"`
+	IsSoarAnalysis bool `json:"is_soar"` // 是否需要Soar检测获取SQL建议
 }
 
 // 集成Webhook结构体

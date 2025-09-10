@@ -18,6 +18,12 @@ type GitLabAPI struct {
 	URL         string
 	AccessToken string
 }
+type GitLabComment struct {
+	ProjectID int
+	IssueIID  int
+	AuthorID  int
+	API       GitLabAPI
+}
 
 func InitGitLabAPI() *GitLabAPI {
 	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
@@ -67,6 +73,12 @@ type GUser struct {
 type Project struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`
+}
+
+// 缓存结构体(组合优于继承)
+type IssueCache struct {
+	*Issue
+	Content *SQLIssueTemplate
 }
 
 // ! 封装GitLab API

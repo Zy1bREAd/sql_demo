@@ -13,7 +13,8 @@ var SessionMap *CachesMap = &CachesMap{cache: &sync.Map{}}     // 存储SSO登�
 var QueryTaskMap *CachesMap = &CachesMap{cache: &sync.Map{}}   // 存储查询任务相关信息的映射表（任务 -> 详细QueryTask数据)
 var ExportWorkMap *CachesMap = &CachesMap{cache: &sync.Map{}}  //导出工作的映射表(任务 -> 结果)
 var GitLabIssueMap *CachesMap = &CachesMap{cache: &sync.Map{}} // GitLab Issue和Task Id的映射表(任务 -> GitLab Issue)
-var SQLStmtMap *CachesMap = &CachesMap{cache: &sync.Map{}}     // 存储解析后的SQL结构体数据。以切片的形式存储SQLForParseV2
+var CheckTaskMap *CachesMap = &CachesMap{cache: &sync.Map{}}   // 存储检查任务后的数据（包含解析后SQL的结构体数据，以切片的形式存储SQLForParseV2）
+// var UserTicketMap *CachesMap = &CachesMap{cache: &sync.Map{}}  // 用于存储用户与Ticket关联的Map
 
 // 并发安全哈希表
 type CachesMap struct {
