@@ -173,7 +173,7 @@ func (et *ExportTask) Submit() {
 		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
 		var auditRecord dbo.AuditRecordV2
 		dbConn := dbo.HaveSelfDB().GetConn()
-		res := dbConn.Where("task_id = ?", et.GID).First(&auditRecord)
+		res := dbConn.Where("ticket_id = ?", et.GID).Last(&auditRecord)
 		if res.Error != nil {
 			utils.ErrorPrint("DBAPIError", res.Error.Error())
 			return
@@ -202,24 +202,25 @@ func (et *ExportTask) Submit() {
 		auditCh <- struct{}{}
 	}()
 	// 构造导出任务（默认5分钟清理）
-	taskResult := &ExportResult{
+	exportRes := &ExportResult{
 		Error: nil,
 		Done:  make(chan struct{}),
 	}
 	// 确定完整的文件名（包含后缀）
 	if et.IsOnly {
-		fileName := fmt.Sprintf("result_export_%s_%s", et.GID, today)
+		fileName := fmt.Sprintf("result_export_%d_%s", et.GID, today)
 		et.FileName = fileName + ".csv"
-		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName
+		exportRes.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName
 	} else {
-		fileName := fmt.Sprintf("result_export_all_%s_%s", et.GID, today)
+		fileName := fmt.Sprintf("result_export_all_%d_%s", et.GID, today)
 		et.FileName = fileName + ".xlsx"
-		taskResult.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName
+		exportRes.FilePath = conf.ExportEnv.FilePath + "/" + et.FileName
 	}
-	et.Result = taskResult
-	et.deadline = 300
+	et.Result = exportRes
+	et.deadline = common.DefaultCacheMapDDL
 	ExportWorkMap.Set(et.GID, et.Result, common.DefaultCacheMapDDL, common.ExportWorkMapCleanFlag)
 	// 确保审计完成
+	fmt.Println("debug print gid::", et.GID)
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
 		Type:    "export_result",
@@ -247,7 +248,7 @@ func (et *ExportTask) Export(ctx context.Context) error {
 		csvRes := utils.CSVResult{
 			BasePath: conf.ExportEnv.FilePath,
 			FileName: et.FileName,
-			Data:     taskResults.ResGroup[et.ResultIdx].Results,
+			Data:     taskResults.Data[et.ResultIdx].Results,
 		}
 
 		err := csvRes.Convert()
@@ -264,7 +265,7 @@ func (et *ExportTask) Export(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		for index, result := range taskResults.ResGroup {
+		for index, result := range taskResults.Data {
 			excelRes.Data = result.Results
 			excelRes.Index = index + 1
 			err := excelRes.Convert()
@@ -292,7 +293,7 @@ func (et *ExportTask) Clean(ctx context.Context) {
 
 // 获取结果集（设置是否需要重做flag），返回结果集和error
 // 检查结果集resultMap还是否存在当前task的result，来决定是否重新执行查询任务来获取结果
-func getTaskResults(ctx context.Context, taskId int64, re ReExcute) (*dbo.SQLResultGroup, error) {
+func getTaskResults(ctx context.Context, taskId int64, re ReExcute) (*SQLResultGroupV2, error) {
 	mapVal, resultExist := ResultMap.Get(taskId)
 	if !resultExist {
 		taskMap, taskExist := QueryTaskMap.Get(taskId)
@@ -312,7 +313,7 @@ func getTaskResults(ctx context.Context, taskId int64, re ReExcute) (*dbo.SQLRes
 			time.Sleep(1 * time.Second)
 			mapVal, ok := ResultMap.Get(taskId)
 			if ok {
-				assertVal, ok := mapVal.(*dbo.SQLResultGroup)
+				assertVal, ok := mapVal.(*SQLResultGroupV2)
 				if !ok {
 					return nil, utils.GenerateError("QueryResultError", "query result data type is incorrect")
 				}
@@ -322,7 +323,7 @@ func getTaskResults(ctx context.Context, taskId int64, re ReExcute) (*dbo.SQLRes
 		}
 		return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout")
 	}
-	assertVal, ok := mapVal.(*dbo.SQLResultGroup)
+	assertVal, ok := mapVal.(*SQLResultGroupV2)
 	if !ok {
 		return nil, utils.GenerateError("QueryResultError", "query result data type is incorrect")
 	}

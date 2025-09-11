@@ -200,7 +200,6 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		// 存储查询任务Map
 		utils.DebugPrint("Gitlab Issue SQL查询事件消费", t.QTG.TicketID)
 		// （更新）Ticket记录
-		taskID := utils.GenerateUUIDKey()
 		err = tk.Update(condTicket, dbo.Ticket{
 			Status: common.PendingStatus,
 			TaskID: t.QTG.GID,
@@ -260,7 +259,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 		audit := dbo.AuditRecordV2{
 			TicketID:  t.QTG.TicketID,
-			TaskID:    taskID,
+			TaskID:    t.QTG.GID,
 			UserID:    t.QTG.UserID,
 			Payload:   string(jsonBytes),
 			ProjectID: t.IssProjectID,
@@ -430,10 +429,10 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			utils.ErrorPrint("GitlabCommentErr", err.Error())
 		}
 		// 自动关闭issue（表示完成）
-		err = glab.IssueClose(v.IssProjectID, v.IssIID)
-		if err != nil {
-			utils.DebugPrint("GitLabAPIError", err.Error())
-		}
+		// err = glab.IssueClose(v.IssProjectID, v.IssIID)
+		// if err != nil {
+		// 	utils.DebugPrint("GitLabAPIError", err.Error())
+		// }
 		// 完成通知
 		iss, err := glab.IssueView(v.IssProjectID, v.IssIID)
 		if err != nil {
@@ -665,6 +664,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				targetStats := []string{
 					common.PreCheckSuccessStatus,
 					common.CompletedStatus,
+					common.ApprovalPassedStatus,
 				}
 				var tk dbo.Ticket
 				err := tk.ValidateAndUpdateStatus(dbo.Ticket{
@@ -682,6 +682,11 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 					return
 				}
 				//! Gitlab评论方式通知更新情况
+				_ = glab.CommentCreate(glbapi.GitLabComment{
+					ProjectID: commentBody.ProjectID,
+					IssueIID:  commentBody.IssueIID,
+					Message:   "审批成功, 等待上线...",
+				})
 			case glbapi.CommentApprovalReject:
 				// （更新）Ticket记录
 				targetStats := []string{

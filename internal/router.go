@@ -664,7 +664,7 @@ func showTempQueryResult(ctx *gin.Context) {
 		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
 		var auditRecord dbo.AuditRecordV2
 		dbConn := dbo.HaveSelfDB().GetConn()
-		res := dbConn.Where("ticket_id = ?", dbRes.TicketID).First(&auditRecord)
+		res := dbConn.Where("ticket_id = ?", dbRes.TicketID).Where("event_type = ?", "SQL_QUERY").Last(&auditRecord)
 		if res.Error != nil {
 			cancel()
 			utils.ErrorPrint("DBAPIError", res.Error.Error())
@@ -692,11 +692,11 @@ func showTempQueryResult(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, "SQL Query result is not exist")
 		return
 	}
-	if val, ok := userResult.(*dbo.SQLResultGroup); ok {
+	if val, ok := userResult.(*core.SQLResultGroupV2); ok {
 		common.SuccessResp(ctx, gin.H{
-			"result":    val.ResGroup,
+			"result":    val.Data,
 			"is_export": dbRes.IsAllowExport,
-			"task_id":   val.GID,
+			"task_id":   strconv.FormatInt(dbRes.TicketID, 10), //! 由于JS会有大数字的精度丢失问题，因此需要后端使用字符串进行传递。
 		}, "SUCCESS")
 	}
 	// 等待审计记录的完成

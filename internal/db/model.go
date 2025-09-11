@@ -63,11 +63,11 @@ func (audit *AuditRecordV2) TableName() string {
 
 type TempResultMap struct {
 	UID           string    `gorm:"primaryKey;"`
-	TicketID      int64     `gorm:"not null;uniqueIndex"`
-	CreateAt      time.Time `gorm:"type:datetime(0);autoCreateTime"`
-	ExpireAt      time.Time `gorm:"type:datetime(0)"`
+	TicketID      int64     `gorm:"not null"`
 	IsDeleted     uint8     `gorm:"default:0;type:smallint"`
 	IsAllowExport bool      `gorm:"default:false"`
+	CreateAt      time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	ExpireAt      time.Time `gorm:"type:datetime(0)"`
 }
 
 func (temp *TempResultMap) TableName() string {
