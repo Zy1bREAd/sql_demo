@@ -162,7 +162,8 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			}
 		}
 	default:
-		utils.DebugPrint("???", "nothing to do")
+		// 检查是否为Issue关闭状态：
+		utils.DebugPrint("UnknownErr", i.ObjectAttr.Action)
 	}
 	return nil
 }

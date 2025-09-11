@@ -245,11 +245,11 @@ func (usr *User) GetGitLabUserId() uint {
 // }
 
 // 存储临时结果链接
-func SaveTempResult(uukey string, taskId int64, expireTime uint, allowExport bool) error {
+func SaveTempResult(ticketID int64, uukey string, expireTime uint, allowExport bool) error {
 	now := time.Now().Add(time.Duration(expireTime) * time.Second)
 	tempData := TempResultMap{
-		UUKey:         uukey,
-		TaskId:        taskId,
+		UID:           uukey,
+		TicketID:      ticketID,
 		ExpireAt:      now,
 		IsAllowExport: allowExport,
 	}
@@ -259,7 +259,7 @@ func SaveTempResult(uukey string, taskId int64, expireTime uint, allowExport boo
 	}
 	// 延时设置清理flag标志
 	time.AfterFunc(time.Duration(expireTime)*time.Second, func() {
-		res := selfDB.conn.Model(&TempResultMap{}).Where("uu_key = ?", uukey).Where("task_id = ?", taskId).Update("is_deleted", 1)
+		res := selfDB.conn.Model(&TempResultMap{}).Where("uid = ?", uukey).Where("ticket_id = ?", ticketID).Update("is_deleted", 1)
 		if res.Error != nil {
 			utils.DebugPrint("DelTempResultError", "delete temp result link is failed "+res.Error.Error())
 			return
@@ -276,7 +276,7 @@ func SaveTempResult(uukey string, taskId int64, expireTime uint, allowExport boo
 // 从数据库中获取结果集是否存在、是否过期
 func GetTempResult(uuKey string) (*TempResultMap, error) {
 	var tempData TempResultMap
-	res := selfDB.conn.Where("uu_key = ?", uuKey).First(&tempData)
+	res := selfDB.conn.Where("uid = ?", uuKey).First(&tempData)
 	if res.Error != nil {
 		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
 			return nil, errors.New("result link is not found")

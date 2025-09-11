@@ -2,9 +2,7 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
@@ -91,21 +89,22 @@ func (ce *CheckEvent) UpdateTicketStats(targetStats string, exceptStats ...strin
 }
 
 // 任务组：创建审计日日志
-func (tg *QTaskGroupV2) CreateAuditReocrd(eventName string) error {
-	jsonBytes, err := json.Marshal(tg.QTasks)
-	if err != nil {
-		utils.ErrorPrint("AuditRecordV2", err.Error())
-	}
-	audit := dbo.AuditRecordV2{
-		TaskID:   tg.GID,
-		UserID:   uint(tg.UserID),
-		Payload:  string(jsonBytes),
-		TaskKind: common.QTaskGroupType,
-	}
-	// 日志审计插入v2
-	err = audit.InsertOne(eventName)
-	return err
-}
+// func (tg *QTaskGroupV2) CreateAuditReocrd(eventName string) error {
+// 	jsonBytes, err := json.Marshal(tg.QTasks)
+// 	if err != nil {
+// 		utils.ErrorPrint("AuditRecordV2", err.Error())
+// 	}
+// 	audit := dbo.AuditRecordV2{
+// 		TicketID: tg.TicketID,
+// 		TaskID:   tg.GID,
+// 		UserID:   tg.UserID,
+// 		Payload:  string(jsonBytes),
+// 		TaskKind: common.IssueQTaskType,
+// 	}
+// 	// 日志审计插入v2
+// 	err = audit.InsertOne(eventName)
+// 	return err
+// }
 
 // 多SQL执行(可Query可Excute), 遇到错误立即退出后续执行
 func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) {

@@ -62,8 +62,8 @@ func (audit *AuditRecordV2) TableName() string {
 }
 
 type TempResultMap struct {
-	UUKey         string    `gorm:"primaryKey"`
-	TaskId        int64     `gorm:"not null;uniqueIndex"`
+	UID           string    `gorm:"primaryKey;"`
+	TicketID      int64     `gorm:"not null;uniqueIndex"`
 	CreateAt      time.Time `gorm:"type:datetime(0);autoCreateTime"`
 	ExpireAt      time.Time `gorm:"type:datetime(0)"`
 	IsDeleted     uint8     `gorm:"default:0;type:smallint"`

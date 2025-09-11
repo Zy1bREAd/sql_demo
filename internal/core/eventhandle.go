@@ -259,6 +259,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			utils.ErrorPrint("AuditRecordV2", err.Error())
 		}
 		audit := dbo.AuditRecordV2{
+			TicketID:  t.QTG.TicketID,
 			TaskID:    taskID,
 			UserID:    t.QTG.UserID,
 			Payload:   string(jsonBytes),
@@ -416,7 +417,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 		// 存储结果、输出结果临时链接
 		uuKey, tempURL := glbapi.NewHashTempLink()
-		err = dbo.SaveTempResult(uuKey, res.GID, common.DefaultCacheMapDDL, v.QTG.IsExport)
+		err = dbo.SaveTempResult(res.GID, uuKey, common.DefaultCacheMapDDL, v.QTG.IsExport)
 		if err != nil {
 			utils.DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
 		}
@@ -601,7 +602,6 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		go func(context.Context) {
 			switch payload.Action {
 			case glbapi.CommentOnlineExcute: //! 执行上线
-
 				if err != nil {
 					errCh <- err
 					_ = tk.Update(dbo.Ticket{
@@ -627,7 +627,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 					SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
 				}, common.OnlinePassedStatus, targetStats...)
 				if err != nil {
-					errCh <- fmt.Errorf("[UpdateTicketErr] **%s**", err.Error())
+					errCh <- err
 					_ = tk.Update(dbo.Ticket{
 						UID: tkID,
 					}, dbo.Ticket{
@@ -664,6 +664,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				// 校验状态并更新Ticket
 				targetStats := []string{
 					common.PreCheckSuccessStatus,
+					common.CompletedStatus,
 				}
 				var tk dbo.Ticket
 				err := tk.ValidateAndUpdateStatus(dbo.Ticket{
@@ -672,7 +673,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 					SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
 				}, common.ApprovalPassedStatus, targetStats...)
 				if err != nil {
-					errCh <- fmt.Errorf("[UpdateTicketErr] **%s**", err.Error())
+					errCh <- err
 					_ = tk.Update(dbo.Ticket{
 						UID: tkID,
 					}, dbo.Ticket{
@@ -694,7 +695,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 					SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
 				}, common.ApprovalRejectStatus, targetStats...)
 				if err != nil {
-					errCh <- fmt.Errorf("[UpdateTicketErr] **%s**", err.Error())
+					errCh <- err
 					_ = tk.Update(dbo.Ticket{
 						UID: tkID,
 					}, dbo.Ticket{
@@ -722,7 +723,6 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			uid := utils.GenerateSnowKey()
 			// （创建）Ticket记录——使用sourceRef标识唯一Ticket
 			sourceRef := fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.Issue.ProjectID, payload.Issue.IID)
-			fmt.Println("debug print :", sourceRef)
 			ticket := dbo.Ticket{
 				UID:       uid,
 				Status:    common.CreatedStatus,
@@ -735,14 +735,14 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 			err := ticket.LastAndCreateOrUpdate()
 			if err != nil {
-				errCh <- fmt.Errorf("[TicketErr] **%s**", err.Error())
+				errCh <- err
 				return
 			}
 			tk, err := ticket.FindOne(dbo.Ticket{
 				SourceRef: sourceRef,
 			})
 			if err != nil {
-				errCh <- fmt.Errorf("[TicketErr] **%s**", err.Error())
+				errCh <- err
 				return
 			}
 			//TODO：是否区分Issue不同操作的逻辑
@@ -754,7 +754,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 			GitLabIssueMap.Set(tk.UID, issCache, common.TicketCacheMapDDL, common.IssueTicketType)
 			// 更新详情内容(GitLab)
-			msg := fmt.Sprintf("[Ticket_ID] **%d**, 准备预检...", tk.UID)
+			msg := fmt.Sprintf("TraceID=%d \nPre-Check Task is Starting.....\n", tk.UID)
 			err = glab.CommentCreate(glbapi.GitLabComment{
 				ProjectID: commentBody.ProjectID,
 				IssueIID:  commentBody.IssueIID,
@@ -828,7 +828,6 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 	}
 	switch p := e.Payload.(type) {
 	case *CheckEvent:
-		fmt.Println("debug print pre-check starting....")
 		// 预先设置结果基本项数据
 		preCheckRes.TicketID = p.TicketID
 		// goroutine
@@ -890,7 +889,6 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 					errCh <- err
 					return
 				}
-				fmt.Println("soar result:", soarResult)
 				preCheckRes.Data.Soar.Results = soarResult
 			}
 
@@ -964,7 +962,6 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				return nil
 			}
 			//! 展示预检成功的结果详情。
-			fmt.Println("debug print pre-check completed")
 			ep.Produce(event.Event{
 				Type:    "save_result",
 				Payload: preCheckRes,

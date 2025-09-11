@@ -664,7 +664,7 @@ func showTempQueryResult(ctx *gin.Context) {
 		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
 		var auditRecord dbo.AuditRecordV2
 		dbConn := dbo.HaveSelfDB().GetConn()
-		res := dbConn.Where("task_id = ?", dbRes.TaskId).First(&auditRecord)
+		res := dbConn.Where("ticket_id = ?", dbRes.TicketID).First(&auditRecord)
 		if res.Error != nil {
 			cancel()
 			utils.ErrorPrint("DBAPIError", res.Error.Error())
@@ -687,7 +687,7 @@ func showTempQueryResult(ctx *gin.Context) {
 		auditChan <- struct{}{}
 	}()
 	// 结果集是否存在
-	userResult, exist := core.ResultMap.Get(dbRes.TaskId)
+	userResult, exist := core.ResultMap.Get(dbRes.TicketID)
 	if !exist {
 		common.DefaultResp(ctx, common.RespFailed, nil, "SQL Query result is not exist")
 		return

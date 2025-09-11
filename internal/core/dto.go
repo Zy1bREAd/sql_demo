@@ -3,7 +3,6 @@ package core
 import (
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"slices"
 	"sql_demo/internal/common"
 	dbo "sql_demo/internal/db"
@@ -348,7 +347,6 @@ func (env *QueryEnvDTO) UpdateEnvInfo() error {
 	return hotReloadDBCfg(func() error {
 		updateData := env.toORMData()
 		tmpEnv := dbo.QueryEnv{UID: env.UID}
-		fmt.Println("debug -data", updateData)
 		return tmpEnv.UpdateOne(updateData)
 	})
 }
