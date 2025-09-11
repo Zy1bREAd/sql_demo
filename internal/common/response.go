@@ -32,6 +32,9 @@ const (
 	SessionMapCleanFlag    = 2
 	ExportWorkMapCleanFlag = 3
 	CheckTaskMapCleanFlag  = 4
+
+	// TIMEOUT
+	RetryTimeOut = 300
 )
 
 // 数据源连接状态

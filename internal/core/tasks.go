@@ -21,6 +21,7 @@ const (
 type ReExcute struct {
 	isReExcute bool
 	deadline   int
+	Fn         func()
 }
 
 type ExportResult struct {
@@ -326,6 +327,35 @@ func getTaskResults(ctx context.Context, taskId int64, re ReExcute) (*SQLResultG
 	assertVal, ok := mapVal.(*SQLResultGroupV2)
 	if !ok {
 		return nil, utils.GenerateError("QueryResultError", "query result data type is incorrect")
+	}
+	return assertVal, nil
+}
+
+// 获取结果集（设置是否需要重做flag），返回结果集和error
+// 检查结果集resultMap还是否存在当前task的result，来决定是否重新执行查询任务来获取结果
+func getCheckTaskResults(ctx context.Context, ticketID int64, redo ReExcute) (*PreCheckResultGroup, error) {
+	cacheVal, exist := CheckTaskMap.Get(ticketID)
+	if !exist {
+		redo.Fn()
+		// 同步方式每秒检测是否查询任务完成，来获取结果集
+		for i := 0; i <= redo.deadline; i++ {
+			time.Sleep(1 * time.Second)
+			mapVal, ok := CheckTaskMap.Get(ticketID)
+			if ok {
+				assertVal, ok := mapVal.(*PreCheckResultGroup)
+				if !ok {
+					return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
+				}
+				utils.DebugPrint("ReExcuteTask", "re-excute query task is sucess")
+				return assertVal, nil
+			}
+		}
+		// TIMEOUT
+		return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout")
+	}
+	assertVal, ok := cacheVal.(*PreCheckResultGroup)
+	if !ok {
+		return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
 	}
 	return assertVal, nil
 }

@@ -155,6 +155,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			UID:      t.QTG.TicketID,
 			AuthorID: t.QTG.UserID,
 		}
+		ep := event.GetEventProducer()
 		err := tk.ValidateStatus(condTicket, []string{common.OnlinePassedStatus}...)
 		if err != nil {
 			commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.QTG.TicketID, "Ticket Status is invalid")
@@ -163,7 +164,6 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 				Data:  make([]*dbo.SQLResult, 0),
 				Errrr: utils.GenerateError("TicketStatusErr", commentMsg),
 			}
-			ep := event.GetEventProducer()
 			ep.Produce(event.Event{
 				Type:    "save_result",
 				Payload: rg,
@@ -176,26 +176,32 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			return nil
 		}
 		// 获取预检结果，进行二次校验
-		val, exist := CheckTaskMap.Get(t.QTG.TicketID)
-		// TODO：预检结果不存在时则重新检查，并提高风险规则匹配
-		if !exist {
-			commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.QTG.TicketID, "Pre-Check result is not exist")
-			rg := &SQLResultGroupV2{
-				GID:   t.QTG.TicketID,
-				Data:  make([]*dbo.SQLResult, 0),
-				Errrr: utils.GenerateError("PreCheckResultNotFound", commentMsg),
-			}
-			ep := event.GetEventProducer()
-			ep.Produce(event.Event{
-				Type:    "save_result",
-				Payload: rg,
-			})
-			return nil
+		precheckRes, err := getCheckTaskResults(ctx, t.QTG.TicketID, ReExcute{
+			isReExcute: true,
+			deadline:   common.RetryTimeOut,
+			Fn: func() {
+				glab := glbapi.InitGitLabAPI()
+				updateMsg := fmt.Sprintf("TraceID=%d Pre-Check Task is Re-Excute...", t.QTG.TicketID)
+				_ = glab.CommentCreate(glbapi.GitLabComment{
+					ProjectID: t.IssProjectID,
+					IssueIID:  t.IssIID,
+					Message:   updateMsg,
+				})
+				ep.Produce(event.Event{
+					Type: "sql_check",
+					Payload: &CheckEvent{
+						TicketID: tk.UID,
+						UserID:   t.QTG.UserID,
+						// SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, t.Issue.ProjectID, payload.Issue.IID),
+					},
+				})
+			},
+		})
+		if err != nil {
+			panic("CheckTask Result is invalid")
 		}
-		precheckRes, ok := val.(*PreCheckResultGroup)
-		if !ok {
-			panic("CheckTaskResult Type is invalid")
-		}
+		// TODO：二次校验与首次校验对比（预检结果不存在时则重新检查，并提高风险规则匹配）
+		fmt.Println("debug print: 二次校验与首次校验对比（预检结果不存在时则重新检查，并提高风险规则匹配）")
 
 		// 存储查询任务Map
 		utils.DebugPrint("Gitlab Issue SQL查询事件消费", t.QTG.TicketID)
