@@ -46,9 +46,9 @@ type AuditRecordDTO struct {
 	ProjectID uint   `json:"project_id"`
 	IssueID   uint   `json:"issue_id"`
 	TaskType  int    `json:"task_type"`
+	TaskID    string `json:"task_id"`
 	UserName  string `json:"username"`
 	EventType string `json:"event_type"`
-	TaskID    string `json:"task_id"`
 	Payload   string `json:"payload"`
 	CreateAt  string `json:"create_at"`
 	// 时间范围筛选条件项
@@ -119,7 +119,7 @@ func (dto *AuditRecordDTO) Get(pagni *common.Pagniation) ([]AuditRecordDTO, erro
 			TaskID:    record.TaskID,
 			EventType: record.EventType,
 			CreateAt:  record.CreateAt.Format("2006-01-02 15:04:05"),
-			TaskType:  record.TaskType,
+			TaskType:  record.TaskKind,
 			ProjectID: record.ProjectID,
 			IssueID:   record.IssueID,
 			UserName:  record.User.Name,

@@ -309,7 +309,11 @@ func CommentCallBack(ctx *gin.Context) {
 	err = reqBody.CommentIssueHandle()
 	if err != nil {
 		glab := api.InitGitLabAPI()
-		commentErr := glab.CommentCreate(reqBody.Project.ID, reqBody.Issue.IID, err.Error())
+		commentErr := glab.CommentCreate(api.GitLabComment{
+			ProjectID: reqBody.Project.ID,
+			IssueIID:  reqBody.Issue.IID,
+			Message:   err.Error(),
+		})
 		if commentErr != nil {
 			common.ErrorResp(ctx, common.FormatPrint("CommnetError", err.Error()))
 			return
@@ -450,13 +454,13 @@ func ResultExport(ctx *gin.Context) {
 	taskIdVal := queryVals.Get("task_id")
 	isOnlyVal := queryVals.Get("is_only")
 
-	t.GID = taskIdVal
+	t.GID, _ = strconv.ParseInt(taskIdVal, 10, 64)
 	isOnlyBool, err := strconv.ParseBool(isOnlyVal)
 	if err != nil {
 		common.ErrorResp(ctx, "StrConvErr"+err.Error())
 		return
 	}
-	if t.GID == "" {
+	if t.GID == 0 {
 		common.ErrorResp(ctx, "TaskID is invalid ")
 		return
 	}

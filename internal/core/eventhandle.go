@@ -73,111 +73,117 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		utils.DebugPrint("不再支持该类型SQL", t.ID)
 
 	case *QTaskGroup: // 支持多SQL
-		// Ticket前置状态判断（符合状态流转约束）
-		var tk dbo.Ticket
-		condTicket := dbo.Ticket{
-			UID:      t.TicketID,
-			AuthorID: int(t.UserID),
-		}
-		resultTicket, err := tk.FindOne(condTicket)
-		if err != nil {
-			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.GID, err.Error())
-			rg := &dbo.SQLResultGroup{
-				GID:      t.GID,
-				ResGroup: make([]*dbo.SQLResult, 0),
-				Errrr:    utils.GenerateError("TicketStatusErr", commentMsg),
-			}
-			ep := event.GetEventProducer()
-			ep.Produce(event.Event{
-				Type:    "save_result",
-				Payload: rg,
-			})
-			return nil
-		}
-		if resultTicket.Status != common.OnlinePassedStatus {
-			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.GID, "Ticket Status is invalid")
-			rg := &dbo.SQLResultGroup{
-				GID:      t.GID,
-				ResGroup: make([]*dbo.SQLResult, 0),
-				Errrr:    utils.GenerateError("TicketStatusErr", commentMsg),
-			}
-			ep := event.GetEventProducer()
-			ep.Produce(event.Event{
-				Type:    "save_result",
-				Payload: rg,
-			})
-			return nil
-		}
-		// 存储查询任务Map
-		utils.DebugPrint("SQL查询Group事件消费", t.GID)
-		QueryTaskMap.Set(t.GID, t, 300, 1)
-		// 解析SQL语法V2
-
-		// 构造任务组
-		// taskGroup := make([]*QueryTask, 0)
-		// for _, s := range stmtList {
-		// 	qTask := QueryTask{
-		// 		ID:       utils.GenerateUUIDKey(),
-		// 		SafeSQL:  s,
-		// 		Deadline: t.Deadline,
-		// 	}
-		// 	taskGroup = append(taskGroup, &qTask)
+		utils.DebugPrint("等待更新", t.DBName)
+		// // Ticket前置状态判断（符合状态流转约束）
+		// var tk dbo.Ticket
+		// condTicket := dbo.Ticket{
+		// 	UID:      t.TicketID,
+		// 	AuthorID: int(t.UserID),
 		// }
-		// t.QTasks = taskGroup
-		// t.Deadline = len(taskGroup) * t.Deadline // 更新为正确的任务组超时时间
-		// （更新）Ticket记录
-		err = tk.ValidateStatus(condTicket, []string{common.OnlinePassedStatus}...)
-		if err != nil {
-			return utils.GenerateError("TicketErr", err.Error())
-		}
-		t.ExcuteTask(ctx)
-
-		// jsonBytes, err := json.Marshal(taskGroup)
+		// resultTicket, err := tk.FindOne(condTicket)
 		// if err != nil {
-		// 	utils.ErrorPrint("AuditRecordV2", err.Error())
+		// 	commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.GID, err.Error())
+		// 	rg := &dbo.SQLResultGroup{
+		// 		GID:      t.GID,
+		// 		ResGroup: make([]*dbo.SQLResult, 0),
+		// 		Errrr:    utils.GenerateError("TicketStatusErr", commentMsg),
+		// 	}
+		// 	ep := event.GetEventProducer()
+		// 	ep.Produce(event.Event{
+		// 		Type:    "save_result",
+		// 		Payload: rg,
+		// 	})
+		// 	return nil
 		// }
-		audit := dbo.AuditRecordV2{
-			TaskID: t.GID,
-			UserID: t.UserID,
-			// Payload:  string(jsonBytes),
-			TaskType: common.QTaskGroupType,
-		}
-		// 日志审计插入v2
-		err = audit.InsertOne("SQL_QUERY")
-		if err != nil {
-			return utils.GenerateError("AuditRecordErr", err.Error())
-		}
-	case *IssueQTaskV2:
+		// if resultTicket.Status != common.OnlinePassedStatus {
+		// 	commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.GID, "Ticket Status is invalid")
+		// 	rg := &dbo.SQLResultGroup{
+		// 		GID:      t.GID,
+		// 		ResGroup: make([]*dbo.SQLResult, 0),
+		// 		Errrr:    utils.GenerateError("TicketStatusErr", commentMsg),
+		// 	}
+		// 	ep := event.GetEventProducer()
+		// 	ep.Produce(event.Event{
+		// 		Type:    "save_result",
+		// 		Payload: rg,
+		// 	})
+		// 	return nil
+		// }
+		// // 存储查询任务Map
+		// utils.DebugPrint("SQL查询Group事件消费", t.GID)
+		// QueryTaskMap.Set(t.GID, t, 300, 1)
+		// // 解析SQL语法V2
 
+		// // 构造任务组
+		// // taskGroup := make([]*QueryTask, 0)
+		// // for _, s := range stmtList {
+		// // 	qTask := QueryTask{
+		// // 		ID:       utils.GenerateUUIDKey(),
+		// // 		SafeSQL:  s,
+		// // 		Deadline: t.Deadline,
+		// // 	}
+		// // 	taskGroup = append(taskGroup, &qTask)
+		// // }
+		// // t.QTasks = taskGroup
+		// // t.Deadline = len(taskGroup) * t.Deadline // 更新为正确的任务组超时时间
+		// // （更新）Ticket记录
+		// err = tk.ValidateStatus(condTicket, []string{common.OnlinePassedStatus}...)
+		// if err != nil {
+		// 	return utils.GenerateError("TicketErr", err.Error())
+		// }
+		// t.ExcuteTask(ctx)
+
+		// // jsonBytes, err := json.Marshal(taskGroup)
+		// // if err != nil {
+		// // 	utils.ErrorPrint("AuditRecordV2", err.Error())
+		// // }
+		// audit := dbo.AuditRecordV2{
+		// 	TaskID: t.GID,
+		// 	UserID: t.UserID,
+		// 	// Payload:  string(jsonBytes),
+		// 	TaskType: common.QTaskGroupType,
+		// }
+		// // 日志审计插入v2
+		// err = audit.InsertOne("SQL_QUERY")
+		// if err != nil {
+		// 	return utils.GenerateError("AuditRecordErr", err.Error())
+		// }
+	case *IssueQTaskV2:
 		// Ticket前置状态判断
 		var tk dbo.Ticket
 		condTicket := dbo.Ticket{
 			UID:      t.QTG.TicketID,
-			AuthorID: int(t.QTG.UserID),
+			AuthorID: t.QTG.UserID,
 		}
 		err := tk.ValidateStatus(condTicket, []string{common.OnlinePassedStatus}...)
 		if err != nil {
-			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.QTG.GID, "Ticket Status is invalid")
-			rg := &dbo.SQLResultGroup{
-				GID:      t.QTG.GID,
-				ResGroup: make([]*dbo.SQLResult, 0),
-				Errrr:    utils.GenerateError("TicketStatusErr", commentMsg),
+			commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.QTG.TicketID, "Ticket Status is invalid")
+			rg := &SQLResultGroupV2{
+				GID:   t.QTG.TicketID,
+				Data:  make([]*dbo.SQLResult, 0),
+				Errrr: utils.GenerateError("TicketStatusErr", commentMsg),
 			}
 			ep := event.GetEventProducer()
 			ep.Produce(event.Event{
 				Type:    "save_result",
 				Payload: rg,
 			})
+			_ = tk.Update(dbo.Ticket{
+				UID: t.QTG.TicketID,
+			}, dbo.Ticket{
+				Status: common.UnknownStatus,
+			})
 			return nil
 		}
 		// 获取预检结果，进行二次校验
-		val, exist := CheckTaskMap.Get(t.QTG.GID)
+		val, exist := CheckTaskMap.Get(t.QTG.TicketID)
+		// TODO：预检结果不存在时则重新检查，并提高风险规则匹配
 		if !exist {
-			commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", t.QTG.GID, "Pre-Check result is not exist")
-			rg := &dbo.SQLResultGroup{
-				GID:      t.QTG.GID,
-				ResGroup: make([]*dbo.SQLResult, 0),
-				Errrr:    utils.GenerateError("TicketStatusErr", commentMsg),
+			commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.QTG.TicketID, "Pre-Check result is not exist")
+			rg := &SQLResultGroupV2{
+				GID:   t.QTG.TicketID,
+				Data:  make([]*dbo.SQLResult, 0),
+				Errrr: utils.GenerateError("PreCheckResultNotFound", commentMsg),
 			}
 			ep := event.GetEventProducer()
 			ep.Produce(event.Event{
@@ -192,14 +198,31 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 
 		// 存储查询任务Map
-		utils.DebugPrint("Gitlab Issue SQL查询事件消费", t.QTG.GID)
-		QueryTaskMap.Set(t.QTG.GID, t, 300, 1)
+		utils.DebugPrint("Gitlab Issue SQL查询事件消费", t.QTG.TicketID)
+		// （更新）Ticket记录
+		taskID := utils.GenerateUUIDKey()
+		err = tk.Update(condTicket, dbo.Ticket{
+			Status: common.PendingStatus,
+			TaskID: t.QTG.GID,
+		})
+		if err != nil {
+			return utils.GenerateError("TicketErr", err.Error())
+		}
+		QueryTaskMap.Set(t.QTG.TicketID, t, common.DefaultCacheMapDDL, common.QueryTaskMapCleanFlag)
 		// Issue评论情况更新并开始执行任务
 		glab := glbapi.InitGitLabAPI()
-		updateMsg := fmt.Sprintf("TaskId=%s is start work...", t.QTG.GID)
-		glab.CommentCreate(t.IssProjectID, t.IssIID, updateMsg)
 
-		// 构造任务组(缺少对deadline的默认设置)
+		updateMsg := fmt.Sprintf("TaskId=%d is start work...", t.QTG.TicketID)
+		err = glab.CommentCreate(glbapi.GitLabComment{
+			ProjectID: t.IssProjectID,
+			IssueIID:  t.IssIID,
+			Message:   updateMsg,
+		})
+		if err != nil {
+			utils.ErrorPrint("CommentFailed", err.Error())
+		}
+
+		//! 构造任务组
 		taskGroup := make([]*SQLTask, 0)
 		var maxDeadline int
 		for _, s := range precheckRes.Data.ParsedSQL {
@@ -228,15 +251,6 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 		t.QTG.QTasks = taskGroup
 		t.QTG.Deadline = maxDeadline + 60
-		// （更新）Ticket记录
-		// err = tk.UpdateStatus(condTicket, common.PendingStatus)
-		err = tk.Update(condTicket, dbo.Ticket{
-			Status: common.PendingStatus,
-			TaskID: t.QTG.GID,
-		})
-		if err != nil {
-			return utils.GenerateError("TicketErr", err.Error())
-		}
 		// 执行查询任务组v2
 		t.QTG.ExcuteTask(ctx)
 		// 日志审计插入v2
@@ -245,12 +259,12 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			utils.ErrorPrint("AuditRecordV2", err.Error())
 		}
 		audit := dbo.AuditRecordV2{
-			TaskID:    t.QTG.GID,
+			TaskID:    taskID,
 			UserID:    t.QTG.UserID,
 			Payload:   string(jsonBytes),
 			ProjectID: t.IssProjectID,
 			IssueID:   t.IssIID,
-			TaskType:  common.IssueQTaskType,
+			TaskKind:  common.IssueQTaskType,
 		}
 		// 日志审计插入v2
 		err = audit.InsertOne("SQL_QUERY")
@@ -279,15 +293,23 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 	switch res := e.Payload.(type) {
 	// 抽象成接口
 	case *dbo.SQLResult:
-		utils.DebugPrint("查询结果事件消费", res.ID)
-		ResultMap.Set(res.ID, res, 300, 0)
+		utils.DebugPrint("SQLResult查询结果事件消费", res.ID)
 	case *PreCheckResultGroup:
-		utils.DebugPrint("这是预检结果事件", "pre-check"+res.GID)
+		utils.DebugPrint("这是预检结果事件", "PreCheckResultGroup")
+		// 核心数据获取，TicketID（一切的前提）
+		var tk dbo.Ticket
+		_, err := tk.FindOne(dbo.Ticket{
+			UID: res.TicketID,
+		})
+		if err != nil {
+			utils.ErrorPrint("TicketErr", fmt.Sprintf("Ticket(%d) is not exist", res.TicketID))
+			return nil
+		}
 		//! 存储预检任务信息
-		CheckTaskMap.Set(res.GID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
+		CheckTaskMap.Set(res.TicketID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
 
 		// GitLab Issue通知详情
-		val, exist := GitLabIssueMap.Get(res.GID)
+		val, exist := GitLabIssueMap.Get(res.TicketID)
 		if !exist {
 			return nil
 		}
@@ -301,19 +323,44 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		glab := glbapi.InitGitLabAPI()
 		updateMsg := "Update Message"
 		if res.Errrr != nil {
-			updateMsg = fmt.Sprintf("- TaskGId=%s \nPre-Check Task is Failed\n- %s", res.GID, res.Errrr.Error())
+			updateMsg = fmt.Sprintf("TraceID=%d \nPre-Check Task is Failed\n- %s", res.TicketID, res.Errrr.Error())
 		} else {
-			updateMsg = fmt.Sprintf("- TaskGId=%s \nPre-Check Task is Susscess\n", res.GID)
+			updateMsg = fmt.Sprintf("TraceID=%d \nPre-Check Task is Susscess\n", res.TicketID)
 		}
-		err := glab.CommentCreate(v.ProjectID, v.Issue.IID, updateMsg)
+		err = glab.CommentCreate(glbapi.GitLabComment{
+			ProjectID: v.ProjectID,
+			IssueIID:  v.Issue.IID,
+			Message:   updateMsg,
+		})
 		if err != nil {
 			utils.ErrorPrint("GitlabCommentErr", err.Error())
 		}
 
 	case *SQLResultGroupV2:
 		utils.DebugPrint("查询结果组v2事件消费", res.GID)
+		// 核心数据获取，TicketID（一切的前提）
+		var tk dbo.Ticket
+		tkRes, err := tk.FindOne(dbo.Ticket{
+			UID: res.GID,
+		})
+		if err != nil {
+			utils.ErrorPrint("TicketErr", fmt.Sprintf("Ticket(%d) is not exist", res.GID))
+			return nil
+		}
+		// 处理业务错误
+		glab := glbapi.InitGitLabAPI()
+		if res.Errrr != nil {
+			err = glab.CommentCreate(glbapi.GitLabComment{
+				ProjectID: uint(tkRes.ProjectID),
+				IssueIID:  uint(tkRes.IssueID),
+				Message:   res.Errrr.Error(),
+			})
+			if err != nil {
+				utils.ErrorPrint("GitlabCommentErr", err.Error())
+			}
+		}
 		//! 后期核心处理结果集的代码逻辑块
-		ResultMap.Set(res.GID, res, 300, 0)
+		ResultMap.Set(res.GID, res, common.DefaultCacheMapDDL, common.ResultMapCleanFlag)
 		TestCh <- struct{}{}
 		// 判断是否为GItLab Issue的任务
 		val, exist := QueryTaskMap.Get(res.GID)
@@ -321,28 +368,36 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			return nil
 		}
 		// 判断是否gitlab issue任务逻辑
-		v, ok := val.(*IssueQTask)
+		v, ok := val.(*IssueQTaskV2)
 		if !ok {
 			return nil
 		}
 		// （更新）Ticket记录
-		var tk dbo.Ticket
 		// Issue评论情况更新
-		glab := glbapi.InitGitLabAPI()
-		updateMsg := fmt.Sprintf("- TaskGId=%s is completed", res.GID)
-		glab.CommentCreate(v.IssProjectID, v.IssIID, updateMsg)
+		updateMsg := fmt.Sprintf("TraceID=%d is completed", res.GID)
+		err = glab.CommentCreate(glbapi.GitLabComment{
+			ProjectID: v.IssProjectID,
+			IssueIID:  v.IssIID,
+			Message:   updateMsg,
+		})
+		if err != nil {
+			utils.ErrorPrint("GitlabCommentErr", err.Error())
+		}
 		for _, result := range res.Data {
 			if result.Errrrr != nil {
-				errMsg := fmt.Sprintf("- TaskGId=%s\n- IID=%s\n- TaskError=%s", res.GID, result.ID, result.ErrMsg)
-				err := glab.CommentCreate(v.IssProjectID, v.IssIID, errMsg)
+				errMsg := fmt.Sprintf("TraceID=%d\n- IID=%s\n- TaskError=%s", res.GID, result.ID, result.ErrMsg)
+				err := glab.CommentCreate(glbapi.GitLabComment{
+					ProjectID: v.IssProjectID,
+					IssueIID:  v.IssIID,
+					Message:   errMsg,
+				})
 				if err != nil {
 					utils.DebugPrint("CommentError", "query task result comment is failed"+err.Error())
 				}
 				// Ticket状态：失败
-				// targetStats := []string{common.}
 				err = tk.ValidateAndUpdateStatus(dbo.Ticket{
 					UID:      v.QTG.TicketID,
-					AuthorID: int(v.QTG.UserID),
+					AuthorID: v.QTG.UserID,
 				}, common.FailedStatus)
 				if err != nil {
 					return utils.GenerateError("TicketErr", err.Error())
@@ -352,20 +407,27 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 		}
 		// Ticket状态：成功
-		err := tk.ValidateAndUpdateStatus(dbo.Ticket{
+		err = tk.ValidateAndUpdateStatus(dbo.Ticket{
 			UID:      v.QTG.TicketID,
-			AuthorID: int(v.QTG.UserID),
+			AuthorID: v.QTG.UserID,
 		}, common.CompletedStatus)
 		if err != nil {
 			return utils.GenerateError("TicketErr", err.Error())
 		}
 		// 存储结果、输出结果临时链接
 		uuKey, tempURL := glbapi.NewHashTempLink()
-		err = dbo.SaveTempResult(uuKey, res.GID, 300, v.QTG.IsExport)
+		err = dbo.SaveTempResult(uuKey, res.GID, common.DefaultCacheMapDDL, v.QTG.IsExport)
 		if err != nil {
 			utils.DebugPrint("SaveTempResultError", "db save result link is failed "+err.Error())
 		}
-		glab.CommentCreate(v.IssProjectID, v.IssIID, tempURL)
+		err = glab.CommentCreate(glbapi.GitLabComment{
+			ProjectID: v.IssProjectID,
+			IssueIID:  v.IssIID,
+			Message:   tempURL,
+		})
+		if err != nil {
+			utils.ErrorPrint("GitlabCommentErr", err.Error())
+		}
 		// 自动关闭issue（表示完成）
 		err = glab.IssueClose(v.IssProjectID, v.IssIID)
 		if err != nil {
@@ -423,15 +485,15 @@ func (eh *CleanEventHandler) Name() string {
 }
 
 func (eh *CleanEventHandler) Work(ctx context.Context, e event.Event) error {
-	body, ok := e.Payload.(cleanTask)
+	body, ok := e.Payload.(CleanTask)
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
 	utils.DebugPrint("清理结果事件消费", body.ID)
 	//! 后期核心处理结果集的代码逻辑块
-	mapOperator := eh.cleanTypeMap[body.Type]
+	mapOperator := eh.cleanTypeMap[body.Kind]
 	mapOperator.Del(body.ID)
-	log.Printf("type=%v taskID=%s Cleaned Up", eh.cleanTypeInfoMap[body.Type], body.ID)
+	log.Printf("type=%v taskID=%d Cleaned Up", eh.cleanTypeInfoMap[body.Kind], body.ID)
 	return nil
 }
 
@@ -454,17 +516,19 @@ func (eh *ExportEventHandler) Work(ctx context.Context, e event.Event) error {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
 	//! 后期核心处理结果集的代码逻辑块
-	utils.DebugPrint("ExportTask", "export task "+t.GID+" is starting...")
+
+	utils.DebugPrint("ExportTask", fmt.Sprintf("Export Task %d is Starting...", t.GID))
 	err := t.Export(ctx)
 	if err != nil {
 		// 添加错误信息
 		t.Result.Error = err
 		t.Result.FilePath += "_failed"
 		t.Result.Done <- struct{}{}
-		utils.DebugPrint("ExportTask", "export task "+t.GID+" is failed,error: "+err.Error())
+
+		utils.DebugPrint("ExportTask", fmt.Sprintf("Export Task %d is Failed,Error: %s", t.GID, err.Error()))
 		return nil
 	}
-	utils.DebugPrint("ExportTask", "export task "+t.GID+" is completed")
+	utils.DebugPrint("ExportTask", fmt.Sprintf("Export Task %d is Completed", t.GID))
 	return nil
 }
 
@@ -506,6 +570,9 @@ func (eg *GitLabEventHandler) Name() string {
 
 // 区分gitlab事件
 func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
+	errCh := make(chan error, 1)
+	// statsCh := make(chan int, 1) // 用于发生错误后更改Status的Channel
+	var commentBody glbapi.GitLabComment
 	body, ok := e.Payload.(*glbapi.GitLabWebhook)
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
@@ -518,180 +585,217 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		if !ok {
 			return utils.GenerateError("PayloadErr", "payload is invalid")
 		}
-		switch payload.Action {
-		case glbapi.CommentOnlineExcute: //! 执行上线
-			// 通过Issue信息获取GID
-			var tk dbo.Ticket
-			dbConn := dbo.HaveSelfDB().GetConn()
-			res := dbConn.Where(&dbo.Ticket{
-				SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", payload.IssuePayload.Issue.AuthorID, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
-			}).Last(&tk)
-			if res.Error != nil {
-				commentMsg := fmt.Sprintf("[TicketErr] **%s**", res.Error.Error())
-				err := glab.CommentCreate(uint(payload.IssuePayload.Issue.ProjectID), uint(payload.IssuePayload.Issue.IID), commentMsg)
-				if err != nil {
-					utils.ErrorPrint("CommentFailed", err.Error())
-				}
-			}
-
-			sqlt := payload.IssuePayload.Desc //  获取SQLIssueTemplate
-			issue := payload.IssuePayload.Issue
-			// 获取USer真实ID
-			user := dbo.User{
-				GitLabIdentity: payload.IssuePayload.Issue.AuthorID,
-			}
-			userId := user.GetGitLabUserId()
-			ep := event.GetEventProducer()
-
-			//! 上线前检查是否有修改痕迹
-			targetStats := []string{
-				common.ApprovalPassedStatus,
-			}
-			// （更新）Ticket记录
-			err := tk.ValidateAndUpdateStatus(dbo.Ticket{
-				ProjectID: int(issue.ProjectID),
-				IssueID:   int(issue.IID),
-			}, common.OnlinePassedStatus, targetStats...)
-			if err != nil {
-				commentMsg := fmt.Sprintf("[UpdateTicketErr] **%s**", err.Error())
-				err := glab.CommentCreate(uint(payload.IssuePayload.Issue.ProjectID), uint(payload.IssuePayload.Issue.IID), commentMsg)
-				if err != nil {
-					utils.ErrorPrint("CommentFailed", err.Error())
-				}
-			}
-
-			// 发起sql_query的事件，准备执行SQL
-			ep.Produce(event.Event{
-				Type: "sql_query",
-				Payload: &IssueQTask{
-					QTG: &QTaskGroup{
-						GID:      tk.SourceRef,
-						TicketID: tk.UID,
-						DML:      sqlt.Action,
-						UserID:   userId,
-						DBName:   sqlt.DBName,
-						Env:      sqlt.Env,
-						Service:  sqlt.Service,
-						StmtRaw:  sqlt.Statement,
-						IsExport: sqlt.IsExport,
-						// Deadline: 90,
-						LongTime: sqlt.LongTime,
-					},
-					IssProjectID:  issue.ProjectID,
-					IssIID:        issue.IID,
-					IssAuthorID:   issue.AuthorID,
-					IssAuthorName: issue.Author.Name,
-				},
-			})
-		case glbapi.CommentApprovalPassed:
-			issue := payload.IssuePayload.Issue
-
-			// 校验状态并更新Ticket
-			targetStats := []string{
-				common.PreCheckSuccessStatus,
-			}
-			var tk dbo.Ticket
-			err := tk.ValidateAndUpdateStatus(dbo.Ticket{
-				ProjectID: int(issue.ProjectID),
-				IssueID:   int(issue.IID),
-			}, common.OnlinePendingStatus, targetStats...)
-			if err != nil {
-				commentMsg := fmt.Sprintf("[UpdateTicketErr] **%s**", err.Error())
-				err := glab.CommentCreate(uint(payload.IssuePayload.Issue.ProjectID), uint(payload.IssuePayload.Issue.IID), commentMsg)
-				if err != nil {
-					utils.ErrorPrint("CommentFailed", err.Error())
-				}
-			}
-			//! Gitlab评论方式通知更新情况
-		case glbapi.CommentApprovalReject:
-			// （更新）Ticket记录
-			targetStats := []string{
-				common.PreCheckSuccessStatus,
-			}
-			// （更新）Ticket记录
-			var tk dbo.Ticket
-			err := tk.ValidateAndUpdateStatus(dbo.Ticket{
-				ProjectID: int(payload.IssuePayload.Issue.ProjectID),
-				IssueID:   int(payload.IssuePayload.Issue.IID),
-			}, common.ApprovalRejectStatus, targetStats...)
-			if err != nil {
-				commentMsg := fmt.Sprintf("[UpdateTicketErr] **%s**", err.Error())
-				err := glab.CommentCreate(uint(payload.IssuePayload.Issue.ProjectID), uint(payload.IssuePayload.Issue.IID), commentMsg)
-				if err != nil {
-					utils.ErrorPrint("CommentFailed", err.Error())
-				}
-			}
-		default:
-			return utils.GenerateError("CommentActionErr", "comment action is unknow type")
+		commentBody.ProjectID = payload.IssuePayload.Issue.ProjectID
+		commentBody.IssueIID = payload.IssuePayload.Issue.IID
+		// 获取USer真实ID
+		user := dbo.User{
+			GitLabIdentity: payload.IssuePayload.Issue.AuthorID,
 		}
+		userId := user.GetGitLabUserId()
+		// 通过Issue信息获取GID
+		var tk dbo.Ticket
+		tkRes, err := tk.FindOne(dbo.Ticket{
+			SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
+		})
+		tkID := tkRes.UID
+		go func(context.Context) {
+			switch payload.Action {
+			case glbapi.CommentOnlineExcute: //! 执行上线
+
+				if err != nil {
+					errCh <- err
+					_ = tk.Update(dbo.Ticket{
+						UID: tkID,
+					}, dbo.Ticket{
+						Status: common.UnknownStatus,
+					})
+					return
+				}
+
+				sqlt := payload.IssuePayload.Desc //  获取SQLIssueTemplate
+				issue := payload.IssuePayload.Issue
+				ep := event.GetEventProducer()
+
+				//! 上线前检查是否有修改痕迹
+				targetStats := []string{
+					common.ApprovalPassedStatus,
+				}
+				// （更新）Ticket记录
+				err = tk.ValidateAndUpdateStatus(dbo.Ticket{
+					// ProjectID: int(issue.ProjectID),
+					// IssueID:   int(issue.IID),
+					SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
+				}, common.OnlinePassedStatus, targetStats...)
+				if err != nil {
+					errCh <- fmt.Errorf("[UpdateTicketErr] **%s**", err.Error())
+					_ = tk.Update(dbo.Ticket{
+						UID: tkID,
+					}, dbo.Ticket{
+						Status: common.UnknownStatus,
+					})
+					return
+				}
+
+				// 发起sql_query的事件，准备执行SQL
+				ep.Produce(event.Event{
+					Type: "sql_query",
+					Payload: &IssueQTaskV2{
+						QTG: &QTaskGroupV2{
+							TicketID: tkID,
+							GID:      utils.GenerateUUIDKey(),
+							DML:      sqlt.Action,
+							UserID:   userId,
+							DBName:   sqlt.DBName,
+							Env:      sqlt.Env,
+							Service:  sqlt.Service,
+							StmtRaw:  sqlt.Statement,
+							IsExport: sqlt.IsExport,
+							// Deadline: 90,
+							IsLongTime:     sqlt.LongTime,
+							IsSoarAnalysis: sqlt.IsSoarAnalysis,
+						},
+						IssProjectID:  issue.ProjectID,
+						IssIID:        issue.IID,
+						IssAuthorID:   issue.AuthorID,
+						IssAuthorName: issue.Author.Name,
+					},
+				})
+			case glbapi.CommentApprovalPassed:
+				// 校验状态并更新Ticket
+				targetStats := []string{
+					common.PreCheckSuccessStatus,
+				}
+				var tk dbo.Ticket
+				err := tk.ValidateAndUpdateStatus(dbo.Ticket{
+					// ProjectID: int(issue.ProjectID),
+					// IssueID:   int(issue.IID),
+					SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
+				}, common.ApprovalPassedStatus, targetStats...)
+				if err != nil {
+					errCh <- fmt.Errorf("[UpdateTicketErr] **%s**", err.Error())
+					_ = tk.Update(dbo.Ticket{
+						UID: tkID,
+					}, dbo.Ticket{
+						Status: common.UnknownStatus,
+					})
+					return
+				}
+				//! Gitlab评论方式通知更新情况
+			case glbapi.CommentApprovalReject:
+				// （更新）Ticket记录
+				targetStats := []string{
+					common.PreCheckSuccessStatus,
+				}
+				// （更新）Ticket记录
+				var tk dbo.Ticket
+				err := tk.ValidateAndUpdateStatus(dbo.Ticket{
+					// ProjectID: int(payload.IssuePayload.Issue.ProjectID),
+					// IssueID:   int(payload.IssuePayload.Issue.IID),
+					SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
+				}, common.ApprovalRejectStatus, targetStats...)
+				if err != nil {
+					errCh <- fmt.Errorf("[UpdateTicketErr] **%s**", err.Error())
+					_ = tk.Update(dbo.Ticket{
+						UID: tkID,
+					}, dbo.Ticket{
+						Status: common.UnknownStatus,
+					})
+					return
+				}
+			default:
+				errCh <- utils.GenerateError("CommentActionErr", "comment action is unknow type")
+			}
+		}(ctx)
 	case glbapi.IssueHandle:
 		payload, ok := body.Payload.(*glbapi.IssuePayload)
 		if !ok {
 			return utils.GenerateError("PayloadErr", "payload is invalid")
 		}
-		// 获取用户真实ID
-		user := dbo.User{
-			GitLabIdentity: payload.Issue.AuthorID,
-		}
-		userId := user.GetGitLabUserId()
-		// 由Issue标识唯一全局ID
-		uuid := utils.GenerateUUIDKey()
-		// （创建）Ticket记录
-		sourceRef := fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.Issue.ProjectID, payload.Issue.IID)
-		ticket := dbo.Ticket{
-			UID:       uuid,
-			Status:    common.CreatedStatus,
-			SourceRef: sourceRef,
-			AuthorID:  int(userId),
-			ProjectID: int(payload.Issue.ProjectID),
-			IssueID:   int(payload.Issue.IID),
-			Link:      payload.Issue.URL,
-			Source:    "gitlab",
-		}
-		err := ticket.LastAndCreateOrUpdate()
-		if err != nil {
-			commentMsg := fmt.Sprintf("[TicketErr] **%s**", err.Error())
-			err := glab.CommentCreate(uint(payload.Issue.ProjectID), uint(payload.Issue.IID), commentMsg)
+		commentBody.ProjectID = payload.Issue.ProjectID
+		commentBody.IssueIID = payload.Issue.IID
+		go func(context.Context) {
+			// 获取用户真实ID
+			user := dbo.User{
+				GitLabIdentity: payload.Issue.AuthorID,
+			}
+			userId := user.GetGitLabUserId()
+			uid := utils.GenerateSnowKey()
+			// （创建）Ticket记录——使用sourceRef标识唯一Ticket
+			sourceRef := fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.Issue.ProjectID, payload.Issue.IID)
+			fmt.Println("debug print :", sourceRef)
+			ticket := dbo.Ticket{
+				UID:       uid,
+				Status:    common.CreatedStatus,
+				SourceRef: sourceRef,
+				AuthorID:  userId,
+				ProjectID: int(payload.Issue.ProjectID),
+				IssueID:   int(payload.Issue.IID),
+				Link:      payload.Issue.URL,
+				Source:    "gitlab",
+			}
+			err := ticket.LastAndCreateOrUpdate()
+			if err != nil {
+				errCh <- fmt.Errorf("[TicketErr] **%s**", err.Error())
+				return
+			}
+			tk, err := ticket.FindOne(dbo.Ticket{
+				SourceRef: sourceRef,
+			})
+			if err != nil {
+				errCh <- fmt.Errorf("[TicketErr] **%s**", err.Error())
+				return
+			}
+			//TODO：是否区分Issue不同操作的逻辑
+
+			// 缓存issue信息，若找不到则从数据库中查找。
+			issCache := &glbapi.IssueCache{
+				Content: payload.Desc,
+				Issue:   payload.Issue,
+			}
+			GitLabIssueMap.Set(tk.UID, issCache, common.TicketCacheMapDDL, common.IssueTicketType)
+			// 更新详情内容(GitLab)
+			msg := fmt.Sprintf("[Ticket_ID] **%d**, 准备预检...", tk.UID)
+			err = glab.CommentCreate(glbapi.GitLabComment{
+				ProjectID: commentBody.ProjectID,
+				IssueIID:  commentBody.IssueIID,
+				Message:   msg,
+			})
 			if err != nil {
 				utils.ErrorPrint("CommentFailed", err.Error())
 			}
-		}
-		t, err := ticket.FindOne(dbo.Ticket{
-			SourceRef: sourceRef,
-		})
+
+			// 准备进入预检阶段。(分别从Issue和IssueContent进行提取)
+			ep := event.GetEventProducer()
+			ep.Produce(event.Event{
+				Type: "sql_check",
+				Payload: &CheckEvent{
+					TicketID:  tk.UID,
+					UserID:    userId,
+					SourceRef: sourceRef,
+				},
+			})
+		}(ctx)
+	}
+
+	select {
+	case err := <-errCh:
 		if err != nil {
-			commentMsg := fmt.Sprintf("[TicketErr] **%s**", err.Error())
-			err := glab.CommentCreate(uint(payload.Issue.ProjectID), uint(payload.Issue.IID), commentMsg)
-			if err != nil {
-				utils.ErrorPrint("CommentFailed", err.Error())
+			// 统一错误处理
+			retryErr := glab.Retry(3, func() error {
+				return glab.CommentCreate(glbapi.GitLabComment{
+					ProjectID: commentBody.ProjectID,
+					IssueIID:  commentBody.IssueIID,
+					Message:   err.Error(),
+				})
+			})
+			if retryErr != nil {
+				utils.ErrorPrint("CommentFailed", retryErr.Error())
+				return retryErr
 			}
+			return nil
 		}
-		//TODO：是否区分Issue不同操作的逻辑
-
-		// 缓存issue信息，若找不到则从数据库中查找。
-		issCache := &glbapi.IssueCache{
-			Content: payload.Desc,
-			Issue:   payload.Issue,
-		}
-		GitLabIssueMap.Set(t.UID, issCache, common.TicketCacheMapDDL, common.IssueTicketType)
-		fmt.Println("Issue cache", issCache.Content.Statement, issCache)
-		// 更新详情内容(GitLab)
-		commentMsg := fmt.Sprintf("[Ticket_ID] **%s**, 准备预检...", t.UID)
-		err = glab.CommentCreate(uint(payload.Issue.ProjectID), uint(payload.Issue.IID), commentMsg)
-		if err != nil {
-			utils.ErrorPrint("CommentFailed", err.Error())
-		}
-
-		// 准备进入预检阶段。(分别从Issue和IssueContent进行提取)
-		ep := event.GetEventProducer()
-		ep.Produce(event.Event{
-			Type: "sql_check",
-			Payload: &CheckEvent{
-				GID:      t.UID,
-				TicketID: t.UID,
-				UserID:   int(userId),
-			},
-		})
+	case <-ctx.Done():
+		utils.ErrorPrint("GoroutineErr", "goroutine is break off(interrupted)")
 	}
 	return nil
 }
@@ -726,14 +830,13 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 	case *CheckEvent:
 		fmt.Println("debug print pre-check starting....")
 		// 预先设置结果基本项数据
-		preCheckRes.GID = p.GID
-		preCheckRes.Data.TicketID = p.TicketID
+		preCheckRes.TicketID = p.TicketID
 		// goroutine
 		go func(context.Context) {
 			// 获取Issue信息
-			val, exist := GitLabIssueMap.Get(p.GID)
+			val, exist := GitLabIssueMap.Get(p.TicketID)
 			if !exist {
-				errCh <- utils.GenerateError("GitLabIssueNotExist", "Issue Cache is not exist"+p.GID)
+				errCh <- utils.GenerateError("GitLabIssueNotExist", "Issue Cache is not exist")
 				return
 			}
 			issCache, ok := val.(*glbapi.IssueCache)
@@ -748,11 +851,6 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				common.EditedStatus,
 				common.ReInitedStatus,
 			}
-			// err := p.CheckTicketStats(targetStats)
-			// if err != nil {
-			// 	errCh <- err
-			// 	return
-			// }
 			err := p.UpdateTicketStats(common.PreCheckingStatus, targetStats...)
 			if err != nil {
 				errCh <- err
@@ -773,8 +871,9 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				return
 			}
 			explainResult := make([]dbo.SQLResult, 0)
+			taskID := utils.GenerateUUIDKey()
 			for _, stmt := range parseStmts {
-				explainResult = append(explainResult, ist.Explain(ctx, stmt.SafeStmt, p.GID))
+				explainResult = append(explainResult, ist.Explain(ctx, stmt.SafeStmt, taskID))
 			}
 			preCheckRes.Data.Explain.Results = explainResult
 

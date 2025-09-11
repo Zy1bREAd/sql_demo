@@ -245,7 +245,7 @@ func (usr *User) GetGitLabUserId() uint {
 // }
 
 // 存储临时结果链接
-func SaveTempResult(uukey, taskId string, expireTime uint, allowExport bool) error {
+func SaveTempResult(uukey string, taskId int64, expireTime uint, allowExport bool) error {
 	now := time.Now().Add(time.Duration(expireTime) * time.Second)
 	tempData := TempResultMap{
 		UUKey:         uukey,

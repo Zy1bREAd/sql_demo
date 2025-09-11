@@ -2,13 +2,7 @@ package core
 
 import dbo "sql_demo/internal/db"
 
-// 预检任务
-// type CheckTaskResult struct {
-// 	GID      string // 全局标识
-// 	TicketID string
-// 	Stmts    []SQLForParseV2 // 预检结果
-// }
-
+// 预检相关结构体
 type SoarCheck struct {
 	Results []byte // SOAR结果集
 }
@@ -18,23 +12,20 @@ type ExplainCheck struct {
 }
 
 type PreCheckResult struct {
-	// GID       string // 全局链路ID（TaskID）
-	TicketID  string
 	ParsedSQL []SQLForParseV2 // 预检结果
-
-	Explain ExplainCheck
-	Soar    SoarCheck
+	Explain   ExplainCheck
+	Soar      SoarCheck
 }
 
 // 结果集
 type SQLResultGroupV2 struct {
-	GID   string
+	GID   int64
 	Errrr error
 	Data  []*dbo.SQLResult
 }
 
 type PreCheckResultGroup struct {
-	GID   string
-	Errrr error
-	Data  *PreCheckResult
+	TicketID int64
+	Errrr    error
+	Data     *PreCheckResult
 }

@@ -60,7 +60,7 @@ type SQLResult struct {
 
 // 后期转泛型
 type SQLResultGroup struct {
-	GID      string
+	GID      int64
 	ResGroup []*SQLResult
 	Errrr    error
 }

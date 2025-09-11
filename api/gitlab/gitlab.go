@@ -11,6 +11,7 @@ import (
 	"sql_demo/internal/conf"
 	"sql_demo/internal/utils"
 	"strings"
+	"time"
 )
 
 // 主要是封装一个操作GITLAB API的Handler
@@ -19,10 +20,10 @@ type GitLabAPI struct {
 	AccessToken string
 }
 type GitLabComment struct {
-	ProjectID int
-	IssueIID  int
-	AuthorID  int
-	API       GitLabAPI
+	ProjectID uint
+	IssueIID  uint
+	AuthorID  uint
+	Message   string
 }
 
 func InitGitLabAPI() *GitLabAPI {
@@ -83,20 +84,34 @@ type IssueCache struct {
 
 // ! 封装GitLab API
 
+// 带有重试次数评论装饰器
+func (gitlab *GitLabAPI) Retry(times int, fn func() error) error {
+	var err error
+	for i := 0; i < times; i++ {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+		fmt.Printf("GitLab 评论重试: %d 次", i+1)
+		time.Sleep(5 * time.Second)
+	}
+	return fmt.Errorf("GitLab Comment Retry is Failed %s", err.Error())
+}
+
 // 创建评论
-func (gitlab *GitLabAPI) CommentCreate(projectId, issueIId uint, content string) error {
+func (gitlab *GitLabAPI) CommentCreate(body GitLabComment) error {
 	reqBody := struct {
 		Body     string `json:"body"`
 		Internal bool   `json:"internal"`
 		CreateAt string `json:"created_at"`
 	}{
-		Body: content,
+		Body: body.Message,
 	}
 	jsonData, err := json.Marshal(&reqBody)
 	if err != nil {
 		return utils.GenerateError("JSONError", err.Error())
 	}
-	commentCreateURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d/notes", projectId, issueIId)
+	commentCreateURL := gitlab.URL + fmt.Sprintf("/api/v4/projects/%d/issues/%d/notes", body.ProjectID, body.IssueIID)
 	req, err := http.NewRequest("POST", commentCreateURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return utils.GenerateError("CommentCreateError", err.Error())

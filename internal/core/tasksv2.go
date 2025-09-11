@@ -19,16 +19,16 @@ type QueryTaskV2 struct {
 }
 
 type SQLTask struct {
-	ID        string
-	Deadline  int // 单个SQL的超时时间（单位为秒）
+	ID        string // IID - 任务ID
+	Deadline  int    // 单个SQL的超时时间（单位为秒）
 	ParsedSQL SQLForParseV2
 }
 
 // 检查事件payload
 type CheckEvent struct {
-	UserID   int
-	GID      string
-	TicketID string
+	UserID    uint
+	TicketID  int64
+	SourceRef string
 }
 
 // 执行or查询任务
@@ -38,8 +38,8 @@ type QTaskGroupV2 struct {
 	IsLongTime     bool
 	UserID         uint // 关联执行用户id
 	Deadline       int  //整个任务组的超时时间，默认: (用户SQL条数*用户定义的时间)+用户定义的时间
-	GID            string
-	TicketID       string
+	TicketID       int64
+	GID            string // 任务组ID（使用TicketID可唯一追踪一个任务组）
 	DML            string
 	Env            string // 所执行环境
 	DBName         string
@@ -63,7 +63,7 @@ func (ce *CheckEvent) CheckTicketStats(targetStats []string) error {
 	var tk dbo.Ticket
 	condTicket := dbo.Ticket{
 		UID:      ce.TicketID,
-		AuthorID: int(ce.UserID),
+		AuthorID: ce.UserID,
 	}
 	resultTicket, err := tk.FindOne(condTicket)
 	if err != nil {
@@ -73,7 +73,7 @@ func (ce *CheckEvent) CheckTicketStats(targetStats []string) error {
 		if resultTicket.Status == stats {
 			continue
 		}
-		commentMsg := fmt.Sprintf("- TaskGId=%s\n- TaskError=%s", ce.GID, "Ticket Status is not match")
+		commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", ce.TicketID, "Ticket Status is not match")
 		return utils.GenerateError("TicketStatusErr", commentMsg)
 	}
 	return nil
@@ -85,7 +85,7 @@ func (ce *CheckEvent) UpdateTicketStats(targetStats string, exceptStats ...strin
 	var tk dbo.Ticket
 	condTicket := dbo.Ticket{
 		UID:      ce.TicketID,
-		AuthorID: int(ce.UserID),
+		AuthorID: ce.UserID,
 	}
 	return tk.ValidateAndUpdateStatus(condTicket, targetStats, exceptStats...)
 }
@@ -100,7 +100,7 @@ func (tg *QTaskGroupV2) CreateAuditReocrd(eventName string) error {
 		TaskID:   tg.GID,
 		UserID:   uint(tg.UserID),
 		Payload:  string(jsonBytes),
-		TaskType: common.QTaskGroupType,
+		TaskKind: common.QTaskGroupType,
 	}
 	// 日志审计插入v2
 	err = audit.InsertOne(eventName)
@@ -113,9 +113,9 @@ func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) {
 	//! 执行任务函数只当只关心任务处理逻辑本身
 
 	ep := event.GetEventProducer()
-	rg := &dbo.SQLResultGroup{
-		GID:      qtg.GID,
-		ResGroup: make([]*dbo.SQLResult, 0),
+	rg := &SQLResultGroupV2{
+		GID:  qtg.TicketID, // 统一使用TicketID
+		Data: make([]*dbo.SQLResult, 0),
 	}
 
 	for _, task := range qtg.QTasks {
@@ -132,7 +132,7 @@ func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) {
 		if err != nil {
 			result.Errrrr = err
 			result.ErrMsg = result.Errrrr.Error()
-			rg.ResGroup = append(rg.ResGroup, &result)
+			rg.Data = append(rg.Data, &result)
 			break
 		}
 		// 执行前健康检查DB
@@ -140,7 +140,7 @@ func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) {
 		if err != nil {
 			result.Errrrr = utils.GenerateError("HealthCheckFailed", err.Error())
 			result.ErrMsg = result.Errrrr.Error()
-			rg.ResGroup = append(rg.ResGroup, &result)
+			rg.Data = append(rg.Data, &result)
 			break
 		}
 		// 主要分查询和执行，核心通过解析SQL语句的类型来实现对应的逻辑
@@ -150,7 +150,7 @@ func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) {
 			result = op.Excute(timeoutCtx, task.ParsedSQL.SafeStmt, task.ID)
 		}
 
-		rg.ResGroup = append(rg.ResGroup, &result)
+		rg.Data = append(rg.Data, &result)
 		// 如果该条SQL遇到ERROR立即中止后续执行
 		if result.Errrrr != nil {
 			utils.ErrorPrint("TaskDetails", fmt.Sprintf("Task IID=%s is failed", task.ID))

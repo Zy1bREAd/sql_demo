@@ -34,11 +34,15 @@ type User struct {
 }
 
 type AuditRecordV2 struct {
-	ID        uint      `gorm:"primaryKey"`
-	TaskID    string    `gorm:"type:varchar(255);not null;index"` // 相当于链路ID
+	ID uint `gorm:"primaryKey"`
+	// 关联Ticket表
+	TicketID int64  `gorm:""` // 相当于链路ID
+	Ticket   Ticket `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:TicketID;references:UID"`
+
+	TaskID    string    `gorm:"type:varchar(255);index"`
 	EventType string    `gorm:"type:varchar(64);not null"`
 	Payload   string    `gorm:""` // 记录审计的载体，以JSON格式
-	TaskType  int       `gorm:"type:smallint"`
+	TaskKind  int       `gorm:"type:smallint"`
 	CreateAt  time.Time `gorm:"type:datetime(0);autoCreateTime"`
 	// 关联User表
 	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user_v2"`
@@ -59,7 +63,7 @@ func (audit *AuditRecordV2) TableName() string {
 
 type TempResultMap struct {
 	UUKey         string    `gorm:"primaryKey"`
-	TaskId        string    `gorm:"type:varchar(255);not null;uniqueIndex"`
+	TaskId        int64     `gorm:"not null;uniqueIndex"`
 	CreateAt      time.Time `gorm:"type:datetime(0);autoCreateTime"`
 	ExpireAt      time.Time `gorm:"type:datetime(0)"`
 	IsDeleted     uint8     `gorm:"default:0;type:smallint"`
@@ -120,15 +124,17 @@ func (temp *QueryDataBase) TableName() string {
 
 // 工单表（主要是完成Ticket的状态流转）
 type Ticket struct {
-	UID       string `gorm:"type:varchar(36);uniqueIndex;not null"` // 雪花ID
+	UID       int64  `gorm:"uniqueIndex;not null"` // 雪花ID
 	TaskID    string `gorm:"type:varchar(64)"`
 	Status    string `gorm:"type:varchar(64);not null;index"`
 	Source    string `gorm:"type:varchar(64);default:normal"`  // 用于标识Ticket的来源。比如普通API请求的就是normal，而还有一种就是gitlab的
 	SourceRef string `grom:"varchar(64);uniqueIndex;not null"` // 作为关键来源标识
-	Link      string `gorm:"type:varchar(255)"`
-	AuthorID  int    `gorm:"not null"` // 表示该Ticket所属者
-	ProjectID int    `gorm:"uniqueIndex:idx_ticket;"`
-	IssueID   int    `gorm:"uniqueIndex:idx_ticket;"`
+
+	AuthorID   uint   `gorm:"not null"` // 表示该Ticket所属者
+	UserForKey User   `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:AuthorID;references:ID"`
+	ProjectID  int    `gorm:"uniqueIndex:idx_ticket;"`
+	IssueID    int    `gorm:"uniqueIndex:idx_ticket;"`
+	Link       string `gorm:"type:varchar(255)"`
 	gorm.Model
 }
 

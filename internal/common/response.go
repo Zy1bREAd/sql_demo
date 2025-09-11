@@ -51,9 +51,9 @@ const (
 	PreCheckFailedStatus  = "PRECHECK_FAILED"
 	ApprovalPassedStatus  = "APPROVAL_PASSED"
 	ApprovalRejectStatus  = "APPROVAL_REJECT"
-	OnlinePendingStatus   = "ONLINE_PENDING" // 等待确认上线
-	OnlinePassedStatus    = "ONLINE_PASSED"
-	PendingStatus         = "PENDING" // 执行任务中
+	OnlinePendingStatus   = "ONLINE_PENDING"
+	OnlinePassedStatus    = "ONLINE_PASSED" // 审批成功，等待上线
+	PendingStatus         = "PENDING"       // 执行任务中
 	CompletedStatus       = "COMPLETED"
 	FailedStatus          = "FAILED"
 	UnknownStatus         = "UNKNOWN"

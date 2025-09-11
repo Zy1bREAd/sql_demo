@@ -231,7 +231,11 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 	}
 	glab := InitGitLabAPI()
 	// 驳回
-	err := glab.CommentCreate(c.Project.ID, c.Issue.IID, "【审批不通过】驳回该SQL执行, 原因:"+reason)
+	err := glab.CommentCreate(GitLabComment{
+		ProjectID: c.Project.ID,
+		IssueIID:  c.Issue.IID,
+		Message:   "【审批不通过】驳回该SQL执行, 原因:" + reason,
+	})
 	if err != nil {
 		return utils.GenerateError("CommentError", err.Error())
 	}

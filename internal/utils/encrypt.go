@@ -13,12 +13,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/google/uuid"
 )
+
+var snowNode *snowflake.Node
 
 // uuid v4
 func GenerateUUIDKey() string {
 	return uuid.New().String()
+}
+
+// 生成雪花ID
+func GenerateSnowKey() int64 {
+	if snowNode == nil {
+		node, err := snowflake.NewNode(1)
+		if err != nil {
+			panic("New SnowFlake Node Is Error" + err.Error())
+		}
+		snowNode = node
+	}
+	id := snowNode.Generate()
+	return id.Int64()
 }
 
 // 通过uuid生成salt

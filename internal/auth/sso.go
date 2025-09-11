@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
@@ -61,6 +62,6 @@ func SetState() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	core.SessionMap.Set(state, struct{}{}, 300, 2)
+	core.SessionMap.Set(state, struct{}{}, common.DefaultCacheMapDDL, common.SessionMapCleanFlag)
 	return state, nil
 }

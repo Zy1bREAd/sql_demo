@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
@@ -29,11 +30,11 @@ type ExportResult struct {
 }
 
 type ExportTask struct {
+	IsOnly    bool `json:"is_only" query:"is_only"`
 	UserID    uint
 	ResultIdx int    `json:"result_idx" query:"result_idx"` // 用于仅导出指定结果集的索引（前端传递）
 	deadline  int    // task timeout
-	IsOnly    bool   `json:"is_only" query:"is_only"`
-	GID       string `json:"task_id" query:"task_id"`
+	GID       int64  `json:"task_id" query:"task_id"` // TicketID
 	IID       string `json:"sql_id" query:"sql_id"`
 	FileName  string
 
@@ -55,14 +56,10 @@ func (et *ExportTask) GetResult() error {
 
 // var HouseKeepingQueue chan string = make(chan string, 30) // 针对结果集读取后的housekeeping
 
-type cleanTask struct {
-	Type int // 清理类型(0 and 1)
-	ID   string
-}
-
-type SnowKeyCleanTask struct {
-	Type int
+type CleanTask struct {
+	Kind int // 清理类型(0 and 1)
 	ID   int64
+	UUID string // 标识字符串key
 }
 
 type QTasker interface {
@@ -100,73 +97,72 @@ type IssueQTask struct {
 }
 
 // 多SQL执行(可Query可Excute), 遇到错误立即退出后续执行
-func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
-	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is working...", qtg.GID))
-	//! 执行任务函数只当只关心任务处理逻辑本身
+// func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
+// 	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is working...", qtg.GID))
+// 	//! 执行任务函数只当只关心任务处理逻辑本身
 
-	ep := event.GetEventProducer()
-	rg := &dbo.SQLResultGroup{
-		GID:      qtg.GID,
-		ResGroup: make([]*dbo.SQLResult, 0),
-	}
+// 	ep := event.GetEventProducer()
+// 	rg := &dbo.SQLResultGroup{
+// 		GID:      qtg.TicketID,
+// 		ResGroup: make([]*dbo.SQLResult, 0),
+// 	}
 
-outerLoop:
-	for _, task := range qtg.QTasks {
-		// 子任务超时控制
-		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
-		defer cancel()
-		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is working...", task.ID))
-		var result dbo.SQLResult = dbo.SQLResult{
-			ID:   task.ID,
-			Stmt: task.SafeSQL.SafeStmt,
-		}
-		// 获取对应数据库实例进行SQL查询
-		op, err := dbo.HaveDBIst(qtg.Env, qtg.DBName, qtg.Service)
-		if err != nil {
-			result.Errrrr = err
-			result.ErrMsg = result.Errrrr.Error()
-			rg.ResGroup = append(rg.ResGroup, &result)
-			break
-		}
-		// 检查黑名单表名
-		for _, illegal := range op.ExcludeTableList() {
-			if task.SafeSQL.Table != illegal {
-				continue
-			}
-			result.Errrrr = utils.GenerateError("TaskPreCheck", task.SafeSQL.Table+" SQL Table Name is illegal")
-			result.ErrMsg = result.Errrrr.Error()
-			rg.ResGroup = append(rg.ResGroup, &result)
-			break outerLoop
-		}
-		// 执行前健康检查DB
-		err = op.HealthCheck(timeoutCtx)
-		if err != nil {
-			result.Errrrr = utils.GenerateError("HealthCheckFailed", err.Error())
-			result.ErrMsg = result.Errrrr.Error()
-			rg.ResGroup = append(rg.ResGroup, &result)
-			break
-		}
-		// 主要分查询和执行，核心通过解析SQL语句的类型来实现对应的逻辑
-		if task.SafeSQL.Action == "select" {
-			result = op.Query(timeoutCtx, task.SafeSQL.SafeStmt, task.ID, conf.DataMaskHandle)
-		} else {
-			result = op.Excute(timeoutCtx, task.SafeSQL.SafeStmt, task.ID)
-		}
+// 	for _, task := range qtg.QTasks {
+// 		// 子任务超时控制
+// 		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
+// 		defer cancel()
+// 		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is working...", task.ID))
+// 		var result dbo.SQLResult = dbo.SQLResult{
+// 			ID:   task.ID,
+// 			Stmt: task.ParsedSQL.SafeStmt,
+// 		}
+// 		// 获取对应数据库实例进行SQL查询
+// 		op, err := dbo.HaveDBIst(qtg.Env, qtg.DBName, qtg.Service)
+// 		if err != nil {
+// 			result.Errrrr = err
+// 			result.ErrMsg = result.Errrrr.Error()
+// 			rg.ResGroup = append(rg.ResGroup, &result)
+// 			break
+// 		}
+// 		// // 检查黑名单表名
+// 		// for _, illegal := range op.ExcludeTableList() {
+// 		// 	if task.ParsedSQL.Table != illegal {
+// 		// 		continue
+// 		// 	}
+// 		// 	result.Errrrr = utils.GenerateError("TaskPreCheck", task.ParsedSQL.From+" SQL Table Name is illegal")
+// 		// 	result.ErrMsg = result.Errrrr.Error()
+// 		// 	rg.ResGroup = append(rg.ResGroup, &result)
+// 		// 	break outerLoop
+// 		// }
+// 		// 执行前健康检查DB
+// 		err = op.HealthCheck(timeoutCtx)
+// 		if err != nil {
+// 			result.Errrrr = utils.GenerateError("HealthCheckFailed", err.Error())
+// 			result.ErrMsg = result.Errrrr.Error()
+// 			rg.ResGroup = append(rg.ResGroup, &result)
+// 			break
+// 		}
+// 		// 主要分查询和执行，核心通过解析SQL语句的类型来实现对应的逻辑
+// 		if task.ParsedSQL.Action == "select" {
+// 			result = op.Query(timeoutCtx, task.ParsedSQL.SafeStmt, task.ID, conf.DataMaskHandle)
+// 		} else {
+// 			result = op.Excute(timeoutCtx, task.ParsedSQL.SafeStmt, task.ID)
+// 		}
 
-		rg.ResGroup = append(rg.ResGroup, &result)
-		// 如果该条SQL遇到ERROR立即中止后续执行
-		if result.Errrrr != nil {
-			utils.ErrorPrint("TaskDetails", fmt.Sprintf("Task IID=%s is failed", task.ID))
-			break
-		}
-		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is completed", task.ID))
-	}
-	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is completed", qtg.GID))
-	ep.Produce(event.Event{
-		Type:    "save_result",
-		Payload: rg,
-	})
-}
+// 		rg.ResGroup = append(rg.ResGroup, &result)
+// 		// 如果该条SQL遇到ERROR立即中止后续执行
+// 		if result.Errrrr != nil {
+// 			utils.ErrorPrint("TaskDetails", fmt.Sprintf("Task IID=%s is failed", task.ID))
+// 			break
+// 		}
+// 		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is completed", task.ID))
+// 	}
+// 	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is completed", qtg.GID))
+// 	ep.Produce(event.Event{
+// 		Type:    "save_result",
+// 		Payload: rg,
+// 	})
+// }
 
 func (et *ExportTask) Submit() {
 	auditCh := make(chan struct{}, 1)
@@ -222,7 +218,7 @@ func (et *ExportTask) Submit() {
 	}
 	et.Result = taskResult
 	et.deadline = 300
-	ExportWorkMap.Set(et.GID, et.Result, 300, 3)
+	ExportWorkMap.Set(et.GID, et.Result, common.DefaultCacheMapDDL, common.ExportWorkMapCleanFlag)
 	// 确保审计完成
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
@@ -234,7 +230,7 @@ func (et *ExportTask) Submit() {
 // 导出SQL查询结果
 func (et *ExportTask) Export(ctx context.Context) error {
 	// var cachesMapResult *dbo.SQLResultGroup
-	if et.GID == "" {
+	if et.GID == 0 {
 		return utils.GenerateError("TaskNotExist", "task id is not found")
 	}
 	// 获取任务结果集
@@ -296,7 +292,7 @@ func (et *ExportTask) Clean(ctx context.Context) {
 
 // 获取结果集（设置是否需要重做flag），返回结果集和error
 // 检查结果集resultMap还是否存在当前task的result，来决定是否重新执行查询任务来获取结果
-func getTaskResults(ctx context.Context, taskId string, re ReExcute) (*dbo.SQLResultGroup, error) {
+func getTaskResults(ctx context.Context, taskId int64, re ReExcute) (*dbo.SQLResultGroup, error) {
 	mapVal, resultExist := ResultMap.Get(taskId)
 	if !resultExist {
 		taskMap, taskExist := QueryTaskMap.Get(taskId)
@@ -304,9 +300,9 @@ func getTaskResults(ctx context.Context, taskId string, re ReExcute) (*dbo.SQLRe
 			return nil, utils.GenerateError("QueryTaskError", "task id is not exist,please re-excute sql query")
 		}
 		switch t := taskMap.(type) {
-		case *QueryTask:
+		case *QueryTaskV2:
 			utils.ErrorPrint("ExportSQLTask", "the QueryTask is not supported")
-		case *QTaskGroup:
+		case *QTaskGroupV2:
 			t.ExcuteTask(ctx)
 		default:
 			return nil, utils.GenerateError("QueryTaskError", "query task object type not match")
