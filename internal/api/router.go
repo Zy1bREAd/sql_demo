@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	api "sql_demo/api/gitlab"
 	"sql_demo/internal/auth"
+	glbapi "sql_demo/internal/clients/gitlab"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/core"
@@ -222,7 +222,7 @@ func SQLExcuteTest(ctx *gin.Context) {
 		common.ErrorResp(ctx, "convert type is failed")
 		return
 	}
-	var content api.SQLIssueTemplate
+	var content glbapi.SQLIssueTemplate
 	err := ctx.ShouldBindJSON(&content)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
@@ -271,14 +271,14 @@ func SQLExcuteTest(ctx *gin.Context) {
 }
 
 func IssueCallBack(ctx *gin.Context) {
-	err := api.PreCheckCallback(ctx, "Issue Hook")
+	err := glbapi.PreCheckCallback(ctx, "Issue Hook")
 	if err != nil {
 		common.NotAuthResp(ctx, err.Error()) // ERROR：401
 		return
 	}
 	//! callback 核心逻辑
 	// 获取并解析请求体
-	var reqBody api.IssueWebhook
+	var reqBody glbapi.IssueWebhook
 	err = ctx.ShouldBind(&reqBody)
 	if err != nil {
 		common.ErrorResp(ctx, common.FormatPrint("BindError", err.Error()))
@@ -294,13 +294,13 @@ func IssueCallBack(ctx *gin.Context) {
 }
 
 func CommentCallBack(ctx *gin.Context) {
-	err := api.PreCheckCallback(ctx, "Note Hook")
+	err := glbapi.PreCheckCallback(ctx, "Note Hook")
 	if err != nil {
 		common.NotAuthResp(ctx, err.Error()) // ERROR：401
 		return
 	}
 	// 评论事件触发的逻辑
-	var reqBody api.CommentWebhook
+	var reqBody glbapi.CommentWebhook
 	err = ctx.ShouldBind(&reqBody)
 	if err != nil {
 		common.ErrorResp(ctx, common.FormatPrint("BindError", err.Error()))
@@ -308,8 +308,8 @@ func CommentCallBack(ctx *gin.Context) {
 	}
 	err = reqBody.CommentIssueHandle()
 	if err != nil {
-		glab := api.InitGitLabAPI()
-		commentErr := glab.CommentCreate(api.GitLabComment{
+		glab := glbapi.InitGitLabAPI()
+		commentErr := glab.CommentCreate(glbapi.GitLabComment{
 			ProjectID: reqBody.Project.ID,
 			IssueIID:  reqBody.Issue.IID,
 			Message:   err.Error(),
@@ -729,7 +729,7 @@ func RegisterUsersByGitLab(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.NoPermissionRequest, nil, "the user is no permission")
 		return
 	}
-	api := api.InitGitLabAPI()
+	api := glbapi.InitGitLabAPI()
 	users, err := api.UserList()
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())

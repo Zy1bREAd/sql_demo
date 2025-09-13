@@ -1,9 +1,9 @@
-package api
+package clients
 
 import (
 	"fmt"
 	"slices"
-	"sql_demo/api"
+	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
@@ -97,7 +97,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 		}
 		issContent = issDesc
 		utils.DebugPrint("OpenIssueHandle", "open new a issue")
-		rob := api.NewRobotNotice(&api.TicketInformBody{
+		rob := wx.NewRobotNotice(&wx.TicketInformBody{
 			Action:   "Create",
 			Title:    i.ObjectAttr.Title,
 			DueDate:  i.ObjectAttr.DueDate,
@@ -134,7 +134,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 					return err
 				}
 				issContent = issDesc
-				rob := api.NewRobotNotice(&api.TicketInformBody{
+				rob := wx.NewRobotNotice(&wx.TicketInformBody{
 					Action:   "Update",
 					Title:    i.ObjectAttr.Title,
 					DueDate:  i.ObjectAttr.DueDate,
@@ -245,7 +245,7 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 	if err != nil {
 		return utils.GenerateError("GitLabAPIError", err.Error())
 	}
-	rob := api.NewRobotNotice(&api.RejectInformBody{
+	rob := wx.NewRobotNotice(&wx.RejectInformBody{
 		Action:   "Reject",
 		Link:     c.Issue.URL,
 		UserName: issueAuthor.Username,

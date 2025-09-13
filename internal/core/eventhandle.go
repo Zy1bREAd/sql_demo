@@ -7,8 +7,8 @@ import (
 	"log"
 	"reflect"
 	"slices"
-	api "sql_demo/api"
-	glbapi "sql_demo/api/gitlab"
+	glbapi "sql_demo/internal/clients/gitlab"
+	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/common"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
@@ -69,10 +69,7 @@ func (eh *QueryEventHandler) Name() string {
 func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	// 判断哪种类型的QueryTask
 	switch t := e.Payload.(type) {
-	case *QueryTask:
-		utils.DebugPrint("不再支持该类型SQL", t.ID)
-
-	case *QTaskGroup: // 支持多SQL
+	case *QTaskGroupV2:
 		utils.DebugPrint("等待更新", t.DBName)
 		// // Ticket前置状态判断（符合状态流转约束）
 		// var tk dbo.Ticket
@@ -444,7 +441,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		if err != nil {
 			utils.DebugPrint("GitLabAPIError", err.Error())
 		}
-		rob := api.NewRobotNotice(&api.InformTemplate{
+		rob := wx.NewRobotNotice(&wx.InformTemplate{
 			UserName: v.IssAuthorName,
 			Action:   "Completed",
 			Link:     iss.WebURL,
