@@ -22,14 +22,14 @@ var eventOnce sync.Once
 var TestCh chan struct{} = make(chan struct{}, 10)
 
 func InitEventDrive(ctx context.Context, bufferSize int) {
+	ep := event.GetEventProducer()
+	ed := event.GetEventDispatcher()
 	eventOnce.Do(func() {
 		globalEventChannel := make(chan event.Event, bufferSize)
 		// 生产者初始化
-		ep := event.GetEventProducer()
 		ep.Init(globalEventChannel)
 
 		// 调度者初始化（事件路由注册）
-		ed := event.GetEventDispatcher()
 		ed.Init(3, globalEventChannel)
 		// 调度者的Handler初始化
 		registerMap := map[string]func() event.EventHandler{
@@ -50,7 +50,6 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 		}
 	})
 	// 启动调度者开始调度事件
-	ed := event.GetEventDispatcher()
 	go ed.Dispatch(ctx)
 }
 
@@ -889,7 +888,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				soar := NewSoarAnalyzer(
 					WithReportFormat("json"),
 					WithSQLContent(issCache.Content.Statement),
-					WithCommandPath("/tmp"),
+					WithCommandPath("/opt"),
 					WithCommand("soar.linux-amd64_v11"),
 				)
 				soarResult, err := soar.Analysis()
@@ -906,22 +905,19 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			// 1. 检查黑名单（数据库和数据表）
 			dbPool := dbo.GetDBPoolManager()
 			illegalDBs := dbPool.ExcludeDBList()
-			for _, stmt := range parseStmts {
-				for _, f := range stmt.From {
-					// 需要处理派生表的情况（subFrom出现违规表)
-					if slices.Contains(illegalDBs, f.DBName) {
-						errCh <- utils.GenerateError("IllegalTable", f.DBName+" SQL DB Name is illegal")
-						return
-					}
-				}
-			}
 			illegalTables := ist.ExcludeTableList()
 			// 普通不全版
+			fmt.Println("debug print -0:", dbPool.Pool)
 			for _, stmt := range parseStmts {
 				for _, f := range stmt.From {
 					// 需要处理派生表的情况（subFrom出现违规表)
+					fmt.Println("debug print", illegalDBs, illegalTables, f.DBName, f.TableName)
+					if slices.Contains(illegalDBs, f.DBName) {
+						errCh <- utils.GenerateError("IllegalTable", f.DBName+" SQL DB Name is illegal "+stmt.SafeStmt)
+						return
+					}
 					if slices.Contains(illegalTables, f.TableName) {
-						errCh <- utils.GenerateError("IllegalTable", f.TableName+" SQL Table Name is illegal")
+						errCh <- utils.GenerateError("IllegalTable", f.TableName+" SQL Table Name is illegal "+stmt.SafeStmt)
 						return
 					}
 				}

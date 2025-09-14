@@ -121,7 +121,7 @@ func InitBaseRoutes() {
 		rgPublic.POST("/comment/callback", CommentCallBack)
 
 		// JSON格式请求专用路由
-		rgAuth.POST("/sql/excute", SQLExcuteTest)
+		rgAuth.POST("/sql/create", SQLTaskCreate)
 
 		// 配置管理
 		rgAuth.POST("/env/create", CreateEnvInfo)
@@ -210,64 +210,66 @@ type UserInfo struct {
 // 	common.SuccessResp(ctx, "token=...", "Get resultMap all keys success")
 // }
 
-func SQLExcuteTest(ctx *gin.Context) {
-	fmt.Printf("处理用户请求，%s\n", time.Now().String())
+// 创建一个任务
+func SQLTaskCreate(ctx *gin.Context) {
 	val, exist := ctx.Get("user_id")
 	if !exist {
 		common.ErrorResp(ctx, "User not exist")
 		return
 	}
-	usrIdStr, ok := val.(string)
+	userIdStr, ok := val.(string)
 	if !ok {
 		common.ErrorResp(ctx, "convert type is failed")
 		return
 	}
-	var content glbapi.SQLIssueTemplate
+	// 解析数据
+	var content core.SQLTaskRequestDTO
 	err := ctx.ShouldBindJSON(&content)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
 		return
 	}
-	fmt.Printf("完成请求信息搜集，%s\n", time.Now().String())
 
-	gid := utils.GenerateUUIDKey()
-	qtg := &core.QTaskGroup{
-		GID:      gid,
-		StmtRaw:  content.Statement,
-		UserID:   utils.StrToUint(usrIdStr),
-		DBName:   content.DBName,
-		Env:      content.Env,
-		Service:  content.Service,
-		IsExport: content.IsExport,
-		Deadline: 90,
+	// 创建Ticket(需要根据客户端来主动构造business_ref)
+	shortUUID := utils.GenerateUUIDKey()[:4]
+	busniessDomain := "sql-review"
+	snowKey := utils.GenerateSnowKey()
+
+	// {业务域}:user:{主体id}:flow:{雪花id}
+	businessRef := fmt.Sprintf("%s:user:%s:flow:%d", busniessDomain, userIdStr, snowKey)
+
+	// {动作}:{雪花id}:{短UUID}
+	IdempKey := fmt.Sprintf("%s:%d:%s", "submit", snowKey, shortUUID)
+	var tk dbo.Ticket = dbo.Ticket{
+		UID:            snowKey,
+		Status:         common.CreatedStatus,
+		Source:         "normal",
+		SourceRef:      businessRef,
+		IdemoptencyKey: IdempKey,
+		AuthorID:       utils.StrToUint(userIdStr),
 	}
-	// 事件驱动：封装成Event推送到事件通道(v2.0)
+	err = tk.Create()
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
-		Type:    "sql_query",
-		Payload: qtg,
+		Type: "sql_check",
+		Payload: &core.CheckEvent{
+			TicketID:  snowKey,
+			UserID:    utils.StrToUint(userIdStr),
+			SourceRef: businessRef,
+		},
 	})
-	fmt.Printf("生产SQL查询消息的事件，%s\n", time.Now().String())
 
-	// 同步等待获取结果
-	<-core.TestCh
-	fmt.Printf("完成SQL查询的消费事件，%s\n", time.Now().String())
-	res, exist := core.ResultMap.Get(qtg.GID)
-	if !exist {
-		common.ErrorResp(ctx, "Not found result")
-		return
-	}
-	if result, ok := res.(*dbo.SQLResultGroup); ok {
-		if result.Errrr != nil {
-			common.ErrorResp(ctx, result.Errrr.Error())
-			return
-		}
-		common.SuccessResp(ctx, result.ResGroup, "sql query excute is success")
-		fmt.Printf("响应数据，%s\n", time.Now().String())
-		return
-	}
-	common.ErrorResp(ctx, "result is null")
-	fmt.Printf("响应数据，%s\n", time.Now().String())
+	// 返回sourceRef以及idempKey
+	common.SuccessResp(ctx, map[string]string{
+		"source_ref":      businessRef,
+		"uid":             strconv.FormatInt(snowKey, 10),
+		"idempotency_key": IdempKey,
+	}, "Create Success")
+
 }
 
 func IssueCallBack(ctx *gin.Context) {

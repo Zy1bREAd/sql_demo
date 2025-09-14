@@ -28,10 +28,6 @@ type EventProducer struct {
 	eventChan chan Event // 全局事件通道
 }
 
-func (ep *EventProducer) channel() chan Event {
-	return ep.eventChan
-}
-
 func GetEventProducer() *EventProducer {
 	if eventProducer == nil {
 		eventProducer = &EventProducer{}
@@ -64,21 +60,25 @@ type EventDispatcher struct {
 	HandlerMap map[string]*EventHandlerWrapper // 对于事件路由的处理映射
 	mapMutex   sync.RWMutex                    // 保护事件路由Map的读写锁
 	Processer  int                             // 工人数量
+	stopOnce   sync.Once                       // 确保只关闭一次
 	stopChan   chan struct{}
 }
 
 func (ed *EventDispatcher) Stop() {
-	close(ed.eventChan) // 不再接收新的Event
-	close(ed.stopChan)  // 触发EventWorker的停止
-	for _, handler := range ed.HandlerMap {
-		close(handler.stopCh)
-	}
+	ed.stopOnce.Do(func() {
+		close(ed.eventChan) // 不再接收新的Event
+		close(ed.stopChan)  // 触发EventWorker的停止
+		for _, handler := range ed.HandlerMap {
+			close(handler.stopCh)
+		}
+	})
 }
 
 func (ed *EventDispatcher) Init(workerNum int, eventCh chan Event) {
 	ed.eventChan = eventCh
 	ed.Processer = workerNum
 	ed.HandlerMap = make(map[string]*EventHandlerWrapper)
+	ed.stopChan = make(chan struct{}, 1)
 }
 
 func GetEventDispatcher() *EventDispatcher {
@@ -101,6 +101,7 @@ func (ed *EventDispatcher) RegisterHandler(eventType string, handler EventHandle
 		handler:   handler,
 		queue:     make(chan Event, 10),
 		processor: workerNum,
+		stopCh:    make(chan struct{}, 1),
 	}
 	wrapper.Start()
 	ed.HandlerMap[eventType] = wrapper
@@ -189,7 +190,7 @@ func (wrapper *EventHandlerWrapper) workLoop() {
 				continue
 			}
 		case <-wrapper.stopCh:
-			utils.DebugPrint("EventHandlerExit", "正常收到信号，关闭Handler处理")
+			utils.DebugPrint("EventHandlerExit", fmt.Sprintf("正常收到信号，关闭 %s 处理", wrapper.handler.Name()))
 			return
 		}
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"runtime"
+	api "sql_demo/internal/api"
 	"sql_demo/internal/auth"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/core"
@@ -36,4 +37,5 @@ func main() {
 	// 初始化Gin以及路由( 从yaml file env中读取配置加载Server )
 	core.InitEventDrive(ctx, 100)
 	auth.InitOAuth2()
+	api.InitRouter()
 }

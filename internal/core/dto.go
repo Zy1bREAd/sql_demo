@@ -67,6 +67,26 @@ type TicketStatusStatsDTO struct {
 	TotalCount          int `json:"total_count"`
 }
 
+// 请求SQL任务的 DTO
+type SQLTaskRequestDTO struct {
+	Env       string `json:"env" validate:"required"`
+	Service   string `json:"service" validate:"required"`
+	DBName    string `json:"db_name" validate:"required"`
+	Statement string `json:"statement" validate:"required,min=1"`
+	LongTime  bool   `json:"long_time"`
+	IsExport  bool   `json:"is_export"`
+	IsSOAR    bool   `json:"is_soar"`
+}
+
+func (dto SQLTaskRequestDTO) Validate() error {
+	va := utils.NewValidator()
+	err := va.Struct(&dto)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // 部分转换
 func (dto *AuditRecordDTO) toORMData() *dbo.AuditRecordV2 {
 	return &dbo.AuditRecordV2{
