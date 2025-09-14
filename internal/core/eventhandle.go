@@ -310,7 +310,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		//! 存储预检任务信息
 		CheckTaskMap.Set(res.TicketID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
 
-		// GitLab Issue通知详情
+		// GitLab Issue通知详情（判断是否走Issue路线）
 		val, exist := GitLabIssueMap.Get(res.TicketID)
 		if !exist {
 			return nil
@@ -876,12 +876,18 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				errCh <- err
 				return
 			}
-			explainResult := make([]dbo.SQLResult, 0)
+			explainResults := make([]dbo.SQLResult, 0)
 			taskID := utils.GenerateUUIDKey()
 			for _, stmt := range parseStmts {
-				explainResult = append(explainResult, ist.Explain(ctx, stmt.SafeStmt, taskID))
+				explain := ist.Explain(ctx, stmt.SafeStmt, taskID)
+				if explain.Errrrr != nil {
+					fmt.Println("debug print errrormsg", explain.ErrMsg)
+					errCh <- explain.Errrrr
+					return
+				}
+				explainResults = append(explainResults, explain)
 			}
-			preCheckRes.Data.Explain.Results = explainResult
+			preCheckRes.Data.Explain.Results = explainResults
 
 			// TODO：SOAR 分析（利用系统层面SOAR操作实现，捕获屏幕输出流）
 			if issCache.Content.IsSoarAnalysis {
@@ -907,37 +913,41 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			illegalDBs := dbPool.ExcludeDBList()
 			illegalTables := ist.ExcludeTableList()
 			// 普通不全版
-			fmt.Println("debug print -0:", dbPool.Pool)
-			for _, stmt := range parseStmts {
-				for _, f := range stmt.From {
-					// 需要处理派生表的情况（subFrom出现违规表)
-					fmt.Println("debug print", illegalDBs, illegalTables, f.DBName, f.TableName)
-					if slices.Contains(illegalDBs, f.DBName) {
-						errCh <- utils.GenerateError("IllegalTable", f.DBName+" SQL DB Name is illegal "+stmt.SafeStmt)
-						return
-					}
-					if slices.Contains(illegalTables, f.TableName) {
-						errCh <- utils.GenerateError("IllegalTable", f.TableName+" SQL Table Name is illegal "+stmt.SafeStmt)
-						return
-					}
-				}
-			}
-			// 递归版
-			// var recu func([]FromParse)
 			// for _, stmt := range parseStmts {
-			// 	recu = func([]FromParse) {
-			// 		for _, f := range stmt.From {
-			// 			// 需要处理派生表的情况（subFrom出现违规表)
-			// 			if slices.Contains(illegalTables, f.TableName) {
-			// 				errCh <- utils.GenerateError("IllegalTable", f.TableName+" SQL Table Name is illegal")
-			// 				return
-			// 			}
-			// 			if f.IsDerivedTable {
-			// 				recu(f.SubFrom)
-			// 			}
+			// 	for _, f := range stmt.From {
+			// 		// 需要处理派生表的情况（subFrom出现违规表)
+			// 		if slices.Contains(illegalDBs, f.DBName) {
+			// 			errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL DB Name is illegal.Statement: `%s`", f.DBName, stmt.SafeStmt))
+			// 			return
+			// 		}
+			// 		if slices.Contains(illegalTables, f.TableName) {
+			// 			errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL Table Name is illegal.Statement: `%s`", f.TableName, stmt.SafeStmt))
+			// 			return
 			// 		}
 			// 	}
 			// }
+			// 递归版
+			var recu func([]FromParse)
+			for _, stmt := range parseStmts {
+				stmtVal := stmt //! 避免闭包循环引用问题
+				recu = func(froms []FromParse) {
+					for _, f := range froms {
+						// 需要处理派生表的情况（subFrom出现违规表)
+						if slices.Contains(illegalDBs, f.DBName) {
+							errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL DB Name is illegal.Statement: `%s`", f.DBName, stmt.SafeStmt))
+							return
+						}
+						if slices.Contains(illegalTables, f.TableName) {
+							errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL Table Name is illegal.Statement: `%s`", f.TableName, stmt.SafeStmt))
+							return
+						}
+						if f.IsDerivedTable {
+							recu(f.SubFrom)
+						}
+					}
+				}
+				recu(stmtVal.From)
+			}
 
 			// 更新Ticket信息
 			err = p.UpdateTicketStats(common.PreCheckSuccessStatus)

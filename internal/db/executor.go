@@ -114,7 +114,7 @@ func LoadInDB(isReload bool) {
 				if excludeTableList[0] == "" {
 					istCfg.ExcludeTable = nil
 				} else {
-					istCfg.ExcludeDB = excludeTableList
+					istCfg.ExcludeTable = excludeTableList
 				}
 				if excludeDBList[0] == "" {
 					istCfg.ExcludeDB = nil
