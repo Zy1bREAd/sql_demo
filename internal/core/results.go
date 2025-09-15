@@ -25,7 +25,8 @@ type SQLResultGroupV2 struct {
 }
 
 type PreCheckResultGroup struct {
-	TicketID int64
-	Errrr    error
-	Data     *PreCheckResult
+	IsDoubleCheck bool // 首次或第二次检查
+	TicketID      int64
+	Errrr         error
+	Data          *PreCheckResult
 }

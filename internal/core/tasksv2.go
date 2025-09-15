@@ -23,10 +23,18 @@ type SQLTask struct {
 }
 
 // 检查事件payload
-type CheckEvent struct {
+type CheckEvent interface {
+	UpdateTicketStats(targetStats string, exceptStats ...string) error
+}
+type FristCheckEvent struct {
 	UserID    uint
 	TicketID  int64
 	SourceRef string
+}
+
+type DoubleCheckEvent struct {
+	FristCheckEvent
+	FristCheck *PreCheckResultGroup
 }
 
 // 执行or查询任务
@@ -57,7 +65,7 @@ type IssueQTaskV2 struct {
 }
 
 // Ticket前置状态判断（符合状态流转约束）
-func (ce *CheckEvent) CheckTicketStats(targetStats []string) error {
+func (ce *FristCheckEvent) CheckTicketStats(targetStats []string) error {
 	var tk dbo.Ticket
 	condTicket := dbo.Ticket{
 		UID:      ce.TicketID,
@@ -78,7 +86,18 @@ func (ce *CheckEvent) CheckTicketStats(targetStats []string) error {
 }
 
 // 更新Ticket状态信息，并按照指定前置状态进行判断
-func (ce *CheckEvent) UpdateTicketStats(targetStats string, exceptStats ...string) error {
+func (ce *FristCheckEvent) UpdateTicketStats(targetStats string, exceptStats ...string) error {
+	// 更新Ticket信息
+	var tk dbo.Ticket
+	condTicket := dbo.Ticket{
+		UID:      ce.TicketID,
+		AuthorID: ce.UserID,
+	}
+	return tk.ValidateAndUpdateStatus(condTicket, targetStats, exceptStats...)
+}
+
+// 更新Ticket状态信息，并按照指定前置状态进行判断
+func (ce *DoubleCheckEvent) UpdateTicketStats(targetStats string, exceptStats ...string) error {
 	// 更新Ticket信息
 	var tk dbo.Ticket
 	condTicket := dbo.Ticket{

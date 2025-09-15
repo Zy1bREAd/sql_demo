@@ -46,20 +46,23 @@ const (
 
 // Ticket Status
 const (
-	CreatedStatus         = "CREATED"
-	EditedStatus          = "EDITED"
-	ReInitedStatus        = "REINITED" // 用于完成TIcket后二次更新Issue后的状态
-	PreCheckingStatus     = "PRECHECKING"
-	PreCheckSuccessStatus = "PRECHECK_SUCCESS"
-	PreCheckFailedStatus  = "PRECHECK_FAILED"
-	ApprovalPassedStatus  = "APPROVAL_PASSED"
-	ApprovalRejectStatus  = "APPROVAL_REJECT"
-	OnlinePendingStatus   = "ONLINE_PENDING"
-	OnlinePassedStatus    = "ONLINE_PASSED" // 审批成功，等待上线
-	PendingStatus         = "PENDING"       // 执行任务中
-	CompletedStatus       = "COMPLETED"
-	FailedStatus          = "FAILED"
-	UnknownStatus         = "UNKNOWN"
+	CreatedStatus            = "CREATED"
+	EditedStatus             = "EDITED"
+	ReInitedStatus           = "REINITED" // 用于完成TIcket后二次更新Issue后的状态
+	PreCheckingStatus        = "PRECHECKING"
+	PreCheckSuccessStatus    = "PRECHECK_SUCCESS"
+	PreCheckFailedStatus     = "PRECHECK_FAILED"
+	ApprovalPassedStatus     = "APPROVAL_PASSED"
+	ApprovalRejectStatus     = "APPROVAL_REJECT"
+	OnlinePendingStatus      = "ONLINE_PENDING"
+	OnlinePassedStatus       = "ONLINE_PASSED" // 审批成功，等待上线
+	DoubleCheckingStatus     = "DOUBLECHECKING"
+	DoubleCheckSuccessStatus = "DOUBLECHECK_SUCCESS"
+	DoubleCheckFailedStatus  = "DOUBLECHECK_FAILED"
+	PendingStatus            = "PENDING" // 执行任务中
+	CompletedStatus          = "COMPLETED"
+	FailedStatus             = "FAILED"
+	UnknownStatus            = "UNKNOWN"
 )
 
 // ! 封装响应数据

@@ -669,14 +669,12 @@ func (t *Ticket) Create() error {
 }
 
 // 不存在时创建记录，存在则更新 （根据SourceRef）
-func (t *Ticket) LastAndCreateOrUpdate() error {
+func (t *Ticket) LastAndCreateOrUpdate(cond Ticket) error {
 	dbConn := HaveSelfDB().GetConn()
 	tx := dbConn.Begin()
 	var tk Ticket
 	// 检查是否存在该Issue对应的Ticket
-	findRes := tx.Where(Ticket{
-		SourceRef: fmt.Sprintf("%s:%d:%d:%d", t.Source, t.AuthorID, t.ProjectID, t.IssueID),
-	}).Last(&tk)
+	findRes := tx.Where(cond).Last(&tk)
 	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 		tx.Rollback()
 		return findRes.Error
@@ -695,9 +693,7 @@ func (t *Ticket) LastAndCreateOrUpdate() error {
 
 	} else {
 		// 存在记录，则更新状态
-		updateRes := tx.Model(Ticket{}).Where(Ticket{
-			SourceRef: fmt.Sprintf("%s:%d:%d:%d", t.Source, t.AuthorID, t.ProjectID, t.IssueID),
-		}).Updates(Ticket{
+		updateRes := tx.Model(Ticket{}).Where(cond).Updates(Ticket{
 			Status: common.EditedStatus, // 修改为Edited状态
 		})
 		if updateRes.Error != nil {
@@ -772,15 +768,19 @@ func (t *Ticket) ValidateStatus(cond Ticket, targetStatus ...string) error {
 	return utils.GenerateError("TicketStatusNotMatch", fmt.Sprintf("Ticket Status:%s is not match", tk.Status))
 }
 
-func (t *Ticket) ValidateAndUpdateStatus(cond Ticket, status string, targetStatus ...string) error {
+func (t *Ticket) ValidateAndUpdate(cond, update Ticket, targetStatus ...string) error {
 	err := t.ValidateStatus(cond, targetStatus...)
 	if err != nil {
 		return err
 	}
-	var statusTicket Ticket = Ticket{
+	return t.Update(cond, update)
+}
+
+// 封装
+func (t *Ticket) ValidateAndUpdateStatus(cond Ticket, status string, targetStatus ...string) error {
+	return t.ValidateAndUpdate(cond, Ticket{
 		Status: status,
-	}
-	return t.Update(cond, statusTicket)
+	})
 }
 
 // 获取Ticket Status的统计
@@ -821,4 +821,15 @@ func (t *Ticket) StatsCount() (map[string]int, error) {
 		"failed":         statsCount.FailedCount,
 		"total":          statsCount.TotalCount,
 	}, nil
+}
+
+func (t *Ticket) GetSourceRef(busniessDomain string, snowKey int64, cond Ticket) string {
+	switch t.Source {
+	case "normal":
+		return fmt.Sprintf("%s:user:%d:normal:%d", busniessDomain, cond.AuthorID, snowKey)
+	case "gitlab":
+		return fmt.Sprintf("%s:user:%d:gitlab:%d-%d", busniessDomain, cond.AuthorID, cond.ProjectID, cond.IssueID)
+	default:
+		return ""
+	}
 }

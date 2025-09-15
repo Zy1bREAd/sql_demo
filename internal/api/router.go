@@ -235,8 +235,8 @@ func SQLTaskCreate(ctx *gin.Context) {
 	busniessDomain := "sql-review"
 	snowKey := utils.GenerateSnowKey()
 
-	// {业务域}:user:{主体id}:flow:{雪花id}
-	businessRef := fmt.Sprintf("%s:user:%s:flow:%d", busniessDomain, userIdStr, snowKey)
+	// {业务域}:user:{主体id}:{Source}:{雪花id}
+	businessRef := fmt.Sprintf("%s:user:%s:normal:%d", busniessDomain, userIdStr, snowKey)
 
 	// {动作}:{雪花id}:{短UUID}
 	IdempKey := fmt.Sprintf("%s:%d:%s", "submit", snowKey, shortUUID)
@@ -256,7 +256,7 @@ func SQLTaskCreate(ctx *gin.Context) {
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
 		Type: "sql_check",
-		Payload: &core.CheckEvent{
+		Payload: &core.FristCheckEvent{
 			TicketID:  snowKey,
 			UserID:    utils.StrToUint(userIdStr),
 			SourceRef: businessRef,

@@ -152,7 +152,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			AuthorID: t.QTG.UserID,
 		}
 		ep := event.GetEventProducer()
-		err := tk.ValidateStatus(condTicket, []string{common.OnlinePassedStatus}...)
+		err := tk.ValidateStatus(condTicket, common.OnlinePassedStatus)
 		if err != nil {
 			commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.QTG.TicketID, "Ticket Status is invalid")
 			rg := &SQLResultGroupV2{
@@ -172,7 +172,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			return nil
 		}
 		// 获取预检结果，进行二次校验
-		precheckRes, err := getCheckTaskResults(ctx, t.QTG.TicketID, ReExcute{
+		precheckRes, err := DoubleCheck(ctx, t.QTG.TicketID, ReExcute{
 			isReExcute: true,
 			deadline:   common.RetryTimeOut,
 			Fn: func() {
@@ -185,7 +185,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 				})
 				ep.Produce(event.Event{
 					Type: "sql_check",
-					Payload: &CheckEvent{
+					Payload: &FristCheckEvent{
 						TicketID: tk.UID,
 						UserID:   t.QTG.UserID,
 						// SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, t.Issue.ProjectID, payload.Issue.IID),
@@ -195,17 +195,16 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		})
 		if err != nil {
 			panic("CheckTask Result is invalid")
+			// TODO：直接退出该任务
 		}
-		// TODO：二次校验与首次校验对比（预检结果不存在时则重新检查，并提高风险规则匹配）
-		fmt.Println("debug print: 二次校验与首次校验对比（预检结果不存在时则重新检查，并提高风险规则匹配）")
 
 		// 存储查询任务Map
 		utils.DebugPrint("Gitlab Issue SQL查询事件消费", t.QTG.TicketID)
 		// （更新）Ticket记录
-		err = tk.Update(condTicket, dbo.Ticket{
+		err = tk.ValidateAndUpdate(condTicket, dbo.Ticket{
 			Status: common.PendingStatus,
 			TaskID: t.QTG.GID,
-		})
+		}, common.DoubleCheckSuccessStatus)
 		if err != nil {
 			return utils.GenerateError("TicketErr", err.Error())
 		}
@@ -308,7 +307,14 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			return nil
 		}
 		//! 存储预检任务信息
-		CheckTaskMap.Set(res.TicketID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
+		var msgTitle string
+		if res.IsDoubleCheck {
+			DoubleCheckTaskMap.Set(res.TicketID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
+			msgTitle = "Double-Check"
+		} else {
+			CheckTaskMap.Set(res.TicketID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
+			msgTitle = "Pre-Check"
+		}
 
 		// GitLab Issue通知详情（判断是否走Issue路线）
 		val, exist := GitLabIssueMap.Get(res.TicketID)
@@ -325,9 +331,9 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		glab := glbapi.InitGitLabAPI()
 		updateMsg := "Update Message"
 		if res.Errrr != nil {
-			updateMsg = fmt.Sprintf("TraceID=%d \nPre-Check Task is Failed\n- %s", res.TicketID, res.Errrr.Error())
+			updateMsg = fmt.Sprintf("TraceID=%d \n%s Task is Failed\n- %s", res.TicketID, msgTitle, res.Errrr.Error())
 		} else {
-			updateMsg = fmt.Sprintf("TraceID=%d \nPre-Check Task is Susscess\n", res.TicketID)
+			updateMsg = fmt.Sprintf("TraceID=%d \n%s Task is Success\n", res.TicketID, msgTitle)
 		}
 		err = glab.CommentCreate(glbapi.GitLabComment{
 			ProjectID: v.ProjectID,
@@ -596,8 +602,13 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		userId := user.GetGitLabUserId()
 		// 通过Issue信息获取GID
 		var tk dbo.Ticket
+		// fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID)
 		tkRes, err := tk.FindOne(dbo.Ticket{
-			SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
+			SourceRef: tk.GetSourceRef("sql-review", 0, dbo.Ticket{
+				AuthorID:  userId,
+				ProjectID: int(payload.IssuePayload.Issue.ProjectID),
+				IssueID:   int(payload.IssuePayload.Issue.IID),
+			}),
 		})
 		tkID := tkRes.UID
 		go func(context.Context) {
@@ -623,9 +634,11 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				}
 				// （更新）Ticket记录
 				err = tk.ValidateAndUpdateStatus(dbo.Ticket{
-					// ProjectID: int(issue.ProjectID),
-					// IssueID:   int(issue.IID),
-					SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
+					SourceRef: tk.GetSourceRef("sql-review", 0, dbo.Ticket{
+						AuthorID:  userId,
+						ProjectID: int(payload.IssuePayload.Issue.ProjectID),
+						IssueID:   int(payload.IssuePayload.Issue.IID),
+					}),
 				}, common.OnlinePassedStatus, targetStats...)
 				if err != nil {
 					errCh <- err
@@ -670,9 +683,11 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				}
 				var tk dbo.Ticket
 				err := tk.ValidateAndUpdateStatus(dbo.Ticket{
-					// ProjectID: int(issue.ProjectID),
-					// IssueID:   int(issue.IID),
-					SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
+					SourceRef: tk.GetSourceRef("sql-review", 0, dbo.Ticket{
+						AuthorID:  userId,
+						ProjectID: int(payload.IssuePayload.Issue.ProjectID),
+						IssueID:   int(payload.IssuePayload.Issue.IID),
+					}),
 				}, common.ApprovalPassedStatus, targetStats...)
 				if err != nil {
 					errCh <- err
@@ -697,9 +712,11 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				// （更新）Ticket记录
 				var tk dbo.Ticket
 				err := tk.ValidateAndUpdateStatus(dbo.Ticket{
-					// ProjectID: int(payload.IssuePayload.Issue.ProjectID),
-					// IssueID:   int(payload.IssuePayload.Issue.IID),
-					SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.IssuePayload.Issue.ProjectID, payload.IssuePayload.Issue.IID),
+					SourceRef: tk.GetSourceRef("sql-review", 0, dbo.Ticket{
+						AuthorID:  userId,
+						ProjectID: int(payload.IssuePayload.Issue.ProjectID),
+						IssueID:   int(payload.IssuePayload.Issue.IID),
+					}),
 				}, common.ApprovalRejectStatus, targetStats...)
 				if err != nil {
 					errCh <- err
@@ -728,19 +745,27 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 			userId := user.GetGitLabUserId()
 			uid := utils.GenerateSnowKey()
+			shortUUID := utils.GenerateUUIDKey()[:4]
+			busniessDomain := "sql-review"
 			// （创建）Ticket记录——使用sourceRef标识唯一Ticket
-			sourceRef := fmt.Sprintf("gitlab:%d:%d:%d", userId, payload.Issue.ProjectID, payload.Issue.IID)
+			// {业务域}:user:{主体id}:{Source}:{雪花id}
+			sourceRef := fmt.Sprintf("%s:user:%d:gitlab:%d-%d", busniessDomain, userId, payload.Issue.ProjectID, payload.Issue.IID)
+			// {动作}:{雪花id}:{短UUID}
+			IdempKey := fmt.Sprintf("%s:%d:%s", "submit", uid, shortUUID)
 			ticket := dbo.Ticket{
-				UID:       uid,
-				Status:    common.CreatedStatus,
-				SourceRef: sourceRef,
-				AuthorID:  userId,
-				ProjectID: int(payload.Issue.ProjectID),
-				IssueID:   int(payload.Issue.IID),
-				Link:      payload.Issue.URL,
-				Source:    "gitlab",
+				UID:            uid,
+				Status:         common.CreatedStatus,
+				SourceRef:      sourceRef,
+				IdemoptencyKey: IdempKey,
+				AuthorID:       userId,
+				ProjectID:      int(payload.Issue.ProjectID),
+				IssueID:        int(payload.Issue.IID),
+				Link:           payload.Issue.URL,
+				Source:         "gitlab",
 			}
-			err := ticket.LastAndCreateOrUpdate()
+			err := ticket.LastAndCreateOrUpdate(dbo.Ticket{
+				SourceRef: sourceRef,
+			})
 			if err != nil {
 				errCh <- err
 				return
@@ -775,7 +800,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			ep := event.GetEventProducer()
 			ep.Produce(event.Event{
 				Type: "sql_check",
-				Payload: &CheckEvent{
+				Payload: &FristCheckEvent{
 					TicketID:  tk.UID,
 					UserID:    userId,
 					SourceRef: sourceRef,
@@ -833,8 +858,104 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			},
 		},
 	}
+	var checker CheckEvent
+	//TODO: 支持API调用
 	switch p := e.Payload.(type) {
-	case *CheckEvent:
+	case *DoubleCheckEvent:
+		// 二次检查
+		checker = p
+		preCheckRes.TicketID = p.TicketID
+		preCheckRes.IsDoubleCheck = true
+		// goroutine
+		go func(context.Context) {
+			// 获取Issue信息
+			val, exist := GitLabIssueMap.Get(p.TicketID)
+			if !exist {
+				errCh <- utils.GenerateError("GitLabIssueNotExist", "Issue Cache is not exist")
+				return
+			}
+			issCache, ok := val.(*glbapi.IssueCache)
+			if !ok {
+				errCh <- utils.GenerateError("GitLabIssueInvalid", "Issue Cache type is invalid")
+				return
+			}
+
+			// 更新Ticket信息(正在处理预检)
+			err := p.UpdateTicketStats(common.DoubleCheckingStatus, common.OnlinePassedStatus)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			// 解析SQL
+			parseStmts, err := ParseV3(issCache.Content.Statement)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			preCheckRes.Data.ParsedSQL = parseStmts
+
+			// EXPLAIN解析
+			ist, err := dbo.HaveDBIst(issCache.Content.Env, issCache.Content.DBName, issCache.Content.Service)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			explainResults := make([]dbo.SQLResult, 0)
+			taskID := utils.GenerateUUIDKey()
+			for _, stmt := range parseStmts {
+				explain := ist.Explain(ctx, stmt.SafeStmt, taskID)
+				if explain.Errrrr != nil {
+					errCh <- explain.Errrrr
+					return
+				}
+				explainResults = append(explainResults, explain)
+			}
+			preCheckRes.Data.Explain.Results = explainResults
+
+			// TODO：是否要加入SELECT COUNT(*)的数据量对比
+
+			// 自定义规则解析
+			// 1. 检查黑名单（数据库和数据表）
+			dbPool := dbo.GetDBPoolManager()
+			illegalDBs := dbPool.ExcludeDBList()
+			illegalTables := ist.ExcludeTableList()
+			// 普通不全版
+
+			// 递归版
+			var recu func([]FromParse)
+			for _, stmt := range parseStmts {
+				stmtVal := stmt //! 避免闭包循环引用问题
+				recu = func(froms []FromParse) {
+					for _, f := range froms {
+						// 需要处理派生表的情况（subFrom出现违规表)
+						if slices.Contains(illegalDBs, f.DBName) {
+							errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL DB Name is illegal.Statement: `%s`", f.DBName, stmt.SafeStmt))
+							return
+						}
+						if slices.Contains(illegalTables, f.TableName) {
+							errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL Table Name is illegal.Statement: `%s`", f.TableName, stmt.SafeStmt))
+							return
+						}
+						if f.IsDerivedTable {
+							recu(f.SubFrom)
+						}
+					}
+				}
+				recu(stmtVal.From)
+			}
+
+			// 更新Ticket信息
+			err = p.UpdateTicketStats(common.DoubleCheckSuccessStatus)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			// 表示正常完成（!）
+			errCh <- nil
+
+		}(ctx)
+	case *FristCheckEvent:
+		checker = p
 		// 预先设置结果基本项数据
 		preCheckRes.TicketID = p.TicketID
 		// goroutine
@@ -887,6 +1008,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				}
 				explainResults = append(explainResults, explain)
 			}
+			//TODO：EXPLAIN预定义规则解析
 			preCheckRes.Data.Explain.Results = explainResults
 
 			// TODO：SOAR 分析（利用系统层面SOAR操作实现，捕获屏幕输出流）
@@ -959,30 +1081,33 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			errCh <- nil
 
 		}(ctx)
-		// 统一错误处理
-		select {
-		case err := <-errCh:
-			if err != nil {
-				preCheckRes.Errrr = err
-				ep.Produce(event.Event{
-					Type:    "save_result",
-					Payload: preCheckRes,
-				})
-				// 更新Ticket信息
-				err = p.UpdateTicketStats(common.PreCheckFailedStatus)
-				if err != nil {
-					utils.ErrorPrint("TicketStatsErr", "Update Ticket Status is failed")
-				}
-				return nil
-			}
-			//! 展示预检成功的结果详情。
+
+	}
+	// 统一错误处理
+	select {
+	case err := <-errCh:
+		if err != nil {
+			preCheckRes.Errrr = err
 			ep.Produce(event.Event{
 				Type:    "save_result",
 				Payload: preCheckRes,
 			})
-		case <-ctx.Done():
-			utils.ErrorPrint("GoroutineErr", "goroutine is error")
+			// 更新Ticket信息
+			if checker != nil {
+				err = checker.UpdateTicketStats(common.PreCheckFailedStatus)
+				if err != nil {
+					utils.ErrorPrint("TicketStatsErr", "Update Ticket Status is failed")
+				}
+			}
+			return nil
 		}
+		//! 展示预检成功的结果详情。
+		ep.Produce(event.Event{
+			Type:    "save_result",
+			Payload: preCheckRes,
+		})
+	case <-ctx.Done():
+		utils.ErrorPrint("GoroutineErr", "goroutine is error")
 	}
 	return nil
 }

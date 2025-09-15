@@ -7,12 +7,13 @@ import (
 )
 
 // ! CahceMap 内存Map集，用作全局变量。
-var ResultMap *CachesMap = &CachesMap{sync.Map{}}      // 存储结果集（TaskID -> Result）
-var SessionMap *CachesMap = &CachesMap{sync.Map{}}     // 存储SSO登录State参数的Map
-var QueryTaskMap *CachesMap = &CachesMap{sync.Map{}}   // 存储查询任务相关信息的映射表（任务 -> 详细QueryTask数据)
-var ExportWorkMap *CachesMap = &CachesMap{sync.Map{}}  //导出工作的映射表(任务 -> 结果)
-var GitLabIssueMap *CachesMap = &CachesMap{sync.Map{}} // GitLab Issue和Task Id的映射表(任务 -> GitLab Issue)
-var CheckTaskMap *CachesMap = &CachesMap{sync.Map{}}   // 存储检查任务后的数据（包含解析后SQL的结构体数据，以切片的形式存储SQLForParseV2）
+var ResultMap *CachesMap = &CachesMap{sync.Map{}}          // 存储结果集（TaskID -> Result）
+var SessionMap *CachesMap = &CachesMap{sync.Map{}}         // 存储SSO登录State参数的Map
+var QueryTaskMap *CachesMap = &CachesMap{sync.Map{}}       // 存储查询任务相关信息的映射表（任务 -> 详细QueryTask数据)
+var ExportWorkMap *CachesMap = &CachesMap{sync.Map{}}      //导出工作的映射表(任务 -> 结果)
+var GitLabIssueMap *CachesMap = &CachesMap{sync.Map{}}     // GitLab Issue和Task Id的映射表(任务 -> GitLab Issue)
+var CheckTaskMap *CachesMap = &CachesMap{sync.Map{}}       // 存储检查任务后的数据（包含解析后SQL的结构体数据，以切片的形式存储SQLForParseV2）
+var DoubleCheckTaskMap *CachesMap = &CachesMap{sync.Map{}} // 存储检查任务后的数据（包含解析后SQL的结构体数据，以切片的形式存储SQLForParseV2）
 // var UserTicketMap *CachesMap = &CachesMap{sync.Map{}}  // 用于存储用户与Ticket关联的Map
 
 // 并发安全哈希表
