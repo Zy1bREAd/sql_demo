@@ -18,6 +18,7 @@ type BaseConfig struct {
 	GitLabEnv    GitLabConfig             `yaml:"gitlab"`
 	WeixinEnv    WeixinConfig             `yaml:"weixin"`
 	ApprovalMap  map[string]uint          `yaml:"approval_list"`
+	AIEnv        AIConfig                 `yaml:"ai"`
 }
 
 type DBConfigMySQL struct {
@@ -79,6 +80,13 @@ type GitLabConfig struct {
 
 type WeixinConfig struct {
 	InformWebhook string `yaml:"inform_webhook"`
+}
+
+type AIConfig struct {
+	URL        string `yaml:"url"`
+	Model      string `yaml:"model"`
+	SecretName string `yaml:"secret_name"`
+	SecretKey  string `yaml:"secret_key"`
 }
 
 // 定义读取配置接口

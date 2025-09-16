@@ -66,6 +66,7 @@ func (eh *QueryEventHandler) Name() string {
 }
 
 func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
+	// errCh := make(chan error, 1)
 	// 判断哪种类型的QueryTask
 	switch t := e.Payload.(type) {
 	case *QTaskGroupV2:
@@ -275,6 +276,33 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	default:
 		return utils.GenerateError("TaskTypeError", "event payload type is incrroect")
 	}
+
+	// 统一错误处理
+	// select {
+	// case err := <-errCh:
+	// 	if err != nil {
+	// 		preCheckRes.Errrr = err
+	// 		ep.Produce(event.Event{
+	// 			Type:    "save_result",
+	// 			Payload: preCheckRes,
+	// 		})
+	// 		// 更新Ticket信息
+	// 		if checker != nil {
+	// 			err = checker.UpdateTicketStats(common.PreCheckFailedStatus)
+	// 			if err != nil {
+	// 				utils.ErrorPrint("TicketStatsErr", "Update Ticket Status is failed")
+	// 			}
+	// 		}
+	// 		return nil
+	// 	}
+	// 	//! 展示预检成功的结果详情。
+	// 	ep.Produce(event.Event{
+	// 		Type:    "save_result",
+	// 		Payload: preCheckRes,
+	// 	})
+	// case <-ctx.Done():
+	// 	utils.ErrorPrint("GoroutineErr", "goroutine is error")
+	// }
 	return nil
 }
 
