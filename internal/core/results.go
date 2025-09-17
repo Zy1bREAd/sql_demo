@@ -12,9 +12,9 @@ type ExplainCheck struct {
 }
 
 type PreCheckResult struct {
-	ParsedSQL []SQLForParseV2 // 预检结果
-	Explain   ExplainCheck
-	Soar      SoarCheck
+	ParsedSQL       []SQLForParseV2 // 预检结果
+	ExplainAnalysis []ExplainAnalysisResult
+	Soar            SoarCheck
 }
 
 // 结果集

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sql_demo/internal/utils"
@@ -147,4 +148,14 @@ func ValidateRespBody(reqMethodName string, resp *http.Response) error {
 	}
 	ErrMsg := fmt.Sprintf("response status=%s, status_code=%d", resp.Status, resp.StatusCode)
 	return utils.GenerateError(reqMethodName, ErrMsg)
+}
+
+// 检查上下文是否退出
+func CheckCtx(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	default:
+		return true
+	}
 }

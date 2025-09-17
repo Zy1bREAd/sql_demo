@@ -31,6 +31,7 @@ func NewAIClient() (AIClient, error) {
 			option.WithAPIKey(aiCfg.SecretKey),
 			option.WithBaseURL(aiCfg.URL),
 		)
+		aiClient.Model = aiCfg.Model
 	})
 	return aiClient, nil
 }
@@ -51,10 +52,10 @@ func (ai *AIClient) NewChat(ctx context.Context, question string) (*ChatResult, 
 	}, err
 }
 
-func (res *ChatResult) String() string {
+func (res *ChatResult) StringResult() string {
 	return res.ChatCompletion.Choices[0].Message.Content
 }
 
-func (res *ChatResult) JSON() string {
+func (res *ChatResult) JSONResult() string {
 	return res.ChatCompletion.JSON.Choices.Raw()
 }

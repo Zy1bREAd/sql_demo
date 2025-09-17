@@ -67,84 +67,11 @@ func (eh *QueryEventHandler) Name() string {
 
 func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	// errCh := make(chan error, 1)
+	// ep := event.GetEventProducer()
 	// 判断哪种类型的QueryTask
 	switch t := e.Payload.(type) {
 	case *QTaskGroupV2:
 		utils.DebugPrint("等待更新", t.DBName)
-		// // Ticket前置状态判断（符合状态流转约束）
-		// var tk dbo.Ticket
-		// condTicket := dbo.Ticket{
-		// 	UID:      t.TicketID,
-		// 	AuthorID: int(t.UserID),
-		// }
-		// resultTicket, err := tk.FindOne(condTicket)
-		// if err != nil {
-		// 	commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.GID, err.Error())
-		// 	rg := &dbo.SQLResultGroup{
-		// 		GID:      t.GID,
-		// 		ResGroup: make([]*dbo.SQLResult, 0),
-		// 		Errrr:    utils.GenerateError("TicketStatusErr", commentMsg),
-		// 	}
-		// 	ep := event.GetEventProducer()
-		// 	ep.Produce(event.Event{
-		// 		Type:    "save_result",
-		// 		Payload: rg,
-		// 	})
-		// 	return nil
-		// }
-		// if resultTicket.Status != common.OnlinePassedStatus {
-		// 	commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.GID, "Ticket Status is invalid")
-		// 	rg := &dbo.SQLResultGroup{
-		// 		GID:      t.GID,
-		// 		ResGroup: make([]*dbo.SQLResult, 0),
-		// 		Errrr:    utils.GenerateError("TicketStatusErr", commentMsg),
-		// 	}
-		// 	ep := event.GetEventProducer()
-		// 	ep.Produce(event.Event{
-		// 		Type:    "save_result",
-		// 		Payload: rg,
-		// 	})
-		// 	return nil
-		// }
-		// // 存储查询任务Map
-		// utils.DebugPrint("SQL查询Group事件消费", t.GID)
-		// QueryTaskMap.Set(t.GID, t, 300, 1)
-		// // 解析SQL语法V2
-
-		// // 构造任务组
-		// // taskGroup := make([]*QueryTask, 0)
-		// // for _, s := range stmtList {
-		// // 	qTask := QueryTask{
-		// // 		ID:       utils.GenerateUUIDKey(),
-		// // 		SafeSQL:  s,
-		// // 		Deadline: t.Deadline,
-		// // 	}
-		// // 	taskGroup = append(taskGroup, &qTask)
-		// // }
-		// // t.QTasks = taskGroup
-		// // t.Deadline = len(taskGroup) * t.Deadline // 更新为正确的任务组超时时间
-		// // （更新）Ticket记录
-		// err = tk.ValidateStatus(condTicket, []string{common.OnlinePassedStatus}...)
-		// if err != nil {
-		// 	return utils.GenerateError("TicketErr", err.Error())
-		// }
-		// t.ExcuteTask(ctx)
-
-		// // jsonBytes, err := json.Marshal(taskGroup)
-		// // if err != nil {
-		// // 	utils.ErrorPrint("AuditRecordV2", err.Error())
-		// // }
-		// audit := dbo.AuditRecordV2{
-		// 	TaskID: t.GID,
-		// 	UserID: t.UserID,
-		// 	// Payload:  string(jsonBytes),
-		// 	TaskType: common.QTaskGroupType,
-		// }
-		// // 日志审计插入v2
-		// err = audit.InsertOne("SQL_QUERY")
-		// if err != nil {
-		// 	return utils.GenerateError("AuditRecordErr", err.Error())
-		// }
 	case *IssueQTaskV2:
 		// Ticket前置状态判断
 		var tk dbo.Ticket
@@ -877,10 +804,8 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 	ep := event.GetEventProducer()
 	preCheckRes := &PreCheckResultGroup{
 		Data: &PreCheckResult{
-			ParsedSQL: make([]SQLForParseV2, 0),
-			Explain: ExplainCheck{
-				Results: make([]dbo.SQLResult, 0),
-			},
+			ParsedSQL:       make([]SQLForParseV2, 0),
+			ExplainAnalysis: make([]ExplainAnalysisResult, 0),
 			Soar: SoarCheck{
 				Results: make([]byte, 0),
 			},
@@ -938,7 +863,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				}
 				explainResults = append(explainResults, explain)
 			}
-			preCheckRes.Data.Explain.Results = explainResults
+			// preCheckRes.Data.Explain.Results = explainResults
 
 			// TODO：是否要加入SELECT COUNT(*)的数据量对比
 
@@ -987,7 +912,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 		// 预先设置结果基本项数据
 		preCheckRes.TicketID = p.TicketID
 		// goroutine
-		go func(context.Context) {
+		go func(parentCtx context.Context) {
 			// 获取Issue信息
 			val, exist := GitLabIssueMap.Get(p.TicketID)
 			if !exist {
@@ -1011,6 +936,12 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				errCh <- err
 				return
 			}
+
+			// goroutine资源控制
+			if !common.CheckCtx(parentCtx) {
+				return
+			}
+
 			// 解析SQL
 			parseStmts, err := ParseV3(issCache.Content.Statement)
 			if err != nil {
@@ -1019,25 +950,25 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 			preCheckRes.Data.ParsedSQL = parseStmts
 
-			// EXPLAIN解析
-			ist, err := dbo.HaveDBIst(issCache.Content.Env, issCache.Content.DBName, issCache.Content.Service)
-			if err != nil {
-				errCh <- err
+			// goroutine资源控制
+			if !common.CheckCtx(parentCtx) {
 				return
 			}
-			explainResults := make([]dbo.SQLResult, 0)
-			taskID := utils.GenerateUUIDKey()
+
+			// EXPLAIN 解析与建议
 			for _, stmt := range parseStmts {
-				explain := ist.Explain(ctx, stmt.SafeStmt, taskID)
-				if explain.Errrrr != nil {
-					fmt.Println("debug print errrormsg", explain.ErrMsg)
-					errCh <- explain.Errrrr
-					return
+				analysisRes, err := stmt.ExplainAnalysis(ctx, issCache.Content.Env, issCache.Content.DBName, issCache.Content.Service)
+				if err != nil {
+					log.Panic(err.Error())
 				}
-				explainResults = append(explainResults, explain)
+				preCheckRes.Data.ExplainAnalysis = append(preCheckRes.Data.ExplainAnalysis, *analysisRes)
 			}
-			//TODO：EXPLAIN预定义规则解析
-			preCheckRes.Data.Explain.Results = explainResults
+			fmt.Println("debug print -33", preCheckRes.Data.ExplainAnalysis)
+
+			// goroutine资源控制
+			if !common.CheckCtx(parentCtx) {
+				return
+			}
 
 			// TODO：SOAR 分析（利用系统层面SOAR操作实现，捕获屏幕输出流）
 			if issCache.Content.IsSoarAnalysis {
@@ -1058,6 +989,11 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			// TODO：是否要加入SELECT COUNT(*)的数据量对比
 
 			// 自定义规则解析
+			ist, err := dbo.HaveDBIst(issCache.Content.Env, issCache.Content.DBName, issCache.Content.Service)
+			if err != nil {
+				errCh <- err
+				return
+			}
 			// 1. 检查黑名单（数据库和数据表）
 			dbPool := dbo.GetDBPoolManager()
 			illegalDBs := dbPool.ExcludeDBList()

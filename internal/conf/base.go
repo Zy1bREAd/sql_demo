@@ -120,12 +120,12 @@ func initBaseConfig(filePath string) (*BaseConfig, error) {
 func InitAppConfig() {
 	initOnce.Do(func() {
 		// 读取环境变量配置App
-		baseConf, err := initBaseConfig("./config/env.yaml")
+		baseConf, err := initBaseConfig("/opt/oceanwang/golang/sql_demo/config/env.yaml")
 		if err != nil {
 			panic(utils.GenerateError("InitDMError", err.Error()))
 		}
 		// 读取数据遮罩配置
-		dmConf, err := initDataMaskConfig("./config/data_mask_rule.yaml")
+		dmConf, err := initDataMaskConfig("/opt/oceanwang/golang/sql_demo/config/data_mask_rule.yaml")
 		if err != nil {
 			panic(utils.GenerateError("InitDMError", err.Error()))
 		}

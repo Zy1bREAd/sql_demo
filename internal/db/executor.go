@@ -3,6 +3,7 @@ package dbo
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sql_demo/internal/common"
@@ -292,6 +293,25 @@ func (ist *DBInstance) Explain(ctx context.Context, sqlRaw string, taskId string
 	return ist.Query(ctx, "EXPLAIN "+sqlRaw, taskId, nil)
 }
 
+// 查看DDL
+func (ist *DBInstance) ShowCreate(ctx context.Context, dbName, tableName string, taskId string) SQLResult {
+	// 不操作脱敏加密
+	return ist.Query(ctx, "SHOW CREATE TABLE "+dbName+"."+tableName, taskId, nil)
+}
+
+// 查看DDL
+func (ist *DBInstance) TableInformation(ctx context.Context, dbName, tableName string, taskId string) SQLResult {
+	// 不操作脱敏加密
+	stmt := fmt.Sprintf(`SELECT TABLE_NAME,TABLE_ROWS,
+	ROUND(DATA_LENGTH/1024/1024, 2) AS DATA_SIZE_MB,
+	ROUND(INDEX_LENGTH/1024/1024, 2) AS INDEX_SIZE_MB,
+	ROUND((DATA_LENGTH+INDEX_LENGTH)/1024/1024, 2) AS TOTAL_SIZE_MB,
+	ROUND(DATA_FREE/1024/1024, 2) AS FREE_SIZE_MB,
+	ROUND(DATA_FREE/(DATA_LENGTH+INDEX_LENGTH)*100, 2) AS FRAG_PCT 
+	FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '%s' AND TABLE_NAME = '%s';`, dbName, tableName)
+	return ist.Query(ctx, stmt, taskId, nil)
+}
+
 // 对内暴露的查询SQL接口
 func (ist *DBInstance) Query(ctx context.Context, sqlRaw, taskId string, dataMaskFunc func(col string, val *sql.RawBytes) string) SQLResult {
 	errCh := make(chan error, 1)
@@ -303,10 +323,18 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw, taskId string, dataMas
 	// 异步执行查询SQL
 	go func() {
 		start := time.Now()
-		// 核心查询
+		if !common.CheckCtx(ctx) {
+			utils.ErrorPrint("GoroutineError", "收到父Ctx的退出信号")
+			return
+		}
+		//! 核心查询
 		rows, err := ist.queryRaw(ctx, sqlRaw)
 		if err != nil {
 			errCh <- err
+			return
+		}
+		if !common.CheckCtx(ctx) {
+			utils.ErrorPrint("GoroutineError", "收到父Ctx的退出信号")
 			return
 		}
 		defer rows.Close()
@@ -319,6 +347,10 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw, taskId string, dataMas
 		cols, _ := rows.Columns()
 		// 遍历结果集，逐行处理结果
 		for rows.Next() {
+			if !common.CheckCtx(ctx) {
+				utils.ErrorPrint("GoroutineError", "收到父Ctx的退出信号")
+				return
+			}
 			if rows.Err() != nil {
 				utils.ErrorPrint("RowDataErr", "该行数据有问题")
 				break
@@ -496,4 +528,16 @@ func HaveDBIst(env, name, service string) (*DBInstance, error) {
 		return nil, utils.GenerateError("InstanceError", fmt.Sprintf("<%s> db instance is not exist", service))
 	}
 	return nil, utils.GenerateError("InstanceError", fmt.Sprintf("<%s> env is not exist", env))
+}
+
+func (s *SQLResult) OutputJSON() string {
+	if s.Errrrr != nil {
+		return ""
+	}
+	val, err := json.Marshal(s.Results)
+	if err != nil {
+		utils.ErrorPrint("JSONMarshalError", err.Error())
+		return ""
+	}
+	return string(val)
 }

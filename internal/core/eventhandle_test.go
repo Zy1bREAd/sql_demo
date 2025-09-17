@@ -1,11 +1,14 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"sql_demo/internal/conf"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"testing"
+	"time"
 )
 
 func TestExplain(T *testing.T) {
@@ -29,17 +32,44 @@ func TestExplain(T *testing.T) {
 	}
 	fmt.Println("debug print result::", res.Results)
 	fmt.Println("")
-	// uuid := utils.GenerateUUIDKey()
-	// checkEventHandler := NewCheckEventHandler()
-	// checkEventHandler.Work(T.Context(), event.Event{
-	// 	Type: "sql_check",
-	// 	Payload: &QTaskGroupV2{
-	// 		IsExport: true,
-	// 		Deadline: 60,
-	// 		GID:      uuid,
-	// 		TicketID: uuid,
-	// 		Env:      "prod",
-	// 		Service:  "domain",
-	// 	},
-	// })
+}
+
+func TestExplainAnalysis(T *testing.T) {
+	start := time.Now()
+	content := map[string]string{
+		"sql": `
+		select u1.id,u1.name from (select id,name from sql_demo.users where name='oceanwang' ) as u1 
+		left join sql_demo.users u2 
+		on u1.id = u2.id;
+		`,
+		"env":     "prod",
+		"db":      "sql_demo",
+		"service": "domain",
+	}
+	// 开启文件日志记录
+	conf.InitAppConfig()
+	// 连接本地应用的DB存储数据
+	self := dbo.InitSelfDB()
+	defer self.Close()
+	// 初始化多数据库池子的实例
+	dbo.LoadInDB(false)
+
+	// 解析SQL
+	ctx := context.Background()
+	parseStmts, err := ParseV3(content["sql"])
+	if err != nil {
+		panic(err)
+	}
+
+	for _, stmt := range parseStmts {
+		analysisRes, err := stmt.ExplainAnalysis(ctx, content["env"], content["db"], content["service"])
+		if err != nil {
+			log.Panic(err.Error())
+		}
+		fmt.Println("debug print - ai", analysisRes.AiAnalysis)
+		fmt.Println("debug print - ddl", analysisRes.DDL)
+		fmt.Println("debug print - info", analysisRes.InformationSchema)
+		fmt.Println("debug print - explain", analysisRes.Explain)
+	}
+	fmt.Println(time.Since(start))
 }

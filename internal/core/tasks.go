@@ -384,15 +384,15 @@ func DoubleCheck(ctx context.Context, ticketID int64, redo ReExcute) (*PreCheckR
 			return nil, doubleCheck.Errrr
 		}
 		//! 对比检查结果 (仅Explain示例)
-		for i, stmt := range doubleCheck.Data.Explain.Results {
-			for j, val := range stmt.Results {
-				temp := fristCheck.Data.Explain.Results[i].Results
-				//! 扫描数量超过100W条
-				if val["type"] == temp[j]["type"] {
-					fmt.Println("debug print - 100:double check ", val["type"])
-				}
-			}
-		}
+		// for i, stmt := range doubleCheck.Data.ExplainAnalysis {
+		// 	for j, val := range stmt.Results {
+		// 		temp := fristCheck.Data.ExplainAnalysis.Results[i].Results
+		// 		//! 扫描数量超过100W条
+		// 		if val["type"] == temp[j]["type"] {
+		// 			fmt.Println("debug print - 100:double check ", val["type"])
+		// 		}
+		// 	}
+		// }
 
 		return doubleCheck, nil
 	}

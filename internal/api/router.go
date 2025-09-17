@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"sql_demo/internal/auth"
+	api "sql_demo/internal/clients"
 	glbapi "sql_demo/internal/clients/gitlab"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
@@ -143,6 +144,9 @@ func InitBaseRoutes() {
 
 		// 仪表盘
 		rgAuth.GET("/console/dashborad", GetDashboradData)
+
+		// ai chat
+		rgAuth.GET("/chat", AiChat)
 	})
 }
 
@@ -1084,4 +1088,19 @@ func GetDashboradData(ctx *gin.Context) {
 	common.SuccessResp(ctx, res, "ok", common.WithPagination(common.Pagniation{
 		Total: len(res),
 	}))
+}
+
+// 测试AIChat
+func AiChat(ctx *gin.Context) {
+	client, err := api.NewAIClient()
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	res, err := client.NewChat(ctx, "您好，你怎么知道我是不是人工智能？请简短回答核心")
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, res.JSONResult(), "ok")
 }

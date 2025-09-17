@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,9 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"sql_demo/internal/clients"
+	"sql_demo/internal/common"
+	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"strconv"
 	"strings"
@@ -662,8 +666,126 @@ func (p *SQLForParse) validate() error {
 	return nil
 }
 
-// EXPLAIN 执行计划解析
-// func (s *SQLForParseV2) Explain() {
-// 	dbConn := dbo.HaveSelfDB().GetConn()
-// 	// dbConn.
-// }
+// 对EXPLAIN执行计划的解析与建议
+type ExplainAnalysisResult struct {
+	DDL               []dbo.SQLResult
+	InformationSchema []dbo.SQLResult
+	Explain           dbo.SQLResult
+	AiAnalysis        string
+	TaskID            string
+}
+
+// 利用表信息、DDL信息和EXPLAIN结果生成Prompt提示词
+func (s *SQLForParseV2) NewExplainPrompt(tableInfo, ddl []string, explain string) string {
+	// 需要处理stmt中的反引号问题
+	reg, err := regexp.Compile("`")
+	if err != nil {
+		utils.ErrorPrint("RegexpError", err.Error())
+		return ""
+	}
+	regStmt := reg.ReplaceAllString(explain, "")
+	return fmt.Sprintf(`
+你是一个资深DBA，你需要结合下面相关信息对EXPLAIN结果进行解析并提供建议。
+
+展示核心表信息：
+%v
+
+展示表DDL:
+%v
+
+使用JSON格式展示EXPLAIN结果:
+%s
+
+最后你需要使用以下JSON格式来回答我的内容, 回答需要严谨准确、简洁、可读性高。
+{
+    "summary": "概要",
+    "findings": "关键发现",
+    "recommendation": "建议",
+}
+	`, tableInfo, ddl, regStmt)
+}
+
+// EXPLAIN 解析与建议（单条SQL）
+func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, SrvName string) (*ExplainAnalysisResult, error) {
+	ist, err := dbo.HaveDBIst(envName, DBName, SrvName)
+	if err != nil {
+		return nil, err
+	}
+	// 0. EXPLAIN
+	if !common.CheckCtx(ctx) {
+		return nil, utils.GenerateError("GoroutineError", "收到父Ctx的退出信号")
+	}
+	taskID := utils.GenerateUUIDKey()
+	explain := ist.Explain(ctx, s.SafeStmt, taskID)
+	if explain.Errrrr != nil {
+		return nil, explain.Errrrr
+	}
+	//TODO：EXPLAIN预定义规则解析
+
+	if !common.CheckCtx(ctx) {
+		return nil, utils.GenerateError("GoroutineError", "收到父Ctx的退出信号")
+	}
+	// 1. 获取DDL
+	ddl := make([]dbo.SQLResult, len(s.From))
+	ddlPrompt := make([]string, len(s.From))
+	for _, from := range s.From {
+		if from.IsDerivedTable {
+			continue
+		}
+		res := ist.ShowCreate(ctx, from.DBName, from.TableName, taskID)
+		ddl = append(ddl, res)
+	}
+	for _, t := range ddl {
+		if t.Results == nil {
+			continue
+		}
+		ddlPrompt = append(ddlPrompt, t.OutputJSON())
+	}
+
+	// 2. 获取Information_schema表信息
+	schema := make([]dbo.SQLResult, len(s.From))
+	schemaPrompt := make([]string, len(s.From))
+	for _, from := range s.From {
+		if from.IsDerivedTable {
+			continue
+		}
+		res := ist.TableInformation(ctx, from.DBName, from.TableName, taskID)
+		schema = append(schema, res)
+	}
+	for _, t := range schema {
+		if t.Results == nil {
+			continue
+		}
+		schemaPrompt = append(schemaPrompt, t.OutputJSON())
+	}
+
+	if !common.CheckCtx(ctx) {
+		return nil, utils.GenerateError("GoroutineError", "收到父Ctx的退出信号")
+	}
+	// 3. 拼接prompt问题
+	question := s.NewExplainPrompt(schemaPrompt, ddlPrompt, explain.OutputJSON())
+	fmt.Println("\n提示词是:" + question + "\n")
+	// 4. 提问
+	client, err := clients.NewAIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	if !common.CheckCtx(ctx) {
+		return nil, utils.GenerateError("GoroutineError", "收到父Ctx的退出信号")
+	}
+	chat, err := client.NewChat(ctx, question)
+	if err != nil {
+		return nil, err
+	}
+	// analyize := chat.JSONResult()
+	// 目前仅获取第一个Choice
+	analyize := chat.Choices[0].Message.Content
+
+	return &ExplainAnalysisResult{
+		Explain:           explain,
+		AiAnalysis:        analyize,
+		DDL:               ddl,
+		InformationSchema: schema,
+	}, nil
+}
