@@ -343,7 +343,7 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	} else if content.Online == CommentOnlineExcute {
 		return c.handleOnlineExcute()
 	} else {
-		return utils.GenerateError("ActionErr", "Unknown Action")
+		return utils.GenerateError("ActionErr", "Unknown Action"+string(content.Approval))
 	}
 }
 

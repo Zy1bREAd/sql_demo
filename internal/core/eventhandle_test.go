@@ -62,7 +62,13 @@ func TestExplainAnalysis(T *testing.T) {
 	}
 
 	for _, stmt := range parseStmts {
-		analysisRes, err := stmt.ExplainAnalysis(ctx, content["env"], content["db"], content["service"])
+		analysisRes, err := stmt.ExplainAnalysis(ctx, content["env"], content["db"], content["service"],
+			AnalysisFnOpts{
+				WithExplain: true,
+				WithDDL:     true,
+				WithSchema:  true,
+				WithAi:      true,
+			})
 		if err != nil {
 			log.Panic(err.Error())
 		}

@@ -706,87 +706,113 @@ func (s *SQLForParseV2) NewExplainPrompt(tableInfo, ddl []string, explain string
 	`, tableInfo, ddl, regStmt)
 }
 
+// 选项式灵活启动需要分析的函数
+type AnalysisFnOpts struct {
+	WithExplain bool
+	WithDDL     bool
+	WithSchema  bool
+	WithAi      bool
+}
+
 // EXPLAIN 解析与建议（单条SQL）
-func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, SrvName string) (*ExplainAnalysisResult, error) {
+func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, SrvName string, opts AnalysisFnOpts) (*ExplainAnalysisResult, error) {
+	fromLength := len(s.From)
+	result := &ExplainAnalysisResult{
+		DDL:               make([]dbo.SQLResult, fromLength),
+		InformationSchema: make([]dbo.SQLResult, fromLength),
+		Explain:           dbo.SQLResult{},
+		// 剩下两个使用零值
+	}
+	// opts.WithExplain = true		// 默认开启
+	// 初始化
+	taskID := utils.GenerateUUIDKey()
+	ddlPrompt := make([]string, fromLength)
+	schemaPrompt := make([]string, fromLength)
+
 	ist, err := dbo.HaveDBIst(envName, DBName, SrvName)
 	if err != nil {
 		return nil, err
 	}
+
 	// 0. EXPLAIN
 	if !common.CheckCtx(ctx) {
 		return nil, utils.GenerateError("GoroutineError", "收到父Ctx的退出信号")
 	}
-	taskID := utils.GenerateUUIDKey()
-	explain := ist.Explain(ctx, s.SafeStmt, taskID)
-	if explain.Errrrr != nil {
-		return nil, explain.Errrrr
+	if opts.WithExplain {
+		explain := ist.Explain(ctx, s.SafeStmt, taskID)
+		if explain.Errrrr != nil {
+			return nil, explain.Errrrr
+		}
+		result.Explain = explain
+		//TODO：EXPLAIN预定义规则解析
 	}
-	//TODO：EXPLAIN预定义规则解析
-
 	if !common.CheckCtx(ctx) {
 		return nil, utils.GenerateError("GoroutineError", "收到父Ctx的退出信号")
 	}
+
 	// 1. 获取DDL
-	ddl := make([]dbo.SQLResult, len(s.From))
-	ddlPrompt := make([]string, len(s.From))
-	for _, from := range s.From {
-		if from.IsDerivedTable {
-			continue
+	if opts.WithDDL {
+		ddl := make([]dbo.SQLResult, fromLength)
+		for _, from := range s.From {
+			if from.IsDerivedTable {
+				continue
+			}
+			res := ist.ShowCreate(ctx, from.DBName, from.TableName, taskID)
+			ddl = append(ddl, res)
 		}
-		res := ist.ShowCreate(ctx, from.DBName, from.TableName, taskID)
-		ddl = append(ddl, res)
-	}
-	for _, t := range ddl {
-		if t.Results == nil {
-			continue
+		for _, t := range ddl {
+			if t.Results == nil {
+				continue
+			}
+			ddlPrompt = append(ddlPrompt, t.OutputJSON())
 		}
-		ddlPrompt = append(ddlPrompt, t.OutputJSON())
+		result.DDL = ddl
 	}
 
 	// 2. 获取Information_schema表信息
-	schema := make([]dbo.SQLResult, len(s.From))
-	schemaPrompt := make([]string, len(s.From))
-	for _, from := range s.From {
-		if from.IsDerivedTable {
-			continue
+	if opts.WithSchema {
+		schema := make([]dbo.SQLResult, fromLength)
+		for _, from := range s.From {
+			if from.IsDerivedTable {
+				continue
+			}
+			res := ist.TableInformation(ctx, from.DBName, from.TableName, taskID)
+			schema = append(schema, res)
 		}
-		res := ist.TableInformation(ctx, from.DBName, from.TableName, taskID)
-		schema = append(schema, res)
-	}
-	for _, t := range schema {
-		if t.Results == nil {
-			continue
+		for _, t := range schema {
+			if t.Results == nil {
+				continue
+			}
+			schemaPrompt = append(schemaPrompt, t.OutputJSON())
 		}
-		schemaPrompt = append(schemaPrompt, t.OutputJSON())
+		result.InformationSchema = schema
 	}
-
 	if !common.CheckCtx(ctx) {
 		return nil, utils.GenerateError("GoroutineError", "收到父Ctx的退出信号")
 	}
-	// 3. 拼接prompt问题
-	question := s.NewExplainPrompt(schemaPrompt, ddlPrompt, explain.OutputJSON())
-	// 4. 提问
-	client, err := clients.NewAIClient()
-	if err != nil {
-		return nil, err
+
+	if opts.WithAi {
+		// 3. 拼接prompt问题
+		question := s.NewExplainPrompt(schemaPrompt, ddlPrompt, result.Explain.OutputJSON())
+		// 4. 提问
+		client, err := clients.NewAIClient()
+		if err != nil {
+			return nil, err
+		}
+
+		if !common.CheckCtx(ctx) {
+			return nil, utils.GenerateError("GoroutineError", "收到父Ctx的退出信号")
+		}
+		chat, err := client.NewChat(ctx, question)
+		if err != nil {
+			return nil, err
+		}
+		// analyize := chat.JSONResult()
+		// 目前仅获取第一个Choice
+		analyize := chat.Choices[0].Message.Content
+		result.AiAnalysis = analyize
+		// fmt.Println("debug print - ai content: ", analyize)
 	}
 
-	if !common.CheckCtx(ctx) {
-		return nil, utils.GenerateError("GoroutineError", "收到父Ctx的退出信号")
-	}
-	chat, err := client.NewChat(ctx, question)
-	if err != nil {
-		return nil, err
-	}
-	// analyize := chat.JSONResult()
-	// 目前仅获取第一个Choice
-	analyize := chat.Choices[0].Message.Content
-	fmt.Println("debug print - ai content: ", analyize)
-
-	return &ExplainAnalysisResult{
-		Explain:           explain,
-		AiAnalysis:        analyize,
-		DDL:               ddl,
-		InformationSchema: schema,
-	}, nil
+	return result, nil
 }

@@ -862,26 +862,27 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 			preCheckRes.Data.ParsedSQL = parseStmts
 
-			// EXPLAIN解析
+			// 仅EXPLAIN解析（用于对比检查）
 			ist, err := dbo.HaveDBIst(issCache.Content.Env, issCache.Content.DBName, issCache.Content.Service)
 			if err != nil {
 				errCh <- err
 				return
 			}
-			explainAnalysisRes := make([]ExplainAnalysisResult, 0)
-			taskID := utils.GenerateUUIDKey()
 			for _, stmt := range parseStmts {
-				explain := ist.Explain(ctx, stmt.SafeStmt, taskID) // ! 转换成
-				if explain.Errrrr != nil {
-					errCh <- explain.Errrrr
+				analysisRes, err := stmt.ExplainAnalysis(ctx,
+					issCache.Content.Env,
+					issCache.Content.DBName,
+					issCache.Content.Service,
+					AnalysisFnOpts{
+						WithExplain: true,
+					},
+				)
+				if err != nil {
+					errCh <- err
 					return
 				}
-				explainAnalysisRes = append(explainAnalysisRes, ExplainAnalysisResult{
-					TaskID:  taskID,
-					Explain: explain,
-				})
+				preCheckRes.Data.ExplainAnalysis = append(preCheckRes.Data.ExplainAnalysis, *analysisRes)
 			}
-			preCheckRes.Data.ExplainAnalysis = explainAnalysisRes
 
 			// TODO：是否要加入SELECT COUNT(*)的数据量对比
 
@@ -890,8 +891,6 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			dbPool := dbo.GetDBPoolManager()
 			illegalDBs := dbPool.ExcludeDBList()
 			illegalTables := ist.ExcludeTableList()
-			// 普通不全版
-
 			// 递归版
 			var recu func([]FromParse)
 			for _, stmt := range parseStmts {
@@ -976,7 +975,17 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			// EXPLAIN 解析与建议
 			glab := glbapi.InitGitLabAPI()
 			for _, stmt := range parseStmts {
-				analysisRes, err := stmt.ExplainAnalysis(ctx, issCache.Content.Env, issCache.Content.DBName, issCache.Content.Service)
+				analysisRes, err := stmt.ExplainAnalysis(ctx,
+					issCache.Content.Env,
+					issCache.Content.DBName,
+					issCache.Content.Service,
+					AnalysisFnOpts{
+						WithExplain: true,
+						WithDDL:     true,
+						WithSchema:  true,
+						WithAi:      true,
+					},
+				)
 				if err != nil {
 					errCh <- err
 					return
