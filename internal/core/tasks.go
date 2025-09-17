@@ -339,6 +339,9 @@ func DoubleCheck(ctx context.Context, ticketID int64, redo ReExcute) (*PreCheckR
 		redo.Fn()
 		// 同步方式每秒检测是否查询任务完成，来获取结果集
 		for i := 0; i <= redo.deadline; i++ {
+			if !common.CheckCtx(ctx) {
+				return nil, utils.GenerateError("GoroutineError", "goroutine is break off(interrupted)")
+			}
 			time.Sleep(1 * time.Second) // 转成select{}
 			mapVal, ok := CheckTaskMap.Get(ticketID)
 			if !ok {
@@ -370,6 +373,9 @@ func DoubleCheck(ctx context.Context, ticketID int64, redo ReExcute) (*PreCheckR
 		},
 	})
 	for i := 0; i <= redo.deadline; i++ {
+		if !common.CheckCtx(ctx) {
+			return nil, utils.GenerateError("GoroutineError", "goroutine is break off(interrupted)")
+		}
 		time.Sleep(1 * time.Second)
 		mapVal, ok := DoubleCheckTaskMap.Get(ticketID)
 		if !ok {
@@ -383,16 +389,16 @@ func DoubleCheck(ctx context.Context, ticketID int64, redo ReExcute) (*PreCheckR
 		if doubleCheck.Errrr != nil {
 			return nil, doubleCheck.Errrr
 		}
-		//! 对比检查结果 (仅Explain示例)
-		// for i, stmt := range doubleCheck.Data.ExplainAnalysis {
-		// 	for j, val := range stmt.Results {
-		// 		temp := fristCheck.Data.ExplainAnalysis.Results[i].Results
-		// 		//! 扫描数量超过100W条
-		// 		if val["type"] == temp[j]["type"] {
-		// 			fmt.Println("debug print - 100:double check ", val["type"])
-		// 		}
-		// 	}
-		// }
+		//! 对比首次预检检查结果
+		for i, analysis := range doubleCheck.Data.ExplainAnalysis {
+			for j, val := range analysis.Explain.Results {
+				fritst := fristCheck.Data.ExplainAnalysis[i].Explain.Results[j]
+				//! (仅Explain type示例)
+				if val["type"] == fritst["type"] {
+					fmt.Println("debug print::double check ", val["type"])
+				}
+			}
+		}
 
 		return doubleCheck, nil
 	}

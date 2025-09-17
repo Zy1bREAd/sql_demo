@@ -122,8 +122,23 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			},
 		})
 		if err != nil {
-			panic("CheckTask Result is invalid")
+			// panic("CheckTask Result is invalid")
 			// TODO：直接退出该任务
+			rg := &SQLResultGroupV2{
+				GID:   t.QTG.TicketID,
+				Data:  make([]*dbo.SQLResult, 0),
+				Errrr: utils.GenerateError("DoubleCheckFailed", err.Error()),
+			}
+			ep.Produce(event.Event{
+				Type:    "save_result",
+				Payload: rg,
+			})
+			_ = tk.Update(dbo.Ticket{
+				UID: t.QTG.TicketID,
+			}, dbo.Ticket{
+				Status: common.DoubleCheckFailedStatus,
+			})
+			return nil
 		}
 
 		// 存储查询任务Map
@@ -853,17 +868,20 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				errCh <- err
 				return
 			}
-			explainResults := make([]dbo.SQLResult, 0)
+			explainAnalysisRes := make([]ExplainAnalysisResult, 0)
 			taskID := utils.GenerateUUIDKey()
 			for _, stmt := range parseStmts {
-				explain := ist.Explain(ctx, stmt.SafeStmt, taskID)
+				explain := ist.Explain(ctx, stmt.SafeStmt, taskID) // ! 转换成
 				if explain.Errrrr != nil {
 					errCh <- explain.Errrrr
 					return
 				}
-				explainResults = append(explainResults, explain)
+				explainAnalysisRes = append(explainAnalysisRes, ExplainAnalysisResult{
+					TaskID:  taskID,
+					Explain: explain,
+				})
 			}
-			// preCheckRes.Data.Explain.Results = explainResults
+			preCheckRes.Data.ExplainAnalysis = explainAnalysisRes
 
 			// TODO：是否要加入SELECT COUNT(*)的数据量对比
 
@@ -956,14 +974,24 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 
 			// EXPLAIN 解析与建议
+			glab := glbapi.InitGitLabAPI()
 			for _, stmt := range parseStmts {
 				analysisRes, err := stmt.ExplainAnalysis(ctx, issCache.Content.Env, issCache.Content.DBName, issCache.Content.Service)
 				if err != nil {
-					log.Panic(err.Error())
+					errCh <- err
+					return
 				}
 				preCheckRes.Data.ExplainAnalysis = append(preCheckRes.Data.ExplainAnalysis, *analysisRes)
+				// 输出到gitlab中
+				err = glab.CommentCreate(glbapi.GitLabComment{
+					ProjectID: issCache.ProjectID,
+					IssueIID:  issCache.IID,
+					Message:   analysisRes.AiAnalysis,
+				})
+				if err != nil {
+					fmt.Println(err.Error())
+				}
 			}
-			fmt.Println("debug print -33", preCheckRes.Data.ExplainAnalysis)
 
 			// goroutine资源控制
 			if !common.CheckCtx(parentCtx) {

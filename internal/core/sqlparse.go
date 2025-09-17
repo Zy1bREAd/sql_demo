@@ -685,7 +685,7 @@ func (s *SQLForParseV2) NewExplainPrompt(tableInfo, ddl []string, explain string
 	}
 	regStmt := reg.ReplaceAllString(explain, "")
 	return fmt.Sprintf(`
-你是一个资深DBA，你需要结合下面相关信息对EXPLAIN结果进行解析并提供建议。
+你是一个资深DBA, 你需要结合下面相关信息对EXPLAIN结果进行解析并提供建议.
 
 展示核心表信息：
 %v
@@ -696,11 +696,12 @@ func (s *SQLForParseV2) NewExplainPrompt(tableInfo, ddl []string, explain string
 使用JSON格式展示EXPLAIN结果:
 %s
 
-最后你需要使用以下JSON格式来回答我的内容, 回答需要严谨准确、简洁、可读性高。
+最后你必须遵循严谨准确、简洁、可读性高的前提, 使用以下JSON格式来回答.
 {
-    "summary": "概要",
-    "findings": "关键发现",
-    "recommendation": "建议",
+	"statement": "原SQL语句",
+    "summary": "本次解析的总结概要",
+    "findings": "关键发现(target、description以及impact)",
+    "recommendation": "如果有,则提出建议并给出SQL修正",
 }
 	`, tableInfo, ddl, regStmt)
 }
@@ -764,7 +765,6 @@ func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, Sr
 	}
 	// 3. 拼接prompt问题
 	question := s.NewExplainPrompt(schemaPrompt, ddlPrompt, explain.OutputJSON())
-	fmt.Println("\n提示词是:" + question + "\n")
 	// 4. 提问
 	client, err := clients.NewAIClient()
 	if err != nil {
@@ -781,6 +781,7 @@ func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, Sr
 	// analyize := chat.JSONResult()
 	// 目前仅获取第一个Choice
 	analyize := chat.Choices[0].Message.Content
+	fmt.Println("debug print - ai content: ", analyize)
 
 	return &ExplainAnalysisResult{
 		Explain:           explain,

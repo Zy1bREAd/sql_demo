@@ -38,7 +38,7 @@ func TestExplainAnalysis(T *testing.T) {
 	start := time.Now()
 	content := map[string]string{
 		"sql": `
-		select u1.id,u1.name from (select id,name from sql_demo.users where name='oceanwang' ) as u1 
+		select u1.id,u1.name from (select * from sql_demo.users where name LIKE 'testwenqiang_%' and email = '12221@qq.com') as u1 
 		left join sql_demo.users u2 
 		on u1.id = u2.id;
 		`,
@@ -69,7 +69,11 @@ func TestExplainAnalysis(T *testing.T) {
 		fmt.Println("debug print - ai", analysisRes.AiAnalysis)
 		fmt.Println("debug print - ddl", analysisRes.DDL)
 		fmt.Println("debug print - info", analysisRes.InformationSchema)
-		fmt.Println("debug print - explain", analysisRes.Explain)
+		fmt.Println("debug print - explain", analysisRes.Explain.Results)
+
+		for i, val := range analysisRes.Explain.Results {
+			fmt.Println("index=", i, val)
+		}
 	}
 	fmt.Println(time.Since(start))
 }
