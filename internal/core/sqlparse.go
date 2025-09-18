@@ -27,9 +27,9 @@ type SQLForParse struct {
 }
 
 type SQLForParseV2 struct {
-	Action     string // 代表DML类型
-	SafeStmt   string // 经过语法检验的原生SQL
-	WhereExpr  string
+	Action   string // 代表DML类型
+	SafeStmt string // 经过语法检验的原生SQL
+	// WhereExpr  string
 	HavingExpr string
 	Order      []string
 	Limit      LimitParse
@@ -124,10 +124,10 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 		// Where
 		whereExpr := s.GetWherePredicate()
 		if whereExpr != nil {
-			// 仅解析Where
-			whereExpr.Format(buf)
-			sql.WhereExpr = buf.String()
-			buf.Reset()
+			// // 仅解析Where
+			// whereExpr.Format(buf)
+			// sql.WhereExpr = buf.String()
+			// buf.Reset()
 			// ! 扩展：将Where中的Expr实现深层解析
 			where, err := sql.parseWhere(whereExpr)
 			if err != nil {
@@ -170,11 +170,16 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 		}
 		sql.From = froms
 		// Where解析
-		where := s.GetWherePredicate()
-		if where != nil {
-			where.Format(buf)
-			sql.WhereExpr = buf.String()
-			buf.Reset()
+		whereExpr := s.GetWherePredicate()
+		if whereExpr != nil {
+			// where.Format(buf)
+			// sql.WhereExpr = buf.String()
+			// buf.Reset()
+			where, err := sql.parseWhere(whereExpr)
+			if err != nil {
+				return SQLForParseV2{}, err
+			}
+			sql.Where = where
 		}
 		// Order
 		orderVals := make([]string, 0, len(s.OrderBy))
