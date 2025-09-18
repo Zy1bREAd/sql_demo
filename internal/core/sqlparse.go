@@ -36,6 +36,8 @@ type SQLForParseV2 struct {
 	Cols       []ColParse
 	ColVals    []ColValsParse
 	From       []FromParse
+	Where      WhereParse
+	Union      UnionParse
 }
 
 // From
@@ -69,8 +71,18 @@ type LimitParse struct {
 }
 
 type WhereParse struct {
-	Expr    string
-	SubStmt SQLForParseV2
+	Left      *WhereParse
+	Right     *WhereParse
+	From, To  *WhereParse
+	Expr      string // 表示当前Where的整个表达式字符串
+	Op        string
+	SubSelect *SQLForParseV2 // 当有出现subQuery才会存储该数据
+	IsSimple  bool           // 是否为最简的Where表达式
+}
+
+type UnionParse struct {
+	Left  *SQLForParseV2
+	Right *SQLForParseV2
 }
 
 // ! 解析拆解SQL语句为结构体
@@ -97,7 +109,7 @@ func ParseV3(sqlRaw string) ([]SQLForParseV2, error) {
 	return result, nil
 }
 
-// 解析该Stmt的SQLNode节点
+// ! 核心函数：递归解析该Stmt的SQLNode节点
 func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 	sql := SQLForParseV2{}
 	buf := sqlparser.NewTrackedBuffer(nil)
@@ -109,29 +121,21 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 			utils.ErrorPrint("ParseFROMErr", "Parse FROM is failed")
 		}
 		sql.From = froms
-		// Where 和 Having
-		where := s.GetWherePredicate()
-		if where != nil {
-			where.Format(buf)
+		// Where
+		whereExpr := s.GetWherePredicate()
+		if whereExpr != nil {
+			// 仅解析Where
+			whereExpr.Format(buf)
 			sql.WhereExpr = buf.String()
 			buf.Reset()
-			// ! 扩展：将Where中的Expr实现解析
-			// switch w := where.(type) {
-			// case *sqlparser.BetweenExpr:
-			// 	w.Left.Format(buf)
-			// 	fmt.Println("debug print where(left)=", buf.String())
-			// 	buf.Reset()
-			// 	w.Format(buf)
-			// 	fmt.Println("debug print where(all)=", buf.String())
-			// 	buf.Reset()
-			// case *sqlparser.Subquery:
-			// 	w.Format(buf)
-			// 	fmt.Println("debug print where(sub)=", buf.String())
-			// 	buf.Reset()
-			// default:
-			// 	fmt.Println("????")
-			// }
+			// ! 扩展：将Where中的Expr实现深层解析
+			where, err := sql.parseWhere(whereExpr)
+			if err != nil {
+				return SQLForParseV2{}, err
+			}
+			sql.Where = where
 		}
+		// Having
 		if having := s.Having; having != nil {
 			sql.HavingExpr = sqlparser.String(having.Expr)
 		}
@@ -211,9 +215,31 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 		return SQLForParseV2{}, utils.GenerateError("DeleteNotAllow", "The Delete DML is not allow")
 	// EXPLAIN 执行计划
 	case *sqlparser.ExplainStmt:
+		sql.Action = "explain"
 		return parseStmt(s.Statement)
+	case *sqlparser.Union:
+		unionVal := UnionParse{
+			Left:  &SQLForParseV2{},
+			Right: &SQLForParseV2{},
+		}
+		sql.Action = "union"
+		left, err := parseStmt(s.Left)
+		if err != nil {
+			return SQLForParseV2{}, utils.GenerateError("UnionError", "Union Left Parsed is Failed "+err.Error())
+		}
+		unionVal.Left = &left
+		right, err := parseStmt(s.Right)
+		if err != nil {
+			return SQLForParseV2{}, utils.GenerateError("UnionError", "Union Right Parsed is Failed "+err.Error())
+		}
+		unionVal.Right = &right
+		sql.Union = unionVal
+		// sql.Union = append(sql.Union, UnionParse{
+		// 	Left:  left,
+		// 	Right: right,
+		// })
 	default:
-		return SQLForParseV2{}, utils.GenerateError("UnknownSQLErr", "The SQLForParse Type is Unknown")
+		return SQLForParseV2{}, utils.GenerateError("UnknownSQLKind", "The SQLForParse Kind is Unknown")
 	}
 	return sql, nil
 }
@@ -424,6 +450,108 @@ func (s *SQLForParseV2) parseSQLLimit(limit *sqlparser.Limit) (LimitParse, error
 		LimitCount: int(limitVal),
 		Offset:     int(offsetVal),
 	}, nil
+}
+
+func (w *WhereParse) IsEmpty() bool {
+	return w == &WhereParse{}
+}
+
+// Where 个别Expr解析
+func (s *SQLForParseV2) parseWhere(expr sqlparser.Expr) (WhereParse, error) {
+	where := WhereParse{}
+	// 获取原值
+	buf := sqlparser.NewTrackedBuffer(nil)
+	expr.Format(buf)
+	where.Expr = buf.String()
+	buf.Reset()
+
+	switch w := expr.(type) {
+	//! 等值作为递归结束条件
+	case *sqlparser.ComparisonExpr:
+		// = 0,> 2,LIKE 9,IN 7
+		fmt.Println("xxx ? xxx", w.Operator, w.Left, w.Right, w.Escape, w.Modifier)
+		leftVal, err := s.parseWhere(w.Left)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.Left = &leftVal
+
+		rightVal, err := s.parseWhere(w.Right)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.Right = &rightVal
+		where.Op = w.Operator.ToString()
+
+	case *sqlparser.OrExpr:
+		fmt.Println("Where Or")
+		leftVal, err := s.parseWhere(w.Left)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.Left = &leftVal
+
+		rightVal, err := s.parseWhere(w.Right)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.Right = &rightVal
+	case *sqlparser.AndExpr:
+		fmt.Println("Where And")
+		leftVal, err := s.parseWhere(w.Left)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.Left = &leftVal
+
+		rightVal, err := s.parseWhere(w.Right)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.Right = &rightVal
+	case *sqlparser.BetweenExpr:
+		fmt.Println("Where Between", w.From, w.To)
+		fmt.Println(reflect.TypeOf(w.From), reflect.TypeOf(w.To), reflect.TypeOf(w.Left))
+		leftVal, err := s.parseWhere(w.Left)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.Left = &leftVal
+
+		fromVal, err := s.parseWhere(w.From)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.From = &fromVal
+
+		toVal, err := s.parseWhere(w.To)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.To = &toVal
+	case *sqlparser.Subquery:
+		// 子查询（SELECT）
+		sel, err := parseStmt(w.Select)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.SubSelect = &sel
+	case *sqlparser.ExistsExpr:
+		sel, err := parseStmt(w.Subquery.Select)
+		if err != nil {
+			return WhereParse{}, err
+		}
+		where.SubSelect = &sel
+	case *sqlparser.ColName:
+		where.Expr = w.Name.String()
+		where.IsSimple = true
+	case *sqlparser.Literal:
+		where.Expr = w.Val
+		where.IsSimple = true
+	default:
+		return WhereParse{}, utils.GenerateError("UnknownWhere", "不支持的Where类型: "+reflect.TypeOf(w).String())
+	}
+	return where, nil
 }
 
 func ParseV2(dbName, sqlRaw string) ([]SQLForParse, error) {

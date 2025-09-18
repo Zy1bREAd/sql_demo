@@ -6,29 +6,31 @@ import (
 )
 
 func TestParseSQL(T *testing.T) {
-	sqlText := `SELECT 
-    c.customer_name,
-    o_summary.total_orders,
-    o_summary.avg_amount
-FROM customers c
-JOIN (
-    SELECT 
-        customer_id,
-        COUNT(*) AS total_orders,
-        AVG(order_amount) AS avg_amount
-    FROM orders
-    WHERE order_date >= '2024-01-01'
-    GROUP BY customer_id
-) o_summary ON c.customer_id = o_summary.customer_id
-WHERE c.status = 'active';
-`
+	sqlText := `SELECT id, name FROM users WHERE user_type = 1 UNION SELECT id, name FROM admins WHERE status = 1;`
 	// sqlText := "select u1.id,u1.name from (select id,name from sql_demo.users where name='oceanwang' ) as u1 left join sql_demo.users u2 on u1.id = u2.id;"
 	res, err := ParseV3(sqlText)
 	if err != nil {
 		fmt.Println("ERROR", err)
 	}
+
+	// var reco func(*WhereParse)
 	for _, p := range res {
-		fmt.Println(p.From)
+		fmt.Println(p.Union)
 	}
+	// 	fmt.Println("debg print ", p.Where)
+	// 	reco = func(w *WhereParse) {
+	// 		if w == nil {
+	// 			return
+	// 		}
+	// 		if !w.IsSimple {
+	// 			reco(w.Left)
+	// 			reco(w.Right)
+	// 			reco(w.From)
+	// 			reco(w.To)
+	// 		}
+	// 		fmt.Println("递归：", w.Expr)
+	// 	}
+	// 	reco(&p.Where)
+	// }
 
 }
