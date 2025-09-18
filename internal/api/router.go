@@ -1,4 +1,4 @@
-package internal
+package api
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	_ "sql_demo/docs"
 	"sql_demo/internal/auth"
 	api "sql_demo/internal/clients"
 	glbapi "sql_demo/internal/clients/gitlab"
@@ -24,6 +25,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
 )
 
@@ -45,6 +48,8 @@ func RegisterRoute(fn FnRegisterRoute) {
 
 // 封装路由组件
 func InitRouter() {
+	// programatically set swagger info
+
 	r := gin.New()
 	r.Use(corsMiddleware())
 	rgPublic := r.Group("/api/v1/public")
@@ -52,6 +57,9 @@ func InitRouter() {
 	// 使用认证鉴权中间件
 	rgAuth.Use(authMiddleware())
 	InitBaseRoutes()
+
+	// Swagger API Docs
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// 加载路由注册函数
 	for _, fn := range fnRoutes {
@@ -198,23 +206,21 @@ type UserInfo struct {
 	Email    string `json:"email"`
 }
 
-// func userCreate(ctx *gin.Context) {
-// 	var userInfo UserInfo
-// 	ctx.ShouldBind(&userInfo)
-// 	user := dbo.User{
-// 		Name:     userInfo.Name,
-// 		Password: userInfo.Password,
-// 		Email:    userInfo.Email,
-// 	}
-// 	err := user.Create()
-// 	if err != nil {
-// 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
-// 	}
-// 	// 返回创建信息
-// 	common.SuccessResp(ctx, "token=...", "Get resultMap all keys success")
-// }
+type TaskCreateDTO struct {
+	SourceRef      string `json:"source_ref"`
+	IdempotencyKey string `json:"idempotency_key"`
+	UID            string `json:"uid"`
+}
 
 // 创建一个任务
+//
+//	@Summary		创建SQL任务
+//	@Description	创建SQL任务
+//	@Tags			SQLTask
+//	@Produce		json
+//	@Success		200	{object}	common.JSONResponse{data=TaskCreateDTO}
+//	@Failure		500	{object}	common.JSONResponse
+//	@Router			/sql/create [post]
 func SQLTaskCreate(ctx *gin.Context) {
 	val, exist := ctx.Get("user_id")
 	if !exist {
@@ -227,7 +233,7 @@ func SQLTaskCreate(ctx *gin.Context) {
 		return
 	}
 	// 解析数据
-	var content core.SQLTaskRequestDTO
+	var content SQLTaskRequestDTO
 	err := ctx.ShouldBindJSON(&content)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
@@ -782,7 +788,7 @@ func RegisterUsersByGitLab(ctx *gin.Context) {
 
 // 创建数据库连接信息
 func CreateDBInfo(ctx *gin.Context) {
-	var dbInfo core.QueryDataBaseDTO
+	var dbInfo QueryDataBaseDTO
 	err := ctx.ShouldBindJSON(&dbInfo)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -818,9 +824,28 @@ func CreateDBInfo(ctx *gin.Context) {
 	common.SuccessResp(ctx, nil, "create success")
 }
 
+// Create or update API information request | 创建或更新API信息
+type QueryEnvSwagger struct {
+	IsWrite bool     `json:"is_write"`
+	Name    string   `json:"name"`
+	Tag     []string `json:"tag"`
+	Desc    string   `json:"description"`
+}
+
 // 创建数据库连接信息
+//
+//	@Summary		Create a Env Info
+//	@Description	创建数据库环境信息
+//	@Security		ApiKeyAuth
+//	@Tags			Env
+//	@Accept			application/json
+//	@Produce		application/json
+//	@Param			env_body	body		QueryEnvDTO	true	"Env Body"
+//	@Success		200			{object}	common.JSONResponse{data=nil}
+//	@Failure		500			{object}	common.JSONResponse
+//	@Router			/env/create [post]
 func CreateEnvInfo(ctx *gin.Context) {
-	var envInfo core.QueryEnvDTO
+	var envInfo QueryEnvDTO
 	err := ctx.ShouldBindJSON(&envInfo)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -849,7 +874,7 @@ func GetDBConfig(ctx *gin.Context) {
 	type RDTO struct {
 		Page     int `json:"page"`
 		PageSize int `json:"page_size"`
-		// Data     core.QueryEnvDTO `json:"conds"`
+		// Data     QueryEnvDTO `json:"conds"`
 	}
 	var dto RDTO
 	err := ctx.ShouldBindJSON(&dto)
@@ -862,7 +887,7 @@ func GetDBConfig(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	var source core.QueryDataBaseDTO
+	var source QueryDataBaseDTO
 	result, err := source.GetorSearch("", &pagni)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -919,7 +944,7 @@ func SearchDBConfig(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	var source core.QueryDataBaseDTO
+	var source QueryDataBaseDTO
 	result, err := source.GetorSearch(kw, &pagni)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -942,7 +967,7 @@ func SourceConnTest(ctx *gin.Context) {
 
 // 仅获取Env名字的函数
 func GetEnvNameList(ctx *gin.Context) {
-	var dto core.QueryEnvDTO
+	var dto QueryEnvDTO
 	result := dto.GetEnvNameList()
 	common.SuccessResp(ctx, result, "get env name list success")
 }
@@ -951,9 +976,9 @@ func GetEnvNameList(ctx *gin.Context) {
 func GetEnvConfigList(ctx *gin.Context) {
 	// RDTO: Request DTO ,主要接收前端的请求体数据，将其反序列化
 	type RDTO struct {
-		Page     int              `json:"page"`
-		PageSize int              `json:"page_size"`
-		Data     core.QueryEnvDTO `json:"conds"`
+		Page     int         `json:"page"`
+		PageSize int         `json:"page_size"`
+		Data     QueryEnvDTO `json:"conds"`
 	}
 	var dto RDTO
 	err := ctx.ShouldBindJSON(&dto)
@@ -982,7 +1007,7 @@ func UpdateEnvInfo(ctx *gin.Context) {
 		return
 	}
 	// 解析用户要更新的数据体
-	var envInfo core.QueryEnvDTO
+	var envInfo QueryEnvDTO
 	err := ctx.ShouldBindJSON(&envInfo)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
@@ -1000,7 +1025,7 @@ func UpdateDBInfo(ctx *gin.Context) {
 		return
 	}
 	// 解析用户数据体
-	var envInfo core.QueryDataBaseDTO
+	var envInfo QueryDataBaseDTO
 	err := ctx.ShouldBindJSON(&envInfo)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
@@ -1026,7 +1051,7 @@ func DeleteEnvInfo(ctx *gin.Context) {
 		return
 	}
 	// 解析用户要更新的数据体
-	var envInfo core.QueryEnvDTO
+	var envInfo QueryEnvDTO
 	envInfo.UID = uid
 	result := envInfo.DeleteEnvInfo()
 	common.SuccessResp(ctx, result, "delete env Success")
@@ -1038,7 +1063,7 @@ func DeleteDBInfo(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, "Invalid UID")
 		return
 	}
-	var source core.QueryDataBaseDTO
+	var source QueryDataBaseDTO
 	source.UID = uid
 	err := source.Delete()
 	if err != nil {
@@ -1052,9 +1077,9 @@ func DeleteDBInfo(ctx *gin.Context) {
 func GetAuditRecord(ctx *gin.Context) {
 	// RDTO: Request DTO ,主要接收前端的请求体数据，将其反序列化
 	type RDTO struct {
-		Page     int                 `json:"page"`
-		PageSize int                 `json:"page_size"`
-		Data     core.AuditRecordDTO `json:"conds"`
+		Page     int            `json:"page"`
+		PageSize int            `json:"page_size"`
+		Data     AuditRecordDTO `json:"conds"`
 	}
 	var dto RDTO
 	err := ctx.ShouldBindJSON(&dto)
@@ -1079,7 +1104,7 @@ func GetAuditRecord(ctx *gin.Context) {
 
 // 仪表盘数据
 func GetDashboradData(ctx *gin.Context) {
-	var ticket core.TicketStatusStatsDTO
+	var ticket TicketStatusStatsDTO
 	res, err := ticket.StatsCount()
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -1090,7 +1115,6 @@ func GetDashboradData(ctx *gin.Context) {
 	}))
 }
 
-// 测试AIChat
 func AiChat(ctx *gin.Context) {
 	client, err := api.NewAIClient()
 	if err != nil {

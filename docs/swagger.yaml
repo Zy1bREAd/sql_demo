@@ -1,0 +1,130 @@
+basePath: /api/v1
+definitions:
+  api.QueryEnvDTO:
+    properties:
+      create_at:
+        type: string
+      description:
+        type: string
+      is_write:
+        type: boolean
+      name:
+        type: string
+      tag:
+        items:
+          type: string
+        type: array
+      uid:
+        type: string
+      update_at:
+        type: string
+    type: object
+  api.TaskCreateDTO:
+    properties:
+      idempotency_key:
+        type: string
+      source_ref:
+        type: string
+      uid:
+        type: string
+    type: object
+  common.JSONResponse:
+    properties:
+      data:
+        description: 数据可为空
+      message:
+        type: string
+      pagination:
+        $ref: '#/definitions/common.Pagniation'
+      status_code:
+        type: integer
+    type: object
+  common.Pagniation:
+    properties:
+      offset:
+        description: 计算偏移量
+        type: integer
+      page:
+        type: integer
+      page_size:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+host: 124.220.17.5:21899
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: This is a sample server celler server.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Swagger Example API
+  version: "1.0"
+paths:
+  /env/create:
+    post:
+      consumes:
+      - application/json
+      description: 创建数据库环境信息
+      parameters:
+      - description: Env Body
+        in: body
+        name: env_body
+        required: true
+        schema:
+          $ref: '#/definitions/api.QueryEnvDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  type: object
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create a Env Info
+      tags:
+      - Env
+  /sql/create:
+    post:
+      description: 创建SQL任务
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.TaskCreateDTO'
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      summary: 创建SQL任务
+      tags:
+      - SQLTask
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
