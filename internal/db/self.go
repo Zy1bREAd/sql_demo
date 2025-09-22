@@ -652,6 +652,7 @@ func (qdb *QueryDataBase) DeleteOne(cond *QueryDataBase) error {
 	return nil
 }
 
+// 通过结构体对象直接使用
 func (t *Ticket) Create() error {
 	dbConn := HaveSelfDB().GetConn()
 	tx := dbConn.Begin()

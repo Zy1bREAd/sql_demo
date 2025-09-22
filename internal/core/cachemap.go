@@ -14,7 +14,7 @@ var ExportWorkMap *CachesMap = &CachesMap{sync.Map{}}      //导出工作的映�
 var GitLabIssueMap *CachesMap = &CachesMap{sync.Map{}}     // GitLab Issue和Task Id的映射表(任务 -> GitLab Issue)
 var CheckTaskMap *CachesMap = &CachesMap{sync.Map{}}       // 存储检查任务后的数据（包含解析后SQL的结构体数据，以切片的形式存储SQLForParseV2）
 var DoubleCheckTaskMap *CachesMap = &CachesMap{sync.Map{}} // 存储检查任务后的数据（包含解析后SQL的结构体数据，以切片的形式存储SQLForParseV2）
-// var UserTicketMap *CachesMap = &CachesMap{sync.Map{}}  // 用于存储用户与Ticket关联的Map
+var APITaskBodyMap *CachesMap = &CachesMap{sync.Map{}}     // 用于存储调用API创建SQL任务的Task Body
 
 // 并发安全哈希表
 type CachesMap struct {

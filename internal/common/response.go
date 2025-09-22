@@ -33,6 +33,8 @@ const (
 	SessionMapCleanFlag    = 2
 	ExportWorkMapCleanFlag = 3
 	CheckTaskMapCleanFlag  = 4
+	// DoubleCheckTaskMapCleanFlag = 5
+	APITaskBodyMapCleanFlag = 6
 
 	// TIMEOUT
 	RetryTimeOut = 300

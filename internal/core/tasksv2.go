@@ -27,9 +27,10 @@ type CheckEvent interface {
 	UpdateTicketStats(targetStats string, exceptStats ...string) error
 }
 type FristCheckEvent struct {
-	UserID    uint
-	TicketID  int64
 	SourceRef string
+	Source    string
+	TicketID  int64
+	UserID    uint
 }
 
 type DoubleCheckEvent struct {
@@ -39,6 +40,7 @@ type DoubleCheckEvent struct {
 
 // 执行or查询任务
 type QTaskGroupV2 struct {
+	IsAiAnalysis   bool
 	IsSoarAnalysis bool
 	IsExport       bool
 	IsLongTime     bool

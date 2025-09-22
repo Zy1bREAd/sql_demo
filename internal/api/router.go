@@ -18,7 +18,6 @@ import (
 	"sql_demo/internal/conf"
 	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
-	"sql_demo/internal/event"
 	"sql_demo/internal/services"
 	"sql_demo/internal/utils"
 	"strconv"
@@ -234,65 +233,45 @@ func SQLTaskCreate(ctx *gin.Context) {
 		common.ErrorResp(ctx, "convert type is failed")
 		return
 	}
-	// 解析数据
-	var content dto.SQLTaskRequestDTO
+	// 解析数据（需要临时存储）
+	var content dto.SQLTaskRequest
 	err := ctx.ShouldBindJSON(&content)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
 		return
 	}
-
-	// 创建Ticket(需要根据客户端来主动构造business_ref)
-	shortUUID := utils.GenerateUUIDKey()[:4]
-	busniessDomain := "sql-review"
-	snowKey := utils.GenerateSnowKey()
-
-	// {业务域}:user:{主体id}:{Source}:{雪花id}
-	businessRef := fmt.Sprintf("%s:user:%s:normal:%d", busniessDomain, userIdStr, snowKey)
-
-	// {动作}:{雪花id}:{短UUID}
-	IdempKey := fmt.Sprintf("%s:%d:%s", "submit", snowKey, shortUUID)
-	var tk dbo.Ticket = dbo.Ticket{
-		UID:            snowKey,
-		Status:         common.CreatedStatus,
-		Source:         "normal",
-		SourceRef:      businessRef,
-		IdemoptencyKey: IdempKey,
-		AuthorID:       utils.StrToUint(userIdStr),
-	}
-	err = tk.Create()
+	err = content.Validate()
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
 		return
 	}
-	ep := event.GetEventProducer()
-	ep.Produce(event.Event{
-		Type: "sql_check",
-		Payload: &core.FristCheckEvent{
-			TicketID:  snowKey,
-			UserID:    utils.StrToUint(userIdStr),
-			SourceRef: businessRef,
-		},
-	})
+
+	// 临时存储task信息
+	apiTask := services.NewAPITaskService(services.WithUserID(userIdStr))
+	tkData, err := apiTask.Create(content)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
 
 	// 返回sourceRef以及idempKey
-	common.SuccessResp(ctx, map[string]string{
-		"source_ref":      businessRef,
-		"uid":             strconv.FormatInt(snowKey, 10),
-		"idempotency_key": IdempKey,
-	}, "Create Success")
+	common.SuccessResp(ctx, dto.TicketResponse{
+		SourceRef:      tkData.SourceRef,
+		IdemoptencyKey: tkData.IdemoptencyKey,
+		UID:            tkData.UID,
+	}, "Create Ticket Success")
 
 }
 
 func IssueCallBack(ctx *gin.Context) {
-	err := glbapi.PreCheckCallback(ctx, "Issue Hook")
+	err := services.PreCheckCallback(ctx, "Issue Hook")
 	if err != nil {
 		common.NotAuthResp(ctx, err.Error()) // ERROR：401
 		return
 	}
 	//! callback 核心逻辑
 	// 获取并解析请求体
-	var reqBody glbapi.IssueWebhook
+	var reqBody services.IssueWebhook
 	err = ctx.ShouldBind(&reqBody)
 	if err != nil {
 		common.ErrorResp(ctx, common.FormatPrint("BindError", err.Error()))
@@ -308,13 +287,13 @@ func IssueCallBack(ctx *gin.Context) {
 }
 
 func CommentCallBack(ctx *gin.Context) {
-	err := glbapi.PreCheckCallback(ctx, "Note Hook")
+	err := services.PreCheckCallback(ctx, "Note Hook")
 	if err != nil {
 		common.NotAuthResp(ctx, err.Error()) // ERROR：401
 		return
 	}
 	// 评论事件触发的逻辑
-	var reqBody glbapi.CommentWebhook
+	var reqBody services.CommentWebhook
 	err = ctx.ShouldBind(&reqBody)
 	if err != nil {
 		common.ErrorResp(ctx, common.FormatPrint("BindError", err.Error()))

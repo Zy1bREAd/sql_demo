@@ -1,4 +1,4 @@
-package core
+package event
 
 import (
 	"context"
@@ -10,8 +10,12 @@ import (
 	glbapi "sql_demo/internal/clients/gitlab"
 	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/common"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
+	"sql_demo/internal/services"
+
+	// "sql_demo/internal/services"
 	"sql_demo/internal/utils"
 	"sync"
 )
@@ -70,9 +74,9 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	// ep := event.GetEventProducer()
 	// 判断哪种类型的QueryTask
 	switch t := e.Payload.(type) {
-	case *QTaskGroupV2:
+	case *core.QTaskGroupV2:
 		utils.DebugPrint("等待更新", t.DBName)
-	case *IssueQTaskV2:
+	case *core.IssueQTaskV2:
 		// Ticket前置状态判断
 		var tk dbo.Ticket
 		condTicket := dbo.Ticket{
@@ -83,7 +87,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		err := tk.ValidateStatus(condTicket, common.OnlinePassedStatus)
 		if err != nil {
 			commentMsg := fmt.Sprintf("TraceID=%d\n- TaskError=%s", t.QTG.TicketID, "Ticket Status is invalid")
-			rg := &SQLResultGroupV2{
+			rg := &core.SQLResultGroupV2{
 				GID:   t.QTG.TicketID,
 				Data:  make([]*dbo.SQLResult, 0),
 				Errrr: utils.GenerateError("TicketStatusErr", commentMsg),
@@ -100,9 +104,9 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			return nil
 		}
 		// 获取预检结果，进行二次校验
-		precheckRes, err := DoubleCheck(ctx, t.QTG.TicketID, ReExcute{
-			isReExcute: true,
-			deadline:   common.RetryTimeOut,
+		precheckRes, err := core.DoubleCheck(ctx, t.QTG.TicketID, core.ReExcute{
+			IsReExcute: true,
+			Deadline:   common.RetryTimeOut,
 			Fn: func() {
 				glab := glbapi.InitGitLabAPI()
 				updateMsg := fmt.Sprintf("TraceID=%d Pre-Check Task is Re-Excute...", t.QTG.TicketID)
@@ -113,7 +117,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 				})
 				ep.Produce(event.Event{
 					Type: "sql_check",
-					Payload: &FristCheckEvent{
+					Payload: &core.FristCheckEvent{
 						TicketID: tk.UID,
 						UserID:   t.QTG.UserID,
 						// SourceRef: fmt.Sprintf("gitlab:%d:%d:%d", userId, t.Issue.ProjectID, payload.Issue.IID),
@@ -124,7 +128,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		if err != nil {
 			// panic("CheckTask Result is invalid")
 			// TODO：直接退出该任务
-			rg := &SQLResultGroupV2{
+			rg := &core.SQLResultGroupV2{
 				GID:   t.QTG.TicketID,
 				Data:  make([]*dbo.SQLResult, 0),
 				Errrr: utils.GenerateError("DoubleCheckFailed", err.Error()),
@@ -151,7 +155,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		if err != nil {
 			return utils.GenerateError("TicketErr", err.Error())
 		}
-		QueryTaskMap.Set(t.QTG.TicketID, t, common.DefaultCacheMapDDL, common.QueryTaskMapCleanFlag)
+		core.QueryTaskMap.Set(t.QTG.TicketID, t, common.DefaultCacheMapDDL, common.QueryTaskMapCleanFlag)
 		// Issue评论情况更新并开始执行任务
 		glab := glbapi.InitGitLabAPI()
 
@@ -166,7 +170,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 
 		//! 构造任务组
-		taskGroup := make([]*SQLTask, 0)
+		taskGroup := make([]*core.SQLTask, 0)
 		var maxDeadline int
 		for _, s := range precheckRes.Data.ParsedSQL {
 			// 分别定义每个SQL语句的超时时间，SELECT和其他DML的不同超时时间
@@ -184,7 +188,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 					ddl = common.OtherDDL
 				}
 			}
-			qTask := SQLTask{
+			qTask := core.SQLTask{
 				ID:        utils.GenerateUUIDKey(),
 				ParsedSQL: s,
 				Deadline:  ddl,
@@ -265,7 +269,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 	// 抽象成接口
 	case *dbo.SQLResult:
 		utils.DebugPrint("SQLResult查询结果事件消费", res.ID)
-	case *PreCheckResultGroup:
+	case *core.PreCheckResultGroup:
 		utils.DebugPrint("这是预检结果事件", "PreCheckResultGroup")
 		// 核心数据获取，TicketID（一切的前提）
 		var tk dbo.Ticket
@@ -279,20 +283,20 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		//! 存储预检任务信息
 		var msgTitle string
 		if res.IsDoubleCheck {
-			DoubleCheckTaskMap.Set(res.TicketID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
+			core.DoubleCheckTaskMap.Set(res.TicketID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
 			msgTitle = "Double-Check"
 		} else {
-			CheckTaskMap.Set(res.TicketID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
+			core.CheckTaskMap.Set(res.TicketID, res, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
 			msgTitle = "Pre-Check"
 		}
 
 		// GitLab Issue通知详情（判断是否走Issue路线）
-		val, exist := GitLabIssueMap.Get(res.TicketID)
+		val, exist := core.GitLabIssueMap.Get(res.TicketID)
 		if !exist {
 			return nil
 		}
 		// 判断是否为GItLab Issue的任务缓存
-		v, ok := val.(*glbapi.IssueCache)
+		v, ok := val.(*services.IssueCache)
 		if !ok {
 			utils.ErrorPrint("AssertError", "Unknown Type")
 			return nil
@@ -314,7 +318,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			utils.ErrorPrint("GitlabCommentErr", err.Error())
 		}
 
-	case *SQLResultGroupV2:
+	case *core.SQLResultGroupV2:
 		utils.DebugPrint("查询结果组v2事件消费", res.GID)
 		// 核心数据获取，TicketID（一切的前提）
 		var tk dbo.Ticket
@@ -338,15 +342,15 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 		}
 		//! 后期核心处理结果集的代码逻辑块
-		ResultMap.Set(res.GID, res, common.DefaultCacheMapDDL, common.ResultMapCleanFlag)
+		core.ResultMap.Set(res.GID, res, common.DefaultCacheMapDDL, common.ResultMapCleanFlag)
 		TestCh <- struct{}{}
 		// 判断是否为GItLab Issue的任务
-		val, exist := QueryTaskMap.Get(res.GID)
+		val, exist := core.QueryTaskMap.Get(res.GID)
 		if !exist {
 			return nil
 		}
 		// 判断是否gitlab issue任务逻辑
-		v, ok := val.(*IssueQTaskV2)
+		v, ok := val.(*core.IssueQTaskV2)
 		if !ok {
 			return nil
 		}
@@ -434,19 +438,21 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 }
 
 type CleanEventHandler struct {
-	cleanTypeMap     map[int]*CachesMap
+	cleanTypeMap     map[int]*core.CachesMap
 	cleanTypeInfoMap map[int]string
 }
 
 func NewCleanEventHandler() event.EventHandler {
 
 	return &CleanEventHandler{
-		cleanTypeMap: map[int]*CachesMap{
-			0: ResultMap,
-			1: QueryTaskMap,
-			2: SessionMap,
-			3: ExportWorkMap,
-			4: CheckTaskMap,
+		cleanTypeMap: map[int]*core.CachesMap{
+			0: core.ResultMap,
+			1: core.QueryTaskMap,
+			2: core.SessionMap,
+			3: core.ExportWorkMap,
+			4: core.CheckTaskMap,
+			5: core.DoubleCheckTaskMap,
+			6: core.APITaskBodyMap,
 		},
 		cleanTypeInfoMap: map[int]string{
 			0: "ResultMap",
@@ -454,6 +460,8 @@ func NewCleanEventHandler() event.EventHandler {
 			2: "SessionMap",
 			3: "ExportWorkMap",
 			4: "CheckTaskMap",
+			5: "DoubleCheckTaskMap",
+			6: "APITaskBodyMap",
 		},
 	}
 }
@@ -463,13 +471,17 @@ func (eh *CleanEventHandler) Name() string {
 }
 
 func (eh *CleanEventHandler) Work(ctx context.Context, e event.Event) error {
-	body, ok := e.Payload.(CleanTask)
+	body, ok := e.Payload.(core.CleanTask)
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
 	utils.DebugPrint("清理结果事件消费", body.ID)
 	//! 后期核心处理结果集的代码逻辑块
-	mapOperator := eh.cleanTypeMap[body.Kind]
+	mapOperator, ok := eh.cleanTypeMap[body.Kind]
+	if !ok {
+		utils.ErrorPrint("UnknownCleanFlag", "Unknown Clean Task Kind."+string(body.Kind))
+		return nil
+	}
 	mapOperator.Del(body.ID)
 	log.Printf("type=%v taskID=%d Cleaned Up", eh.cleanTypeInfoMap[body.Kind], body.ID)
 	return nil
@@ -489,7 +501,7 @@ func (eh *ExportEventHandler) Name() string {
 }
 
 func (eh *ExportEventHandler) Work(ctx context.Context, e event.Event) error {
-	t, ok := e.Payload.(*ExportTask)
+	t, ok := e.Payload.(*core.ExportTask)
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
@@ -524,7 +536,7 @@ func (eh *HousekeepingEventHandler) Name() string {
 }
 
 func (eh *HousekeepingEventHandler) Work(ctx context.Context, e event.Event) error {
-	body, ok := e.Payload.(*ExportTask)
+	body, ok := e.Payload.(*core.ExportTask)
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
@@ -551,15 +563,15 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 	errCh := make(chan error, 1)
 	// statsCh := make(chan int, 1) // 用于发生错误后更改Status的Channel
 	var commentBody glbapi.GitLabComment
-	body, ok := e.Payload.(*glbapi.GitLabWebhook)
+	body, ok := e.Payload.(*services.GitLabWebhook)
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
 	glab := glbapi.InitGitLabAPI()
 	// 审批or驳回的逻辑
 	switch body.Webhook {
-	case glbapi.CommentHandle:
-		payload, ok := body.Payload.(*glbapi.CommentPayload)
+	case services.CommentHandle:
+		payload, ok := body.Payload.(*services.CommentPayload)
 		if !ok {
 			return utils.GenerateError("PayloadErr", "payload is invalid")
 		}
@@ -583,7 +595,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		tkID := tkRes.UID
 		go func(context.Context) {
 			switch payload.Action {
-			case glbapi.CommentOnlineExcute: //! 执行上线
+			case services.CommentOnlineExcute: //! 执行上线
 				if err != nil {
 					errCh <- err
 					_ = tk.Update(dbo.Ticket{
@@ -623,8 +635,8 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				// 发起sql_query的事件，准备执行SQL
 				ep.Produce(event.Event{
 					Type: "sql_query",
-					Payload: &IssueQTaskV2{
-						QTG: &QTaskGroupV2{
+					Payload: &core.IssueQTaskV2{
+						QTG: &core.QTaskGroupV2{
 							TicketID: tkID,
 							GID:      utils.GenerateUUIDKey(),
 							DML:      sqlt.Action,
@@ -644,7 +656,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 						IssAuthorName: issue.Author.Name,
 					},
 				})
-			case glbapi.CommentApprovalPassed:
+			case services.CommentApprovalPassed:
 				// 校验状态并更新Ticket
 				targetStats := []string{
 					common.PreCheckSuccessStatus,
@@ -674,7 +686,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 					IssueIID:  commentBody.IssueIID,
 					Message:   "审批成功, 等待上线...",
 				})
-			case glbapi.CommentApprovalReject:
+			case services.CommentApprovalReject:
 				// （更新）Ticket记录
 				targetStats := []string{
 					common.PreCheckSuccessStatus,
@@ -701,8 +713,8 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				errCh <- utils.GenerateError("CommentActionErr", "comment action is unknow type")
 			}
 		}(ctx)
-	case glbapi.IssueHandle:
-		payload, ok := body.Payload.(*glbapi.IssuePayload)
+	case services.IssueHandle:
+		payload, ok := body.Payload.(*services.IssuePayload)
 		if !ok {
 			return utils.GenerateError("PayloadErr", "payload is invalid")
 		}
@@ -750,11 +762,11 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			//TODO：是否区分Issue不同操作的逻辑
 
 			// 缓存issue信息，若找不到则从数据库中查找。
-			issCache := &glbapi.IssueCache{
+			issCache := &services.IssueCache{
 				Content: payload.Desc,
 				Issue:   payload.Issue,
 			}
-			GitLabIssueMap.Set(tk.UID, issCache, common.TicketCacheMapDDL, common.IssueTicketType)
+			core.GitLabIssueMap.Set(tk.UID, issCache, common.TicketCacheMapDDL, common.IssueTicketType)
 			// 更新详情内容(GitLab)
 			msg := fmt.Sprintf("TraceID=%d \nPre-Check Task is Starting.....\n", tk.UID)
 			err = glab.CommentCreate(glbapi.GitLabComment{
@@ -770,7 +782,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			ep := event.GetEventProducer()
 			ep.Produce(event.Event{
 				Type: "sql_check",
-				Payload: &FristCheckEvent{
+				Payload: &core.FristCheckEvent{
 					TicketID:  tk.UID,
 					UserID:    userId,
 					SourceRef: sourceRef,
@@ -817,45 +829,49 @@ func (eh *PreCheckEventHandler) Name() string {
 func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 	errCh := make(chan error, 1)
 	ep := event.GetEventProducer()
-	preCheckRes := &PreCheckResultGroup{
-		Data: &PreCheckResult{
-			ParsedSQL:       make([]SQLForParseV2, 0),
-			ExplainAnalysis: make([]ExplainAnalysisResult, 0),
-			Soar: SoarCheck{
+	preCheckRes := &core.PreCheckResultGroup{
+		Data: &core.PreCheckResult{
+			ParsedSQL:       make([]core.SQLForParseV2, 0),
+			ExplainAnalysis: make([]core.ExplainAnalysisResult, 0),
+			Soar: core.SoarCheck{
 				Results: make([]byte, 0),
 			},
 		},
 	}
-	var checker CheckEvent
+	var checker services.CheckEventV2
 	//TODO: 支持API调用
 	switch p := e.Payload.(type) {
-	case *DoubleCheckEvent:
+	case *services.DoubleCheckEventV2:
 		// 二次检查
-		checker = p
+		// checker = p
 		preCheckRes.TicketID = p.TicketID
 		preCheckRes.IsDoubleCheck = true
 		// goroutine
 		go func(context.Context) {
 			// 获取Issue信息
-			val, exist := GitLabIssueMap.Get(p.TicketID)
+			val, exist := core.GitLabIssueMap.Get(p.TicketID)
 			if !exist {
 				errCh <- utils.GenerateError("GitLabIssueNotExist", "Issue Cache is not exist")
 				return
 			}
-			issCache, ok := val.(*glbapi.IssueCache)
+			issCache, ok := val.(*services.IssueCache)
 			if !ok {
 				errCh <- utils.GenerateError("GitLabIssueInvalid", "Issue Cache type is invalid")
 				return
 			}
 
 			// 更新Ticket信息(正在处理预检)
-			err := p.UpdateTicketStats(common.DoubleCheckingStatus, common.OnlinePassedStatus)
+			tk := services.NewTicketService()
+			err := tk.UpdateTicketStats(dbo.Ticket{
+				UID:      p.TicketID,
+				AuthorID: p.UserID,
+			}, common.DoubleCheckingStatus, common.OnlinePassedStatus)
 			if err != nil {
 				errCh <- err
 				return
 			}
 			// 解析SQL
-			parseStmts, err := ParseV3(issCache.Content.Statement)
+			parseStmts, err := core.ParseV3(ctx, issCache.Content.Statement)
 			if err != nil {
 				errCh <- err
 				return
@@ -873,7 +889,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 					issCache.Content.Env,
 					issCache.Content.DBName,
 					issCache.Content.Service,
-					AnalysisFnOpts{
+					core.AnalysisFnOpts{
 						WithExplain: true,
 					},
 				)
@@ -892,10 +908,10 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			illegalDBs := dbPool.ExcludeDBList()
 			illegalTables := ist.ExcludeTableList()
 			// 递归版
-			var recu func([]FromParse)
+			var recu func([]core.FromParse)
 			for _, stmt := range parseStmts {
 				stmtVal := stmt //! 避免闭包循环引用问题
-				recu = func(froms []FromParse) {
+				recu = func(froms []core.FromParse) {
 					for _, f := range froms {
 						// 需要处理派生表的情况（subFrom出现违规表)
 						if slices.Contains(illegalDBs, f.DBName) {
@@ -915,7 +931,10 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 
 			// 更新Ticket信息
-			err = p.UpdateTicketStats(common.DoubleCheckSuccessStatus)
+			err = tk.UpdateTicketStats(dbo.Ticket{
+				UID:      p.TicketID,
+				AuthorID: p.UserID,
+			}, common.DoubleCheckSuccessStatus)
 			if err != nil {
 				errCh <- err
 				return
@@ -924,166 +943,12 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			errCh <- nil
 
 		}(ctx)
-	case *FristCheckEvent:
-		checker = p
+	case *services.FristCheckEventV2:
 		// 预先设置结果基本项数据
 		preCheckRes.TicketID = p.TicketID
 		// goroutine
 		go func(parentCtx context.Context) {
-			// 获取Issue信息
-			val, exist := GitLabIssueMap.Get(p.TicketID)
-			if !exist {
-				errCh <- utils.GenerateError("GitLabIssueNotExist", "Issue Cache is not exist")
-				return
-			}
-			issCache, ok := val.(*glbapi.IssueCache)
-			if !ok {
-				errCh <- utils.GenerateError("GitLabIssueInvalid", "Issue Cache type is invalid")
-				return
-			}
-
-			// 更新Ticket信息(正在处理预检)
-			targetStats := []string{
-				common.CreatedStatus,
-				common.EditedStatus,
-				common.ReInitedStatus,
-			}
-			err := p.UpdateTicketStats(common.PreCheckingStatus, targetStats...)
-			if err != nil {
-				errCh <- err
-				return
-			}
-
-			// goroutine资源控制
-			if !common.CheckCtx(parentCtx) {
-				return
-			}
-
-			// 解析SQL
-			parseStmts, err := ParseV3(issCache.Content.Statement)
-			if err != nil {
-				errCh <- err
-				return
-			}
-			preCheckRes.Data.ParsedSQL = parseStmts
-
-			// goroutine资源控制
-			if !common.CheckCtx(parentCtx) {
-				return
-			}
-
-			// EXPLAIN 解析与建议
-			glab := glbapi.InitGitLabAPI()
-			for _, stmt := range parseStmts {
-				analysisRes, err := stmt.ExplainAnalysis(ctx,
-					issCache.Content.Env,
-					issCache.Content.DBName,
-					issCache.Content.Service,
-					AnalysisFnOpts{
-						WithExplain: true,
-						WithDDL:     true,
-						WithSchema:  true,
-						WithAi:      true,
-					},
-				)
-				if err != nil {
-					errCh <- err
-					return
-				}
-				preCheckRes.Data.ExplainAnalysis = append(preCheckRes.Data.ExplainAnalysis, *analysisRes)
-				// 输出到gitlab中
-				err = glab.CommentCreate(glbapi.GitLabComment{
-					ProjectID: issCache.ProjectID,
-					IssueIID:  issCache.IID,
-					Message:   analysisRes.AiAnalysis,
-				})
-				if err != nil {
-					fmt.Println(err.Error())
-				}
-			}
-
-			// goroutine资源控制
-			if !common.CheckCtx(parentCtx) {
-				return
-			}
-
-			// TODO：SOAR 分析（利用系统层面SOAR操作实现，捕获屏幕输出流）
-			if issCache.Content.IsSoarAnalysis {
-				soar := NewSoarAnalyzer(
-					WithReportFormat("json"),
-					WithSQLContent(issCache.Content.Statement),
-					WithCommandPath("/opt"),
-					WithCommand("soar.linux-amd64_v11"),
-				)
-				soarResult, err := soar.Analysis()
-				if err != nil {
-					errCh <- err
-					return
-				}
-				preCheckRes.Data.Soar.Results = soarResult
-			}
-
-			// TODO：是否要加入SELECT COUNT(*)的数据量对比
-
-			// !自定义规则解析
-			ist, err := dbo.HaveDBIst(issCache.Content.Env, issCache.Content.DBName, issCache.Content.Service)
-			if err != nil {
-				errCh <- err
-				return
-			}
-			// 1. 检查黑名单（数据库和数据表）
-			dbPool := dbo.GetDBPoolManager()
-			illegalDBs := dbPool.ExcludeDBList()
-			illegalTables := ist.ExcludeTableList()
-			// 普通不全版
-			// for _, stmt := range parseStmts {
-			// 	for _, f := range stmt.From {
-			// 		// 需要处理派生表的情况（subFrom出现违规表)
-			// 		if slices.Contains(illegalDBs, f.DBName) {
-			// 			errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL DB Name is illegal.Statement: `%s`", f.DBName, stmt.SafeStmt))
-			// 			return
-			// 		}
-			// 		if slices.Contains(illegalTables, f.TableName) {
-			// 			errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL Table Name is illegal.Statement: `%s`", f.TableName, stmt.SafeStmt))
-			// 			return
-			// 		}
-			// 	}
-			// }
-			// 递归版
-			var recu func([]FromParse)
-			for _, stmt := range parseStmts {
-				stmtVal := stmt //! 避免闭包循环引用问题
-				recu = func(froms []FromParse) {
-					for _, f := range froms {
-						// 需要处理派生表的情况（subFrom出现违规表)
-						if slices.Contains(illegalDBs, f.DBName) {
-							errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL DB Name is illegal.Statement: `%s`", f.DBName, stmt.SafeStmt))
-							return
-						}
-						if slices.Contains(illegalTables, f.TableName) {
-							errCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL Table Name is illegal.Statement: `%s`", f.TableName, stmt.SafeStmt))
-							return
-						}
-						if f.IsDerivedTable {
-							recu(f.SubFrom)
-						}
-
-						// 2. 检查是否可写
-						if !ist.IsWrite && stmtVal.Action != "select" {
-							errCh <- utils.GenerateError("NoPermission", "Your DB Instance is no permission")
-							return
-						}
-					}
-				}
-				recu(stmtVal.From)
-			}
-
-			// 更新Ticket信息
-			err = p.UpdateTicketStats(common.PreCheckSuccessStatus)
-			if err != nil {
-				errCh <- err
-				return
-			}
+			p.Task.FristCheck(parentCtx, preCheckRes)
 			// 表示正常完成（!）
 			errCh <- nil
 

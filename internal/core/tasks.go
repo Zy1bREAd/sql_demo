@@ -19,8 +19,8 @@ const (
 )
 
 type ReExcute struct {
-	isReExcute bool
-	deadline   int
+	IsReExcute bool
+	Deadline   int
 	Fn         func()
 }
 
@@ -237,8 +237,8 @@ func (et *ExportTask) Export(ctx context.Context) error {
 	}
 	// 获取任务结果集
 	taskResults, err := getTaskResults(ctx, et.GID, ReExcute{
-		isReExcute: ReExcuteFlag,
-		deadline:   et.deadline,
+		IsReExcute: ReExcuteFlag,
+		Deadline:   et.deadline,
 	})
 	if err != nil {
 		return err
@@ -310,7 +310,7 @@ func getTaskResults(ctx context.Context, taskId int64, re ReExcute) (*SQLResultG
 			return nil, utils.GenerateError("QueryTaskError", "query task object type not match")
 		}
 		// 同步方式每秒检测是否查询任务完成，来获取结果集
-		for i := 0; i <= int(re.deadline); i++ {
+		for i := 0; i <= int(re.Deadline); i++ {
 			time.Sleep(1 * time.Second)
 			mapVal, ok := ResultMap.Get(taskId)
 			if ok {
@@ -338,7 +338,7 @@ func DoubleCheck(ctx context.Context, ticketID int64, redo ReExcute) (*PreCheckR
 	if !exist {
 		redo.Fn()
 		// 同步方式每秒检测是否查询任务完成，来获取结果集
-		for i := 0; i <= redo.deadline; i++ {
+		for i := 0; i <= redo.Deadline; i++ {
 			if !common.CheckCtx(ctx) {
 				return nil, utils.GenerateError("GoroutineError", "goroutine is break off(interrupted)")
 			}
@@ -372,7 +372,7 @@ func DoubleCheck(ctx context.Context, ticketID int64, redo ReExcute) (*PreCheckR
 			},
 		},
 	})
-	for i := 0; i <= redo.deadline; i++ {
+	for i := 0; i <= redo.Deadline; i++ {
 		if !common.CheckCtx(ctx) {
 			return nil, utils.GenerateError("GoroutineError", "goroutine is break off(interrupted)")
 		}

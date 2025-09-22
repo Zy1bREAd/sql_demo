@@ -6,8 +6,8 @@ import (
 	api "sql_demo/internal/api"
 	"sql_demo/internal/auth"
 	"sql_demo/internal/conf"
-	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
+	event "sql_demo/internal/event/handler"
 	"sql_demo/internal/utils"
 )
 
@@ -51,7 +51,7 @@ func main() {
 		cancel()
 	}()
 	// 初始化Gin以及路由( 从yaml file env中读取配置加载Server )
-	core.InitEventDrive(ctx, 100)
+	event.InitEventDrive(ctx, 100)
 	auth.InitOAuth2()
 	api.InitRouter()
 }

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"testing"
 )
@@ -8,7 +9,7 @@ import (
 func TestParseSQL(T *testing.T) {
 	sqlText := `SELECT id, name FROM users WHERE user_type = 1 UNION SELECT id, name FROM admins WHERE status = 1;`
 	// sqlText := "select u1.id,u1.name from (select id,name from sql_demo.users where name='oceanwang' ) as u1 left join sql_demo.users u2 on u1.id = u2.id;"
-	res, err := ParseV3(sqlText)
+	res, err := ParseV3(context.Background(), sqlText)
 	if err != nil {
 		fmt.Println("ERROR", err)
 	}

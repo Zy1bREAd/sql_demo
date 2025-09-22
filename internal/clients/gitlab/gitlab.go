@@ -3,7 +3,6 @@ package clients
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -74,12 +73,6 @@ type GUser struct {
 type Project struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`
-}
-
-// 缓存结构体(组合优于继承)
-type IssueCache struct {
-	*Issue
-	Content *SQLIssueTemplate
 }
 
 // ! 封装GitLab API
@@ -250,7 +243,7 @@ func NewHashTempLink() (string, string) {
 }
 
 // 解析Issue描述详情
-func ParseIssueDesc(desc string) (*SQLIssueTemplate, error) {
+func ParseIssueDesc(desc string) ([]byte, error) {
 	// 解析issue的描述情况是否为代码块
 	var descBytes []byte
 	if strings.HasPrefix(desc, "```") && strings.HasSuffix(desc, "```") {
@@ -266,14 +259,5 @@ func ParseIssueDesc(desc string) (*SQLIssueTemplate, error) {
 		return nil, err
 	}
 	regResult := reg.ReplaceAll(descBytes, []byte(""))
-	var content SQLIssueTemplate
-	err = json.Unmarshal(regResult, &content)
-	if err != nil {
-		var syntaxErr *json.SyntaxError
-		if errors.As(err, &syntaxErr) {
-			return nil, utils.GenerateError("JSONParseError", "issue decription syntax error:::"+err.Error())
-		}
-		return nil, err
-	}
-	return &content, nil
+	return regResult, nil
 }

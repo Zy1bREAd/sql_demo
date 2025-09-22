@@ -73,23 +73,3 @@ func (audit *AuditRecordService) Get(cond dto.AuditRecordDTO, pagni *common.Pagn
 	}
 	return result, nil
 }
-
-// Ticket
-type TicketService struct {
-	DAO dbo.Ticket
-}
-
-func NewTicketService() TicketService {
-	return TicketService{}
-}
-
-func (tk *TicketService) toORMData(dto dto.TicketStatusStatsDTO) *TicketService {
-	return &TicketService{
-		DAO: dbo.Ticket{},
-	}
-}
-
-// 统计每个状态的Ticket数量
-func (tk *TicketService) StatusCount() (map[string]int, error) {
-	return tk.DAO.StatsCount()
-}

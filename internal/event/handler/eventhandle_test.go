@@ -1,10 +1,11 @@
-package core
+package event
 
 import (
 	"context"
 	"fmt"
 	"log"
 	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"testing"
@@ -56,14 +57,14 @@ func TestExplainAnalysis(T *testing.T) {
 
 	// 解析SQL
 	ctx := context.Background()
-	parseStmts, err := ParseV3(content["sql"])
+	parseStmts, err := core.ParseV3(ctx, content["sql"])
 	if err != nil {
 		panic(err)
 	}
 
 	for _, stmt := range parseStmts {
 		analysisRes, err := stmt.ExplainAnalysis(ctx, content["env"], content["db"], content["service"],
-			AnalysisFnOpts{
+			core.AnalysisFnOpts{
 				WithExplain: true,
 				WithDDL:     true,
 				WithSchema:  true,

@@ -47,6 +47,22 @@ type AuditRecordDTO struct {
 	EndTime   string `json:"end_time"`
 }
 
+type TicketDTO struct {
+	TaskID         string `json:"task_id"`
+	Status         string `json:"status"`
+	Source         string `json:"source"`     // 用于标识Ticket的来源。比如普通API请求的就是normal，而还有一种就是gitlab的
+	SourceRef      string `json:"source_ref"` // 作为关键来源标识（一组流程的唯一标识）
+	IdemoptencyKey string `json:"idem_key"`
+	UID            int64  `json:"uid"`       // 雪花ID
+	AuthorID       uint   `json:"author_id"` // 表示该Ticket所属者
+}
+
+type TicketResponse struct {
+	SourceRef      string `json:"source_ref"` // 作为关键来源标识（一组流程的唯一标识）
+	IdemoptencyKey string `json:"idem_key"`
+	UID            int64  `json:"uid"` // 雪花ID
+}
+
 // TicketStatusStats 票据状态统计 DTO（数据传输对象）
 type TicketStatusStatsDTO struct {
 	CreatedCount        int `json:"created_count"`         // 创建状态数量
@@ -60,17 +76,19 @@ type TicketStatusStatsDTO struct {
 }
 
 // 请求SQL任务的 DTO
-type SQLTaskRequestDTO struct {
-	Env       string `json:"env" validate:"required"`
-	Service   string `json:"service" validate:"required"`
-	DBName    string `json:"db_name" validate:"required"`
-	Statement string `json:"statement" validate:"required,min=1"`
-	LongTime  bool   `json:"long_time"`
-	IsExport  bool   `json:"is_export"`
-	IsSOAR    bool   `json:"is_soar"`
+type SQLTaskRequest struct {
+	Env        string `json:"env" validate:"required"`
+	Service    string `json:"service" validate:"required"`
+	DBName     string `json:"db_name" validate:"required"`
+	Statement  string `json:"statement" validate:"required,min=1"`
+	LongTime   bool   `json:"long_time"`
+	IsExport   bool   `json:"is_export"`
+	IsSOAR     bool   `json:"is_soar"`
+	IsAnalysis bool   `json:"is_analysis default:true"`
 }
 
-func (dto SQLTaskRequestDTO) Validate() error {
+// 校验
+func (dto SQLTaskRequest) Validate() error {
 	va := utils.NewValidator()
 	err := va.Struct(&dto)
 	if err != nil {

@@ -86,7 +86,7 @@ type UnionParse struct {
 }
 
 // ! 解析拆解SQL语句为结构体
-func ParseV3(sqlRaw string) ([]SQLForParseV2, error) {
+func ParseV3(ctx context.Context, sqlRaw string) ([]SQLForParseV2, error) {
 	stmtList, err := parseSQLs(sqlRaw)
 	if err != nil {
 		return nil, err
@@ -95,6 +95,12 @@ func ParseV3(sqlRaw string) ([]SQLForParseV2, error) {
 	result := make([]SQLForParseV2, 0)
 	// 抽象成结构体
 	for _, stmt := range stmtList {
+		// goroutine 资源控制
+		select {
+		case <-ctx.Done():
+			return nil, utils.GenerateError("GoroutineError", "Goroutine Break Off")
+		default:
+		}
 
 		sqlfp, err := parseStmt(stmt)
 		if err != nil {

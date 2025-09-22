@@ -1,8 +1,10 @@
-package clients
+package services
 
 import (
+	"errors"
 	"fmt"
 	"slices"
+	clients "sql_demo/internal/clients/gitlab"
 	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/event"
@@ -12,6 +14,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
 )
+
+// 缓存结构体(组合优于继承)
+type IssueCache struct {
+	*clients.Issue
+	Content *SQLIssueTemplate
+}
 
 const (
 	CommentOnlineExcute   = 2
@@ -28,9 +36,9 @@ const (
 // Issue问题事件的回调
 type IssueWebhook struct {
 	EventType  string             `json:"event_type"`
-	User       GUser              `json:"user"`
-	ObjectAttr Issue              `json:"object_attributes"`
-	Project    Project            `json:"project"`
+	User       clients.GUser      `json:"user"`
+	ObjectAttr clients.Issue      `json:"object_attributes"`
+	Project    clients.Project    `json:"project"`
 	Changes    map[string]Changes `json:"changes"` // 记录变更内容
 }
 
@@ -43,11 +51,11 @@ type Changes struct {
 
 // 评论事件的回调
 type CommentWebhook struct {
-	EventType  string  `json:"event_type"`
-	User       GUser   `json:"user"`
-	ObjectAttr Comment `json:"object_attributes"`
-	Project    Project `json:"project"`
-	Issue      Issue   `json:"issue"`
+	EventType  string          `json:"event_type"`
+	User       clients.GUser   `json:"user"`
+	ObjectAttr clients.Comment `json:"object_attributes"`
+	Project    clients.Project `json:"project"`
+	Issue      clients.Issue   `json:"issue"`
 }
 
 // 评论内容
@@ -90,9 +98,13 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 
 	switch i.ObjectAttr.Action {
 	case "open":
-		issDesc, err := ParseIssueDesc(i.ObjectAttr.Description)
+		descBytes, err := clients.ParseIssueDesc(i.ObjectAttr.Description)
 		if err != nil {
 			utils.DebugPrint("ParseError", err.Error())
+			return err
+		}
+		issDesc, err := ParseIssueTemplate(descBytes)
+		if err != nil {
 			return err
 		}
 		issContent = issDesc
@@ -128,9 +140,13 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			// 仅针对Issue详情内容修改的检测
 			if _, ok := desc.Current.(string); ok {
 				// 解析Issue详情内容
-				issDesc, err := ParseIssueDesc(i.ObjectAttr.Description)
+				descBytes, err := clients.ParseIssueDesc(i.ObjectAttr.Description)
 				if err != nil {
 					utils.DebugPrint("ParseError", err.Error())
+					return err
+				}
+				issDesc, err := ParseIssueTemplate(descBytes)
+				if err != nil {
 					return err
 				}
 				issContent = issDesc
@@ -170,7 +186,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 
 func (c *CommentWebhook) handleApprovalPassed() error {
 	// 同意申请
-	glab := InitGitLabAPI()
+	glab := clients.InitGitLabAPI()
 	// 检查审批人是否合法
 	approvalUserMap := conf.GetAppConf().GetBaseConfig().ApprovalMap
 	approverID, exist := approvalUserMap[c.User.Name]
@@ -197,11 +213,16 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 		return utils.GenerateError("IssueClosed", "Issue已关闭")
 	}
 	// 解析Issue详情
-	issContent, err := ParseIssueDesc(iss.Description)
+	descBytes, err := clients.ParseIssueDesc(iss.Description)
 	if err != nil {
 		utils.DebugPrint("ParseError", err.Error())
 		return err
 	}
+	issDesc, err := ParseIssueTemplate(descBytes)
+	if err != nil {
+		return err
+	}
+
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
 		Type: "gitlab_webhook",
@@ -211,7 +232,7 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 				Action: CommentApprovalPassed,
 				IssuePayload: &IssuePayload{
 					Issue: &c.Issue,
-					Desc:  issContent,
+					Desc:  issDesc,
 				},
 			},
 		},
@@ -230,9 +251,9 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 		// error: 不相同的userid
 		return utils.GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
 	}
-	glab := InitGitLabAPI()
+	glab := clients.InitGitLabAPI()
 	// 驳回
-	err := glab.CommentCreate(GitLabComment{
+	err := glab.CommentCreate(clients.GitLabComment{
 		ProjectID: c.Project.ID,
 		IssueIID:  c.Issue.IID,
 		Message:   "【审批不通过】驳回该SQL执行, 原因:" + reason,
@@ -277,7 +298,7 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 
 func (c *CommentWebhook) handleOnlineExcute() error {
 	// 同意申请
-	glab := InitGitLabAPI()
+	glab := clients.InitGitLabAPI()
 	// 检查审批人是否合法
 	approvalUserMap := conf.GetAppConf().GetBaseConfig().ApprovalMap
 	approverID, exist := approvalUserMap[c.User.Name]
@@ -305,9 +326,13 @@ func (c *CommentWebhook) handleOnlineExcute() error {
 	}
 
 	// 解析Issue详情
-	issContent, err := ParseIssueDesc(iss.Description)
+	descBytes, err := clients.ParseIssueDesc(iss.Description)
 	if err != nil {
 		utils.DebugPrint("ParseError", err.Error())
+		return err
+	}
+	issContent, err := ParseIssueTemplate(descBytes)
+	if err != nil {
 		return err
 	}
 
@@ -370,7 +395,7 @@ type GitLabWebhook struct {
 // 集成批准、驳回两大数据的结构体
 type IssuePayload struct {
 	Action int // open、update
-	Issue  *Issue
+	Issue  *clients.Issue
 	Desc   *SQLIssueTemplate
 }
 
@@ -380,4 +405,18 @@ type CommentPayload struct {
 	Action       int // approval、reject、online
 	CommentDesc  *CommentWebhook
 	IssuePayload *IssuePayload
+}
+
+// 反序列化
+func ParseIssueTemplate(descContent []byte) (*SQLIssueTemplate, error) {
+	var content SQLIssueTemplate
+	err := json.Unmarshal(descContent, &content)
+	if err != nil {
+		var syntaxErr *json.SyntaxError
+		if errors.As(err, &syntaxErr) {
+			return nil, utils.GenerateError("JSONParseError", "issue decription syntax error:::"+err.Error())
+		}
+		return nil, err
+	}
+	return &content, nil
 }
