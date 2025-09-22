@@ -75,11 +75,11 @@ func LoadInDB(isReload bool) {
 		// 新增读取数据库加载到内存中
 		var envORM QueryEnv = QueryEnv{}
 		var dbORM QueryDataBase = QueryDataBase{}
-		envList, err := envORM.Find(&common.Pagniation{})
+		envList, err := envORM.Find(&QueryEnv{}, &common.Pagniation{})
 		if err != nil {
 			panic(err)
 		}
-		dbList, err := dbORM.Find(&common.Pagniation{})
+		dbList, err := dbORM.Find(&QueryDataBase{}, &common.Pagniation{})
 		if err != nil {
 			panic(err)
 		}

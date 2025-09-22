@@ -324,15 +324,16 @@ func (v2 *AuditRecordV2) InsertOne(eventType string) error {
 	return nil
 }
 
-func (v2 *AuditRecordV2) Find(pagni *common.Pagniation) ([]AuditRecordV2, error) {
+// 按照Cond条件查找
+func (v2 *AuditRecordV2) Find(cond *AuditRecordV2, pagni *common.Pagniation) ([]AuditRecordV2, error) {
 	var records []AuditRecordV2
 	dbConn := HaveSelfDB().GetConn()
 	// 抽象基础查询链
-	tx := dbConn.Model(&AuditRecordV2{}).Preload("User").Where(&v2)
+	tx := dbConn.Model(&AuditRecordV2{}).Preload("User").Where(&cond)
 	// 判断时间范围筛选条件是否有效
-	if v2.StartTime != "" && v2.EndTime != "" {
+	if cond.StartTime != "" && cond.EndTime != "" {
 		//! 没有判断endtime小于starttime的情况
-		tx = tx.Where("create_at BETWEEN ? AND ?", v2.StartTime, v2.EndTime)
+		tx = tx.Where("create_at BETWEEN ? AND ?", cond.StartTime, cond.EndTime)
 	}
 	// 查询总条数
 	var total int64
@@ -368,11 +369,11 @@ func (v2 *AuditRecordV2) FindByTime(start, end time.Time) ([]AuditRecordV2, erro
 	return records, nil
 }
 
-func (source *QueryDataBase) CreateOne() error {
+func (source *QueryDataBase) CreateOne(data *QueryDataBase) error {
 	db := HaveSelfDB().GetConn()
 
-	dbIst := source.Service
-	envId := source.EnvID
+	dbIst := data.Service
+	envId := data.EnvID
 	// 不存在则创建，反之不创建
 	findRes := db.Where("env_id = ? AND service = ?", envId, dbIst).First(&source)
 	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
@@ -382,7 +383,7 @@ func (source *QueryDataBase) CreateOne() error {
 		return utils.GenerateError("CreateError", "the db instance is exist")
 	}
 	tx := db.Begin()
-	insertRes := db.Create(&source)
+	insertRes := db.Create(&data)
 	if insertRes.Error != nil {
 		tx.Rollback()
 		return utils.GenerateError("CreateError", insertRes.Error.Error())
@@ -395,20 +396,19 @@ func (source *QueryDataBase) CreateOne() error {
 	return nil
 }
 
-func (env *QueryEnv) CreateOne() error {
+func (env *QueryEnv) CreateOne(data *QueryEnv) error {
 	db := HaveSelfDB().GetConn()
 
-	envName := env.Name
 	// 不存在则创建，反之不创建
-	findRes := db.Where("name = ?", envName).First(&env)
+	findRes := db.Where("name = ?", data.Name).First(&env)
 	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 		return utils.GenerateError("CreateError", findRes.Error.Error())
 	}
-	if findRes.RowsAffected == 1 {
+	if findRes.RowsAffected > 0 {
 		return utils.GenerateError("CreateError", "the env is exist")
 	}
 	tx := db.Begin()
-	insertRes := db.Create(&env)
+	insertRes := db.Create(&data)
 	if insertRes.Error != nil {
 		tx.Rollback()
 		return utils.GenerateError("CreateError", insertRes.Error.Error())
@@ -422,11 +422,11 @@ func (env *QueryEnv) CreateOne() error {
 }
 
 // 默认查找全部Env
-func (env *QueryEnv) Find(pagni *common.Pagniation) ([]QueryEnv, error) {
+func (env *QueryEnv) Find(cond *QueryEnv, pagni *common.Pagniation) ([]QueryEnv, error) {
 	var envList []QueryEnv
 	dbConn := HaveSelfDB().GetConn()
 	// 构造基础查询链
-	tx := dbConn.Model(&QueryEnv{}).Where(&env)
+	tx := dbConn.Model(&QueryEnv{}).Where(&cond)
 	// 查询总条数
 	var total int64
 	if err := tx.Count(&total).Error; err != nil {
@@ -440,10 +440,9 @@ func (env *QueryEnv) Find(pagni *common.Pagniation) ([]QueryEnv, error) {
 		tx = tx.Offset(pagni.Offset).Limit(pagni.PageSize)
 	}
 	pagni.SetTotal(int(total))
-
 	findRes := tx.Find(&envList)
 	if findRes.Error != nil {
-		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
+		return nil, utils.GenerateError("FindEnvError", findRes.Error.Error())
 	}
 	return envList, nil
 }
@@ -476,26 +475,25 @@ func (env *QueryEnv) FindById(uid string) (*QueryEnv, error) {
 	return env, nil
 }
 
-func (source *QueryDataBase) FindEnvID(envName string) error {
+func (source *QueryDataBase) GetEnvID(envName string) (uint, error) {
 	db := HaveSelfDB().GetConn()
 	var envResult QueryEnv
 	res := db.Model(&QueryEnv{}).Where("name = ?", envName).Last(&envResult)
 	if res.Error != nil {
-		return res.Error
+		return 0, res.Error
 	}
 	if res.RowsAffected != 1 {
-		return utils.GenerateError("FindError", "The env is not exist")
+		return 0, errors.New("Env Record is not exist")
 	}
-	source.EnvID = envResult.ID
-	return nil
+	return envResult.ID, nil
 }
 
 // 查找全部
-func (source *QueryDataBase) Find(pagni *common.Pagniation) ([]QueryDataBase, error) {
+func (source *QueryDataBase) Find(cond *QueryDataBase, pagni *common.Pagniation) ([]QueryDataBase, error) {
 	var dbList []QueryDataBase
 	db := HaveSelfDB().GetConn()
 	// 构造基础查询链
-	tx := db.Model(&QueryDataBase{}).Preload("EnvForKey")
+	tx := db.Model(&QueryDataBase{}).Preload("EnvForKey").Where(&cond)
 	// 查询总条数
 	var total int64
 	if err := tx.Count(&total).Error; err != nil {
@@ -509,7 +507,7 @@ func (source *QueryDataBase) Find(pagni *common.Pagniation) ([]QueryDataBase, er
 		tx = tx.Offset(pagni.Offset).Limit(pagni.PageSize)
 	}
 	pagni.SetTotal(int(total))
-	findRes := tx.Find(&dbList)
+	findRes := tx.Debug().Find(&dbList)
 	if findRes.Error != nil {
 		return nil, utils.GenerateError("LoadAllEnv", findRes.Error.Error())
 	}
@@ -544,35 +542,36 @@ func (source *QueryDataBase) FindByKeyWord(kw string, pagni *common.Pagniation) 
 	return findRes, nil
 }
 
-func (env *QueryEnv) UpdateOne(updateEnv *QueryEnv) error {
+// 通过条件更新单个结果
+func (env *QueryEnv) UpdateOne(cond, updateEnv *QueryEnv) error {
 	db := HaveSelfDB().GetConn()
-	findRes := db.Where("uid = ?", env.UID).First(&env)
-	if findRes.Error != nil {
-		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
-			return utils.GenerateError("UpdateFailed", "the env record is not exist:"+findRes.Error.Error())
+	opera := db.Where(&cond).Last(&env)
+	if opera.Error != nil {
+		// 不存在时无法更新
+		if errors.Is(opera.Error, gorm.ErrRecordNotFound) {
+			return utils.GenerateError("UpdateFailed", "Env is not exist,"+opera.Error.Error())
 		}
-		return utils.GenerateError("UpdateFailed", findRes.Error.Error())
+		return utils.GenerateError("UpdateFailed", opera.Error.Error())
 	}
+	// 事务开启
 	tx := db.Begin()
-	updateEnv.ID = env.ID
-	updateEnv.UpdateAt = time.Now()
-	updateRes := db.Model(&env).Updates(updateEnv)
+	updateRes := tx.Model(&QueryEnv{}).Where(&cond).Updates(updateEnv)
 	if updateRes.Error != nil {
 		tx.Rollback()
-		return utils.GenerateError("UpdateFailed", findRes.Error.Error())
+		return utils.GenerateError("UpdateFailed", opera.Error.Error())
 	}
 	if updateRes.RowsAffected != 1 {
-		tx.Rollback()
-		return utils.GenerateError("UpdateFailed", "update error is unkonwn")
+		return utils.GenerateError("UpdateFailed", "Update rows is not 1")
 	}
 	tx.Commit()
 	return nil
 }
 
-func (source *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
+// 更新单个数据源
+func (source *QueryDataBase) UpdateOne(cond, updateDB *QueryDataBase) error {
 	db := HaveSelfDB().GetConn()
 	// 要事先确定外键ID，确保唯一性。
-	findRes := db.Where("uid = ?", source.UID).First(&source)
+	findRes := db.Where(&cond).First(&source)
 	if findRes.Error != nil {
 		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 			return utils.GenerateError("UpdateFailed", "the db record is not exist:"+findRes.Error.Error())
@@ -605,41 +604,42 @@ func (source *QueryDataBase) UpdateOne(updateDB *QueryDataBase) error {
 		updateDB.Password = newPwd
 		fmt.Println("修改密码成功")
 	}
-	updateDB.ID = source.ID
+
+	// updateDB.ID = source.ID
 	updateDB.UpdateAt = time.Now()
-	updateRes := db.Model(&source).Updates(updateDB)
+	updateRes := tx.Model(&QueryDataBase{}).Where(QueryDataBase{
+		ID: source.ID,
+	}).Updates(&updateDB)
 	if updateRes.Error != nil {
 		tx.Rollback()
-		return utils.GenerateError("LoadAllEnv", findRes.Error.Error())
-	}
-	if updateRes.RowsAffected != 1 {
-		tx.Rollback()
-		return utils.GenerateError("LoadAllEnv", "update error is unkonwn")
+		return utils.GenerateError("UpdateError", updateRes.Error.Error())
 	}
 	tx.Commit()
 	return nil
 }
 
-func (env *QueryEnv) DeleteOne() error {
+// 根据条件进行删除
+func (env *QueryEnv) DeleteOne(cond *QueryEnv) error {
 	db := HaveSelfDB().GetConn()
 	tx := db.Begin()
-	res := db.Where("uid = ?", env.UID).Delete(&env)
+	res := tx.Where(&cond).Delete(&env)
 	if res.Error != nil {
 		tx.Rollback()
 		return utils.GenerateError("DeleteError", res.Error.Error())
 	}
 	if res.RowsAffected != 1 {
 		tx.Rollback()
-		return utils.GenerateError("DeleteError", "delete row error")
+		return utils.GenerateError("DeleteError", "delete row is error")
 	}
 	tx.Commit()
 	return nil
 }
 
-func (qdb *QueryDataBase) DeleteOne() error {
+// 按照结构体进行删除
+func (qdb *QueryDataBase) DeleteOne(cond *QueryDataBase) error {
 	db := HaveSelfDB().GetConn()
 	tx := db.Begin()
-	res := db.Where("uid = ?", qdb.UID).Delete(&qdb)
+	res := tx.Where(&cond).Delete(&cond)
 	if res.Error != nil {
 		tx.Rollback()
 		return utils.GenerateError("DeleteError", res.Error.Error())

@@ -93,6 +93,7 @@ func (temp *QueryEnv) TableName() string {
 }
 
 // 存储管理员的数据库执行环境
+// TODO: 更名为QuerySources
 type QueryDataBase struct {
 	ID              uint      `gorm:"primaryKey"`
 	UID             string    `gorm:"type:varchar(36);not null,uniqueIndex"`
@@ -100,7 +101,7 @@ type QueryDataBase struct {
 	Service         string    `gorm:"type:varchar(128);not null;uniqueIndex:idx_env_app"`
 	Host            string    `gorm:"type:varchar(128);default:localhost"`
 	Port            string    `gorm:"type:varchar(64);default:3306;"`
-	User            string    `grom:"type:varchar(128);deafult:root;"`
+	User            string    `grom:"type:varchar(128);default:root;"`
 	Password        string    `gorm:"type:varchar(128);not null;"`
 	ConfirmPassword string    // 校验密码
 	Description     string    `gorm:"type:varchar(255)"`
