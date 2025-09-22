@@ -1025,7 +1025,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 
 			// TODO：是否要加入SELECT COUNT(*)的数据量对比
 
-			// 自定义规则解析
+			// !自定义规则解析
 			ist, err := dbo.HaveDBIst(issCache.Content.Env, issCache.Content.DBName, issCache.Content.Service)
 			if err != nil {
 				errCh <- err
@@ -1066,6 +1066,12 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 						}
 						if f.IsDerivedTable {
 							recu(f.SubFrom)
+						}
+
+						// 2. 检查是否可写
+						if !ist.IsWrite && stmtVal.Action != "select" {
+							errCh <- utils.GenerateError("NoPermission", "Your DB Instance is no permission")
+							return
 						}
 					}
 				}

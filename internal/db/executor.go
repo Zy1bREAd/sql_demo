@@ -35,6 +35,7 @@ type MySQLConfig struct {
 	MaxConn      int      `yaml:"max_conn"`
 	IdleTime     int      `yaml:"idle_time"`
 	TLS          bool     `yaml:"tls"`
+	IsWrite      bool     `yaml:"is_write"`
 	Name         string   `yaml:"name"`
 	Host         string   `yaml:"host"`
 	Password     string   `yaml:"password"`
@@ -172,9 +173,10 @@ var dbPool *DBPoolManager
 type DBInstance struct {
 	conn       *sql.DB
 	name       string // 数据库名称
-	StatusCode int
 	Errrr      string
 	exclude    []string
+	StatusCode int
+	IsWrite    bool
 }
 
 // 数据库连接的池子
@@ -457,7 +459,7 @@ func TestDBIstConn(conn ConnectInfo) error {
 	return nil
 }
 
-// 解析配置并注册
+// 核心函数：解析配置并注册DB实例
 func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
 	manager.exclude = make([]string, 0, 20)
 	for env, dbList := range configData.Databases {
@@ -480,6 +482,8 @@ func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
 			db.name = istName
 			// 新增表和数据库的黑名单
 			db.exclude = dbConf.ExcludeTable
+			db.IsWrite = dbConf.IsWrite
+
 			if len(dbConf.ExcludeDB) > 0 {
 				manager.exclude = append(manager.exclude, dbConf.ExcludeDB...)
 			}
