@@ -653,10 +653,10 @@ func (qdb *QueryDataBase) DeleteOne(cond *QueryDataBase) error {
 }
 
 // 通过结构体对象直接使用
-func (t *Ticket) Create() error {
+func (t *Ticket) Create(data *Ticket) error {
 	dbConn := HaveSelfDB().GetConn()
 	tx := dbConn.Begin()
-	res := tx.Create(&t)
+	res := tx.Create(&data)
 	if res.Error != nil {
 		tx.Rollback()
 		return res.Error
@@ -670,12 +670,12 @@ func (t *Ticket) Create() error {
 }
 
 // 不存在时创建记录，存在则更新 （根据SourceRef）
-func (t *Ticket) LastAndCreateOrUpdate(cond Ticket) error {
+func (t *Ticket) CreateOrUpdate(cond, data *Ticket) error {
 	dbConn := HaveSelfDB().GetConn()
 	tx := dbConn.Begin()
-	var tk Ticket
+	var findTicket Ticket
 	// 检查是否存在该Issue对应的Ticket
-	findRes := tx.Where(cond).Last(&tk)
+	findRes := tx.Where(&cond).Last(&findTicket)
 	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 		tx.Rollback()
 		return findRes.Error
@@ -694,7 +694,7 @@ func (t *Ticket) LastAndCreateOrUpdate(cond Ticket) error {
 
 	} else {
 		// 存在记录，则更新状态
-		updateRes := tx.Model(Ticket{}).Where(cond).Updates(Ticket{
+		updateRes := tx.Model(Ticket{}).Where(&cond).Updates(Ticket{
 			Status: common.EditedStatus, // 修改为Edited状态
 		})
 		if updateRes.Error != nil {

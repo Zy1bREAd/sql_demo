@@ -85,7 +85,7 @@ func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
 	return nil
 }
 
-// 仅用于调用API, 其余事情由事件驱动者完成
+// 解析gitlab并进入gitlab event驱动流程
 func (i *IssueWebhook) OpenIssueHandle() error {
 	// 区分Issue是open还是update操作,企业微信通知,发送消息通知至企业微信机器人
 	issueActionMap := map[string]int{
@@ -97,6 +97,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 	ep := event.GetEventProducer()
 
 	switch i.ObjectAttr.Action {
+	// 打开一个新的Issue
 	case "open":
 		descBytes, err := clients.ParseIssueDesc(i.ObjectAttr.Description)
 		if err != nil {
@@ -134,6 +135,8 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 				},
 			},
 		})
+
+	// 编辑更新一个Issue
 	case "update":
 		desc, exist := i.Changes["description"]
 		if exist {

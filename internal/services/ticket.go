@@ -1,12 +1,9 @@
 package services
 
 import (
-	"fmt"
 	dto "sql_demo/internal/api/dto"
-	"sql_demo/internal/common"
 	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
-	"sql_demo/internal/utils"
 )
 
 // Ticket
@@ -32,36 +29,21 @@ func (tk *TicketService) toORMData(data dto.TicketDTO) *dbo.Ticket {
 }
 
 // 创建一个Ticket(返回SourceRef、IdemoptencyKey和Error)
-func (tk *TicketService) Create(userID uint, source string) (*dto.TicketDTO, error) {
-	// userID := utils.StrToUint(userIDStr)
-	// 创建Ticket(需要根据客户端来主动构造business_ref)
-	shortUUID := utils.GenerateUUIDKey()[:4]
-	busniessDomain := "sql-review"
-	snowKey := utils.GenerateSnowKey()
+func (tk *TicketService) Create(data dto.TicketDTO) error {
+	// 调用数据层进行创建
+	ticketORM := tk.toORMData(data)
+	return tk.DAO.Create(ticketORM)
+}
 
-	// {业务域}:user:{主体id}:{Source}:{雪花id}
-	businessRef := fmt.Sprintf("%s:user:%d:normal:%d", busniessDomain, userID, snowKey)
-
-	// {动作}:{雪花id}:{短UUID}
-	IdempKey := fmt.Sprintf("%s:%d:%s", "submit", snowKey, shortUUID)
-	if source == "" {
-		source = "normal"
-	}
-	dtoData := dto.TicketDTO{
-		UID:            snowKey,
-		Status:         common.CreatedStatus,
-		Source:         source,
-		SourceRef:      businessRef,
-		IdemoptencyKey: IdempKey,
-		AuthorID:       userID,
-	}
-	ticketORM := tk.toORMData(dtoData)
-	err := ticketORM.Create()
-	if err != nil {
-		return nil, err
-	}
-
-	return &dtoData, nil
+// 不存在时创建记录，存在则更新 （根据SourceRef）
+func (tk *TicketService) CreateOrUpdate(data dto.TicketDTO) error {
+	// 调用数据层进行创建
+	condORM := tk.toORMData(dto.TicketDTO{
+		SourceRef:      data.SourceRef,
+		IdemoptencyKey: data.IdemoptencyKey,
+	})
+	dataORM := tk.toORMData(data)
+	return tk.DAO.CreateOrUpdate(condORM, dataORM)
 }
 
 // 更新Ticket状态信息，并按照指定前置状态进行判断
@@ -80,7 +62,7 @@ type CheckEventV2 interface {
 	UpdateTicketStats(targetStats string, exceptStats ...string) error
 }
 type FristCheckEventV2 struct {
-	Task      TaskService
+	Tasker    TaskService
 	SourceRef string
 	Source    string
 	TicketID  int64

@@ -720,74 +720,14 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		}
 		commentBody.ProjectID = payload.Issue.ProjectID
 		commentBody.IssueIID = payload.Issue.IID
+		//! Gitlab创建SQLTask和Ticket
 		go func(context.Context) {
-			// 获取用户真实ID
-			user := dbo.User{
-				GitLabIdentity: payload.Issue.AuthorID,
-			}
-			userId := user.GetGitLabUserId()
-			uid := utils.GenerateSnowKey()
-			shortUUID := utils.GenerateUUIDKey()[:4]
-			busniessDomain := "sql-review"
-			// （创建）Ticket记录——使用sourceRef标识唯一Ticket
-			// {业务域}:user:{主体id}:{Source}:{雪花id}
-			sourceRef := fmt.Sprintf("%s:user:%d:gitlab:%d-%d", busniessDomain, userId, payload.Issue.ProjectID, payload.Issue.IID)
-			// {动作}:{雪花id}:{短UUID}
-			IdempKey := fmt.Sprintf("%s:%d:%s", "submit", uid, shortUUID)
-			ticket := dbo.Ticket{
-				UID:            uid,
-				Status:         common.CreatedStatus,
-				SourceRef:      sourceRef,
-				IdemoptencyKey: IdempKey,
-				AuthorID:       userId,
-				ProjectID:      int(payload.Issue.ProjectID),
-				IssueID:        int(payload.Issue.IID),
-				Link:           payload.Issue.URL,
-				Source:         "gitlab",
-			}
-			err := ticket.LastAndCreateOrUpdate(dbo.Ticket{
-				SourceRef: sourceRef,
-			})
+			gitlabTask := services.NewGitLabTaskService()
+			// 不是很耗时，不打算给ctx
+			_, err := gitlabTask.Create(payload)
 			if err != nil {
 				errCh <- err
-				return
 			}
-			tk, err := ticket.FindOne(dbo.Ticket{
-				SourceRef: sourceRef,
-			})
-			if err != nil {
-				errCh <- err
-				return
-			}
-			//TODO：是否区分Issue不同操作的逻辑
-
-			// 缓存issue信息，若找不到则从数据库中查找。
-			issCache := &services.IssueCache{
-				Content: payload.Desc,
-				Issue:   payload.Issue,
-			}
-			core.GitLabIssueMap.Set(tk.UID, issCache, common.TicketCacheMapDDL, common.IssueTicketType)
-			// 更新详情内容(GitLab)
-			msg := fmt.Sprintf("TraceID=%d \nPre-Check Task is Starting.....\n", tk.UID)
-			err = glab.CommentCreate(glbapi.GitLabComment{
-				ProjectID: commentBody.ProjectID,
-				IssueIID:  commentBody.IssueIID,
-				Message:   msg,
-			})
-			if err != nil {
-				utils.ErrorPrint("CommentFailed", err.Error())
-			}
-
-			// 准备进入预检阶段。(分别从Issue和IssueContent进行提取)
-			ep := event.GetEventProducer()
-			ep.Produce(event.Event{
-				Type: "sql_check",
-				Payload: &core.FristCheckEvent{
-					TicketID:  tk.UID,
-					UserID:    userId,
-					SourceRef: sourceRef,
-				},
-			})
 		}(ctx)
 	}
 
@@ -829,6 +769,7 @@ func (eh *PreCheckEventHandler) Name() string {
 func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 	errCh := make(chan error, 1)
 	ep := event.GetEventProducer()
+	// discard
 	preCheckRes := &core.PreCheckResultGroup{
 		Data: &core.PreCheckResult{
 			ParsedSQL:       make([]core.SQLForParseV2, 0),
@@ -948,7 +889,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 		preCheckRes.TicketID = p.TicketID
 		// goroutine
 		go func(parentCtx context.Context) {
-			p.Task.FristCheck(parentCtx, preCheckRes)
+			p.Tasker.FristCheck(parentCtx, preCheckRes)
 			// 表示正常完成（!）
 			errCh <- nil
 

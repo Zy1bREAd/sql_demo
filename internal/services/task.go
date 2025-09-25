@@ -51,39 +51,48 @@ func WithSourceRef(sourceRef string) Option {
 
 // API调用创建SQLTask和Ticket
 func (srv *APITaskService) Create(data dto.SQLTaskRequest) (*dto.TicketDTO, error) {
-	// 创建Ticket(需要根据客户端来主动构造business_ref)
+	// 创建Ticket(需要根据客户端来主动构造business_ref)信息
 	tk := NewTicketService()
-	ticketDTO, err := tk.Create(srv.UserID, "normal")
+	busniessDomain := "sql-task"
+	snowKey := utils.GenerateSnowKey()
+	shortUUID := utils.GenerateUUIDKey()[:4]
+	userID := srv.UserID
+	// {业务域}:user:{主体id}:{Source}:{雪花id}
+	businessRef := fmt.Sprintf("%s:user:%d:%s:%d", busniessDomain, userID, "normal", snowKey)
+	// {动作}:{雪花id}:{短UUID}
+	IdempKey := fmt.Sprintf("%s:%d:%s", "submit", snowKey, shortUUID)
+
+	dtoData := dto.TicketDTO{
+		UID:            snowKey,
+		Status:         common.CreatedStatus,
+		Source:         "normal",
+		SourceRef:      businessRef,
+		IdemoptencyKey: IdempKey,
+		AuthorID:       userID,
+	}
+	err := tk.Create(dtoData)
 	if err != nil {
 		return nil, err
 	}
 	// 临时存储
-	core.APITaskBodyMap.Set(srv.UID, data, common.DefaultCacheMapDDL, common.APITaskBodyMapCleanFlag)
+	core.APITaskBodyMap.Set(dtoData.UID, data, common.DefaultCacheMapDDL, common.APITaskBodyMapCleanFlag)
 
 	// 生产事件(预检阶段)
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
 		Type: "sql_check",
-		Payload: &core.FristCheckEvent{
-			TicketID:  ticketDTO.UID,
-			UserID:    srv.UserID,
-			SourceRef: ticketDTO.SourceRef,
+		Payload: &FristCheckEventV2{
+			TicketID:  dtoData.UID,
+			UserID:    userID,
+			SourceRef: dtoData.SourceRef,
+			Tasker:    srv,
 		},
 	})
 
-	return ticketDTO, nil
+	return &dtoData, nil
 }
 
 func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
-	preCheckRes := &core.PreCheckResultGroup{
-		Data: &core.PreCheckResult{
-			ParsedSQL:       make([]core.SQLForParseV2, 0),
-			ExplainAnalysis: make([]core.ExplainAnalysisResult, 0),
-			Soar: core.SoarCheck{
-				Results: make([]byte, 0),
-			},
-		},
-	}
 	// 获取Task Body数据
 	body, exist := core.APITaskBodyMap.Get(srv.UID)
 	if !exist {
@@ -114,7 +123,7 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 	if err != nil {
 		return err
 	}
-	preCheckRes.Data.ParsedSQL = parseStmts
+	resultGroup.Data.ParsedSQL = parseStmts
 
 	// EXPLAIN 解析与建议
 	for _, stmt := range parseStmts {
@@ -132,7 +141,7 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 		if err != nil {
 			return err
 		}
-		preCheckRes.Data.ExplainAnalysis = append(preCheckRes.Data.ExplainAnalysis, *analysisRes)
+		resultGroup.Data.ExplainAnalysis = append(resultGroup.Data.ExplainAnalysis, *analysisRes)
 
 	}
 
@@ -148,7 +157,7 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 		if err != nil {
 			return err
 		}
-		preCheckRes.Data.Soar.Results = soarResult
+		resultGroup.Data.Soar.Results = soarResult
 	}
 
 	// !自定义规则解析
@@ -210,8 +219,6 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 		return err
 	}
 
-	//  最终赋值
-	resultGroup = preCheckRes
 	return nil
 }
 
@@ -219,6 +226,8 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 type GitLabTaskService struct {
 	SourceRef string
 	UID       int64
+	IssueIID  int
+	ProjectID int
 	UserID    uint
 }
 
@@ -227,16 +236,59 @@ func NewGitLabTaskService(opts ...Option) *GitLabTaskService {
 	return gitlabTask
 }
 
-func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
-	preCheckRes := &core.PreCheckResultGroup{
-		Data: &core.PreCheckResult{
-			ParsedSQL:       make([]core.SQLForParseV2, 0),
-			ExplainAnalysis: make([]core.ExplainAnalysisResult, 0),
-			Soar: core.SoarCheck{
-				Results: make([]byte, 0),
-			},
-		},
+// GitLab调用创建SQLTask和Ticket
+func (srv *GitLabTaskService) Create(payload *IssuePayload) (*dto.TicketDTO, error) {
+	// 获取用户真实ID
+	user := dbo.User{
+		GitLabIdentity: payload.Issue.AuthorID,
 	}
+	userID := user.GetGitLabUserId()
+	// 创建Ticket(需要根据客户端来主动构造business_ref)信息
+	tk := NewTicketService()
+	busniessDomain := "sql-task"
+	snowKey := utils.GenerateSnowKey()
+	// {业务域}:user:{主体id}:{来源}:{项目ID}:{议题IID}
+	businessRef := fmt.Sprintf("%s:user:%d:%s:%d:%d", busniessDomain, userID, "gitlab", payload.Issue.ProjectID, payload.Issue.IID)
+	// {动作}:{项目ID}:{议题IID}
+	IdempKey := businessRef
+
+	tkData := dto.TicketDTO{
+		UID:            snowKey,
+		Status:         common.CreatedStatus,
+		SourceRef:      businessRef,
+		IdemoptencyKey: IdempKey,
+		AuthorID:       userID,
+		ProjectID:      payload.Issue.ProjectID,
+		IssueIID:       payload.Issue.IID,
+		Source:         "gitlab",
+	}
+	err := tk.CreateOrUpdate(tkData)
+	if err != nil {
+		return nil, err
+	}
+	// 缓存issue信息，若找不到则从数据库中查找。
+	issCache := &IssueCache{
+		Content: payload.Desc,
+		Issue:   payload.Issue,
+	}
+	core.GitLabIssueMap.Set(tkData.UID, issCache, common.TicketCacheMapDDL, common.IssueTicketType)
+
+	// 生产事件(预检阶段)
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
+		Type: "sql_check",
+		Payload: &FristCheckEventV2{
+			TicketID:  tkData.UID,
+			UserID:    userID,
+			SourceRef: tkData.SourceRef,
+			Tasker:    srv,
+		},
+	})
+
+	return &tkData, nil
+}
+
+func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
 	// 获取Task Body数据(GItlab)
 	val, exist := core.GitLabIssueMap.Get(srv.UID)
 	if !exist {
@@ -270,7 +322,7 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 	if err != nil {
 		return err
 	}
-	preCheckRes.Data.ParsedSQL = parseStmts
+	resultGroup.Data.ParsedSQL = parseStmts
 
 	// EXPLAIN 解析与建议
 	glab := glbapi.InitGitLabAPI()
@@ -289,7 +341,7 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 		if err != nil {
 			return err
 		}
-		preCheckRes.Data.ExplainAnalysis = append(preCheckRes.Data.ExplainAnalysis, *analysisRes)
+		resultGroup.Data.ExplainAnalysis = append(resultGroup.Data.ExplainAnalysis, *analysisRes)
 		// 输出到gitlab中
 		err = glab.CommentCreate(glbapi.GitLabComment{
 			ProjectID: issCache.ProjectID,
@@ -313,7 +365,7 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 		if err != nil {
 			return err
 		}
-		preCheckRes.Data.Soar.Results = soarResult
+		resultGroup.Data.Soar.Results = soarResult
 	}
 
 	// !自定义规则解析
@@ -375,7 +427,5 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 		return err
 	}
 
-	// 最终赋值
-	resultGroup = preCheckRes
 	return nil
 }

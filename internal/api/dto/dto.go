@@ -55,6 +55,8 @@ type TicketDTO struct {
 	IdemoptencyKey string `json:"idem_key"`
 	UID            int64  `json:"uid"`       // 雪花ID
 	AuthorID       uint   `json:"author_id"` // 表示该Ticket所属者
+	ProjectID      uint   `json:"project_id"`
+	IssueIID       uint   `json:"issue_iid"`
 }
 
 type TicketResponse struct {

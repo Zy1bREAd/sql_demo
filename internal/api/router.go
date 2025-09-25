@@ -223,16 +223,7 @@ type TaskCreateDTO struct {
 //	@Failure		500	{object}	common.JSONResponse
 //	@Router			/sql/create [post]
 func SQLTaskCreate(ctx *gin.Context) {
-	val, exist := ctx.Get("user_id")
-	if !exist {
-		common.ErrorResp(ctx, "User not exist")
-		return
-	}
-	userIdStr, ok := val.(string)
-	if !ok {
-		common.ErrorResp(ctx, "convert type is failed")
-		return
-	}
+	userIdStr := ctx.GetString("user_id")
 	// 解析数据（需要临时存储）
 	var content dto.SQLTaskRequest
 	err := ctx.ShouldBindJSON(&content)
@@ -248,6 +239,7 @@ func SQLTaskCreate(ctx *gin.Context) {
 
 	// 临时存储task信息
 	apiTask := services.NewAPITaskService(services.WithUserID(userIdStr))
+	// 创建API Ticket
 	tkData, err := apiTask.Create(content)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
