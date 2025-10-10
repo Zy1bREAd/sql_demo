@@ -11,9 +11,8 @@ import (
 
 // 常量标识
 const (
-	QTaskGroupType  = 1
-	IssueQTaskType  = 2
-	IssueTicketType = 3
+	APITaskType    = 1
+	GitLabTaskType = 2
 
 	//! DDL
 	SelectDDL     = 90  // 默认查询为90秒、其他为300秒
@@ -67,6 +66,25 @@ const (
 	FailedStatus             = "FAILED"
 	UnknownStatus            = "UNKNOWN"
 )
+
+// 来源标识位
+const (
+	APISourceFlag    = 1
+	GitLabSourceFlag = 2
+)
+
+// Action标识
+const (
+	RejectActionFlag   = 0
+	ApprovalActionFlag = 1
+	OnlineActionFlag   = 2
+)
+
+var ActionHandleMap map[int]string = map[int]string{
+	RejectActionFlag:   "reject",
+	ApprovalActionFlag: "approval",
+	OnlineActionFlag:   "online",
+}
 
 // ! 封装响应数据
 const (

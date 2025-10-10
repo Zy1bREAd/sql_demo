@@ -161,6 +161,7 @@ func (cr *CSVResult) Convert() error {
 		return nil
 	}
 	colsName := getHeadersData(cr.Data[0])
+	fmt.Println("debug headers:", colsName)
 
 	// 写入表头
 	if err := w.Write(colsName); err != nil {
@@ -171,6 +172,7 @@ func (cr *CSVResult) Convert() error {
 	// 写入结果集数据
 	for _, row := range cr.Data {
 		rowData := getRowsData(row, colsName)
+		fmt.Println("debug rowData:", rowData)
 		err := w.Write(rowData)
 		if err != nil {
 			log.Println("write row data csv file is error,", err.Error())

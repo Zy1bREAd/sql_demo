@@ -108,6 +108,7 @@ func LoadInDB(isReload bool) {
 					User:     dbConf.User,
 					Port:     dbConf.Port,
 					TLS:      dbConf.TLS,
+					IsWrite:  dbConf.IsWrite,
 				}
 				// 处理Exclude列表(分库和表)
 				excludeTableList := strings.Split(strings.TrimSuffix(dbConf.ExcludeTable, ","), ",")
@@ -211,30 +212,6 @@ func (ist *DBInstance) queryRaw(ctx context.Context, statement string) (*sql.Row
 	return ist.conn.QueryContext(ctx, statement)
 }
 
-// 以原生DML SQL进行执行（无参数注入）
-func (ist *DBInstance) excuteRaw(ctx context.Context, statement string) (int64, int64, error) {
-	stmt, err := ist.conn.Prepare(statement)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer stmt.Close()
-	res, err := stmt.ExecContext(ctx)
-	if err != nil {
-		return 0, 0, err
-	}
-	// 获取最后更新的id
-	lastId, err := res.LastInsertId()
-	if err != nil {
-		return 0, 0, err
-	}
-	// 所影响的行数
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return 0, 0, err
-	}
-	return lastId, rows, nil
-}
-
 func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQLResult {
 	errCh := make(chan error, 1)
 	res := SQLResult{
@@ -263,9 +240,33 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 				return
 			}
 		}()
-		lastId, rows, err := ist.excuteRaw(ctx, statement)
+		// 原生SQL执行
+		stmt, err := tx.Prepare(statement)
 		if err != nil {
-			panic(err)
+			tx.Rollback()
+			errCh <- err
+			return
+		}
+		defer stmt.Close()
+		sqlRes, err := stmt.ExecContext(ctx)
+		if err != nil {
+			tx.Rollback()
+			errCh <- err
+			return
+		}
+		// 获取最后更新的id
+		lastId, err := sqlRes.LastInsertId()
+		if err != nil {
+			tx.Rollback()
+			errCh <- err
+			return
+		}
+		// 所影响的行数
+		rows, err := sqlRes.RowsAffected()
+		if err != nil {
+			tx.Rollback()
+			errCh <- err
+			return
 		}
 		if err := tx.Commit(); err != nil {
 			panic(utils.GenerateError("TransferExcute", "Transfer Commit Error: "+err.Error()))

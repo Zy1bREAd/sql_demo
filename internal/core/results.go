@@ -1,6 +1,8 @@
 package core
 
-import dbo "sql_demo/internal/db"
+import (
+	dbo "sql_demo/internal/db"
+)
 
 // 预检相关结构体
 type SoarCheck struct {
@@ -19,14 +21,16 @@ type PreCheckResult struct {
 
 // 结果集
 type SQLResultGroupV2 struct {
-	GID   int64
-	Errrr error
-	Data  []*dbo.SQLResult
+	Data     []*dbo.SQLResult
+	Errrr    error
+	GID      string
+	TicketID int64
 }
 
 type PreCheckResultGroup struct {
-	IsDoubleCheck bool // 首次或第二次检查
-	TicketID      int64
-	Errrr         error
 	Data          *PreCheckResult
+	Errrr         error
+	GID           string
+	TicketID      int64
+	IsDoubleCheck bool // 首次或第二次检查
 }

@@ -28,10 +28,8 @@ func TestExplain(T *testing.T) {
 	sqlRaw := `SELECT count(*) from sql_demo.audit_logs_v3 alv where id = 2 or create_at BETWEEN '2025-08-19 00:00:00' AND '2025-08-21 00:00:00';`
 	res := dbIst.Explain(T.Context(), sqlRaw, utils.GenerateUUIDKey())
 	if res.Errrrr != nil {
-		fmt.Println("debug prin err:", res.ErrMsg)
 		return
 	}
-	fmt.Println("debug print result::", res.Results)
 	fmt.Println("")
 }
 

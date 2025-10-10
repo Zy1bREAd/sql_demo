@@ -12,8 +12,19 @@ var eventProducer *EventProducer
 var eventDispatcher *EventDispatcher
 
 type Event struct {
-	Type    string
-	Payload any // 事件具体信息
+	Type     string
+	Payload  any // 事件具体信息
+	MetaData EventMeta
+}
+
+// 事件元数据
+type EventMeta struct {
+	Source    string `json:"source"`
+	Timestamp string `json:"timestamp"`
+	TraceID   string `json:"trace_id"`
+	Operator  int    `json:"operator"`
+	ProjectID uint   `json:"project_id"`
+	IssueIID  uint   `json:"issue_iid"`
 }
 
 // ! 事件处理者接口（实现该接口的实例会是真正操作er）

@@ -122,7 +122,7 @@ func InitBaseRoutes() {
 		rgAuth.GET("/users/register", RegisterUsersByGitLab)
 
 		// 结果展示、导出与下载
-		rgAuth.GET("/result/temp-view/:identifier", showTempQueryResult)
+		rgAuth.GET("/result/temp-view/:identifier", getTicketTempResults)
 		rgAuth.GET("/result/export", ResultExport)
 		rgAuth.GET("/result/download", DownloadFile)
 
@@ -238,7 +238,7 @@ func SQLTaskCreate(ctx *gin.Context) {
 	}
 
 	// 临时存储task信息
-	apiTask := services.NewAPITaskService(services.WithUserID(userIdStr))
+	apiTask := services.NewAPITaskService(services.WithAPITaskUserID(userIdStr))
 	// 创建API Ticket
 	tkData, err := apiTask.Create(content)
 	if err != nil {
@@ -252,6 +252,42 @@ func SQLTaskCreate(ctx *gin.Context) {
 		IdemoptencyKey: tkData.IdemoptencyKey,
 		UID:            tkData.UID,
 	}, "Create Ticket Success")
+
+}
+
+func SQLTaskApproval(ctx *gin.Context) {
+	userIdStr := ctx.GetString("user_id")
+	// 解析数据（需要临时存储）
+	var content dto.SQLTaskReview
+	err := ctx.ShouldBindJSON(&content)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+	err = content.Validate()
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+
+	apiTask := services.NewAPITaskService(
+		services.WithAPITaskUserID(userIdStr),
+		services.WithAPITaskSourceRef(content.BusinessRef),
+	)
+	// 创建API Ticket
+	err = apiTask.ActionHandle(content.Action)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+
+	// 返回sourceRef以及idempKey
+	common.SuccessResp(ctx, dto.SQLTaskResponse{
+		BusinessRef: content.BusinessRef,
+		Action:      common.ActionHandleMap[content.Action],
+		Operator:    userIdStr,
+		OperateTime: time.Now().Format("20060102150405"),
+	}, "Handle Action Success")
 
 }
 
@@ -417,38 +453,38 @@ func SSOCallBack(ctx *gin.Context) {
 }
 
 // 结果集导出路由逻辑(SSE)
+//
+//	@Summary		导出结果集
+//	@Description	导出临时结果集成文件形式
+//	@Tags			SQLTask
+//	@Produce		json
+//	@Success		200	{object}	[]byte
+//	@Failure		500	{object}	[]byte
+//	@Router			/result/export [get]
 func ResultExport(ctx *gin.Context) {
-	// 添加SSE的Header
+	//! 添加SSE的Header
 	ctx.Header("Content-Type", "text/event-stream")
 	ctx.Header("Cache-Control", "no-cache")
 	ctx.Header("Connection", "keep-alive")
 
-	val, exist := ctx.Get("user_id")
-	if !exist {
-		common.ErrorResp(ctx, "User not exist")
+	userID, err := getUserIDByJWT(ctx)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
 		return
 	}
-	idStr, ok := val.(string)
-	if !ok {
-		common.ErrorResp(ctx, "UserId type is incrroect")
-		return
-	}
-	// 解析URL上的query信息（手动解析，因为ShouldBind失效）
-	var t core.ExportTask
+	//! 解析URL上的query信息（手动解析，因为ShouldBind失效）
+	var reqBody dto.ExportResultRequest
+	ctx.ShouldBindQuery(&reqBody)
 	queryVals := ctx.Request.URL.Query()
 	taskIdVal := queryVals.Get("task_id")
 	isOnlyVal := queryVals.Get("is_only")
 
-	t.GID, _ = strconv.ParseInt(taskIdVal, 10, 64)
 	isOnlyBool, err := strconv.ParseBool(isOnlyVal)
 	if err != nil {
 		common.ErrorResp(ctx, "StrConvErr"+err.Error())
 		return
 	}
-	if t.GID == 0 {
-		common.ErrorResp(ctx, "TaskID is invalid ")
-		return
-	}
+
 	if isOnlyBool {
 		resultIdxVal := queryVals.Get("result_idx")
 		idxInt64, err := strconv.ParseInt(resultIdxVal, 10, 32)
@@ -456,33 +492,38 @@ func ResultExport(ctx *gin.Context) {
 			common.ErrorResp(ctx, "resultIdx is invalid "+err.Error())
 			return
 		}
-		t.ResultIdx = int(idxInt64)
+		reqBody.ResultIdx = int(idxInt64)
 	}
-	t.UserID = utils.StrToUint(idStr)
-	t.IsOnly = isOnlyBool
+	reqBody.TaskID = taskIdVal
+	reqBody.IsOnly = isOnlyBool
 	// 生产导出任务的事件
-	t.Submit()
-
-	// 设置超时控制
-	timeCtx, cancel := context.WithTimeout(ctx, 180*time.Second)
-	defer cancel()
-	// 检测结果集是否存在：只有在结果集存在时，才会进入 SSE通知阶段。
-	if err := t.GetResult(); err != nil {
+	exportSrv := services.NewExportResultService(
+		services.WithExportIsOnly(isOnlyBool),
+		services.WithExportTaskID(taskIdVal),
+		services.WithExportUserID(utils.StrToUint(userID)), // TODO: 需要转换使用本应用中的UserID
+		services.WithExportResultIndex(reqBody.ResultIdx),
+	)
+	// 生产【导出结果集】事件
+	notifyChannel, err := exportSrv.Prepare()
+	if err != nil {
 		common.ErrorResp(ctx, err.Error())
 		return
 	}
-	if t.Result == nil {
-		common.ErrorResp(ctx, "Export Result is Null")
-		return
-	}
+	defer close(notifyChannel)
+
+	// 指定超时时间内，等待【导出结果集】事件的消费完成...
+	timeCtx, cancel := context.WithTimeout(ctx, common.DefaultCacheMapDDL*time.Second)
+	defer cancel()
+
+	// 清理资源
 	select {
-	case <-t.Result.Done:
-		if t.Result.Error != nil {
+	case details := <-notifyChannel:
+		if details.Errrr != nil {
 			// 此时SSE连接已开，必须返回错误消息和关闭sse
 			sseContent := utils.SSEEvent{
 				ID:    2,
 				Event: "error",
-				Data:  t.Result.Error.Error(),
+				Data:  details.Errrr.Error(),
 			}
 			utils.SSEMsgOnSend(ctx, &sseContent)
 			// 发送完毕关闭连接
@@ -501,13 +542,13 @@ func ResultExport(ctx *gin.Context) {
 			Data:  "OK",
 		}
 		utils.SSEMsgOnSend(ctx, &sseContent)
-		// 生成签名的URL下载链接
-		// uri := GenerateSignedURI(taskId)
-		downloadURL := fmt.Sprintf("/result/download?task_id=%s", t.GID)
+		// TODO: 生成签名的URL下载链接
+
+		downloadURL := fmt.Sprintf("/result/download?task_id=%s", details.TaskID)
 		// JSON序列化下载信息
 		downloadInfo := map[string]string{
 			"link":      downloadURL,
-			"file_name": t.FileName,
+			"file_name": details.FileName,
 		}
 		bytesData, err := json.Marshal(&downloadInfo)
 		if err != nil {
@@ -518,12 +559,15 @@ func ResultExport(ctx *gin.Context) {
 			}
 			utils.SSEMsgOnSend(ctx, &sseContent)
 		}
+
 		sseContent = utils.SSEEvent{
 			ID:    0,
 			Event: "download_ready",
 			Data:  string(bytesData),
 		}
 		utils.SSEMsgOnSend(ctx, &sseContent)
+		utils.DebugPrint("ExportSuccess", downloadURL+" is Exported.")
+
 		defer func() {
 			// 发送完毕关闭连接
 			sseContent := utils.SSEEvent{
@@ -540,158 +584,86 @@ func ResultExport(ctx *gin.Context) {
 	}
 }
 
+// 下载导出结果集文件
+// @Summary		下载导出结果文件
+// @Description	下载导出结果集文件
+// @Tags			SQLTask
+// @Produce		json
+// @Success		200	{object}	[]byte
+// @Failure		500	{object}	[]byte
+// @Router			/result/download [get]
 func DownloadFile(ctx *gin.Context) {
-	//! 引入其他参数防止伪造task_id来请求偷取下载文件
+	//TODO: 引入其他参数防止伪造task_id来请求偷取下载文件
 	taskId := ctx.Query("task_id")
 	if taskId == "" {
 		common.DefaultResp(ctx, common.RespFailed, nil, "URL query taskid is invalid")
 		return
 	}
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*common.DownloadFileDDL)
-	defer cancel()
-	auditChan := make(chan struct{}, 1)
-	// 插入记录V2
-	go func() {
-		// 获取UserId
-		val, exist := ctx.Get("user_id")
-		if !exist {
-			common.ErrorResp(ctx, "User not exist")
-			return
-		}
-		userId, ok := val.(string)
-		if !ok {
-			common.ErrorResp(ctx, "convert type is failed")
-			return
-		}
-		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
-		var auditRecord dbo.AuditRecordV2
-		dbConn := dbo.HaveSelfDB().GetConn()
-		res := dbConn.Where("task_id = ?", taskId).First(&auditRecord)
-		if res.Error != nil {
-			cancel()
-			utils.ErrorPrint("DBAPIError", res.Error.Error())
-			return
-		}
-		if res.RowsAffected != 1 {
-			cancel()
-			utils.ErrorPrint("DBAPIError", "rows is zero")
-			return
-		}
-		// 日志审计插入v2
-		auditRecord.ID = 0
-		auditRecord.UserID = utils.StrToUint(userId)
-		auditRecord.CreateAt = time.Now()
-
-		err := auditRecord.InsertOne("RESULT_DOWNLOAD")
-		if err != nil {
-			utils.ErrorPrint("AuditRecordV2", err.Error())
-		}
-		auditChan <- struct{}{}
-	}()
-	if !dbo.AllowResultExport(taskId) {
-		common.DefaultResp(ctx, common.RespFailed, nil, "result file is not allow to export")
-		return
-	}
-	// 获取文件路径并下载
-	mapVal, exist := core.ExportWorkMap.Get(taskId)
+	// 获取 UserId
+	val, exist := ctx.Get("user_id")
 	if !exist {
-		common.DefaultResp(ctx, common.RecordNotExist, nil, "export result is not exist,may be cleaned")
+		common.ErrorResp(ctx, "User not exist")
 		return
 	}
-	exportResult, ok := mapVal.(*core.ExportResult)
+	userId, ok := val.(string)
 	if !ok {
-		common.DefaultResp(ctx, common.RecordNotExist, nil, "result file type not match")
+		common.ErrorResp(ctx, "convert type is failed")
 		return
 	}
-	if _, err := os.Stat(exportResult.FilePath); err != nil {
-		fmt.Println("file error:", err.Error())
-		ctx.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Result File is not exist " + exportResult.FilePath})
+
+	downloadSrv := services.NewDownloadService(utils.StrToUint(userId))
+	filePath, err := downloadSrv.Download(taskId)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
 		return
 	}
-	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", exportResult.FilePath))
-	ctx.File(exportResult.FilePath)
-	// 等待审计记录的完成
-	select {
-	case <-timeoutCtx.Done():
-		common.ErrorResp(ctx, "handle timeout")
-		return
-	case <-auditChan:
-		return
-	}
+	//! 设置下载文件的响应信息
+	ctx.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filePath))
+	ctx.File(filePath)
 }
 
 // 外链形式展示ticket任务执行结果
-func showTempQueryResult(ctx *gin.Context) {
+// @Summary		输出临时结果集
+// @Description	输出SQL任务临时结果集
+// @Tags			SQLTask
+// @Produce		json
+// @Success		200	{object}	common.JSONResponse{data=TempResultResponse}
+// @Failure		500	{object}	common.JSONResponse
+// @Router			/result/temp-view/:identifier [get]
+func getTicketTempResults(ctx *gin.Context) {
 	uuKey := ctx.Param("identifier")
-	// 校验链接是否过期
-	dbRes, err := dbo.GetTempResult(uuKey)
+	// 获取UserId
+	userID, err := getUserIDByJWT(ctx)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+	// 获取临时数据集
+	tempResSrv := services.NewTempResultService(utils.StrToUint(userID))
+	data, err := tempResSrv.GetData(ctx, dto.TempResultDTO{
+		UUKey: uuKey,
+	}, true)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	// 插入审计日志的超时控制
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Second*25)
-	defer cancel()
-	auditChan := make(chan struct{}, 1)
-	// 插入记录V2
-	go func() {
-		// 获取UserId
-		val, exist := ctx.Get("user_id")
-		if !exist {
-			common.ErrorResp(ctx, "User not exist")
-			return
-		}
-		userId, ok := val.(string)
-		if !ok {
-			common.ErrorResp(ctx, "convert type is failed")
-			return
-		}
-		// 获取Issue详情(使用taskId和UserId来查找对应的issue)
-		var auditRecord dbo.AuditRecordV2
-		dbConn := dbo.HaveSelfDB().GetConn()
-		res := dbConn.Where("ticket_id = ?", dbRes.TicketID).Where("event_type = ?", "SQL_QUERY").Last(&auditRecord)
-		if res.Error != nil {
-			cancel()
-			utils.ErrorPrint("DBAPIError", res.Error.Error())
-			return
-		}
-		if res.RowsAffected != 1 {
-			cancel()
-			utils.ErrorPrint("DBAPIError", "rows is zero")
-			return
-		}
-		// 日志审计插入v2
-		auditRecord.ID = 0
-		auditRecord.UserID = utils.StrToUint(userId)
-		auditRecord.CreateAt = time.Now()
+	if tempResSrv.IsExpried() {
+		common.DefaultResp(ctx, common.RespFailed, nil, "Result Data is Expired")
+		return
+	}
 
-		err := auditRecord.InsertOne("RESULT_VIEW")
-		if err != nil {
-			utils.ErrorPrint("AuditRecordV2", err.Error())
-		}
-		auditChan <- struct{}{}
-	}()
-	// 结果集是否存在
-	userResult, exist := core.ResultMap.Get(dbRes.TicketID)
-	if !exist {
-		common.DefaultResp(ctx, common.RespFailed, nil, "SQL Query result is not exist")
-		return
-	}
-	if val, ok := userResult.(*core.SQLResultGroupV2); ok {
-		common.SuccessResp(ctx, gin.H{
-			"result":    val.Data,
-			"is_export": dbRes.IsAllowExport,
-			"task_id":   strconv.FormatInt(dbRes.TicketID, 10), //! 由于JS会有大数字的精度丢失问题，因此需要后端使用字符串进行传递。
-		}, "SUCCESS")
-	}
-	// 等待审计记录的完成
-	select {
-	case <-timeoutCtx.Done():
-		common.ErrorResp(ctx, "handle timeout")
-		return
-	case <-auditChan:
-		return
-	}
+	// 同步：日志审计记录
+	auditLogSrv := services.NewAuditRecordService()
+	auditLogSrv.Update(dto.AuditRecordDTO{
+		TaskID:    data.GID,
+		EventType: "SQL_QUERY",
+	}, "RESULT_VIEW", tempResSrv.Operator, "")
+	common.SuccessResp(ctx, dto.TempResultResponse{
+		Data:      data.Data,
+		TaskID:    data.GID,
+		IsExport:  tempResSrv.IsExport(),
+		IsExpried: tempResSrv.IsExpried(),
+	}, "Get Temp Data Success")
 }
 
 // 用于手动将GitLab User注册进来User
@@ -1115,4 +1087,17 @@ func AiChat(ctx *gin.Context) {
 		return
 	}
 	common.SuccessResp(ctx, res.JSONResult(), "ok")
+}
+
+// ! 抽象获取UserID的函数
+func getUserIDByJWT(ctx *gin.Context) (string, error) {
+	val, exist := ctx.Get("user_id")
+	if !exist {
+		return "", utils.GenerateError("NoPermission", "The User is Not Exist")
+	}
+	userIDVal, ok := val.(string)
+	if !ok {
+		return "", utils.GenerateError("NoPermission", "Convert UserID Type is Failed")
+	}
+	return userIDVal, nil
 }

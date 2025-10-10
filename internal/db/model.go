@@ -36,9 +36,8 @@ type User struct {
 type AuditRecordV2 struct {
 	ID uint `gorm:"primaryKey"`
 	// 关联Ticket表
-	TicketID int64  `gorm:""` // 相当于链路ID
-	Ticket   Ticket `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:TicketID;references:UID"`
-
+	// TicketID int64  `gorm:""` // 相当于链路ID
+	// Ticket   Ticket `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:TicketID;references:UID"`
 	TaskID    string    `gorm:"type:varchar(255);index"`
 	EventType string    `gorm:"type:varchar(64);not null"`
 	Payload   string    `gorm:""` // 记录审计的载体，以JSON格式
@@ -61,17 +60,22 @@ func (audit *AuditRecordV2) TableName() string {
 	return "audit_logs_v3"
 }
 
-type TempResultMap struct {
-	UID           string    `gorm:"primaryKey;"`
-	TicketID      int64     `gorm:"not null"`
-	IsDeleted     uint8     `gorm:"default:0;type:smallint"`
-	IsAllowExport bool      `gorm:"default:false"`
-	CreateAt      time.Time `gorm:"type:datetime(0);autoCreateTime"`
-	ExpireAt      time.Time `gorm:"type:datetime(0)"`
+type TempResult struct {
+	UUKey          string    `gorm:"primaryKey;"`
+	TicketID       int64     `gorm:"not null"`
+	TaskID         string    `gorm:"type:varchar(255);uniqueIndex"`
+	IsDeleted      bool      `gorm:"default:false"`
+	IsAllowExport  bool      `gorm:"default:false"`
+	IsExported     bool      `gorm:"default:false"`
+	ExportPath     string    `gorm:"type:varchar(255)"`
+	ExportFileName string    `gorm:"type:varchar(255)"`
+	CreateAt       time.Time `gorm:"type:datetime(0);autoCreateTime"`
+	ExpireAt       time.Time `gorm:"type:datetime(0)"`
+	ExportAt       time.Time `gorm:"default:null"`
 }
 
-func (temp *TempResultMap) TableName() string {
-	return "temp_results"
+func (temp *TempResult) TableName() string {
+	return "temp_results_v2"
 }
 
 // 存储管理员的数据库执行环境
@@ -125,12 +129,13 @@ func (temp *QueryDataBase) TableName() string {
 
 // 工单表（主要是完成Ticket的状态流转）
 type Ticket struct {
-	UID            int64  `gorm:"uniqueIndex;not null"` // 雪花ID
+	UID            int64  `gorm:"index;not null;uniqueIndex"` // 雪花ID
 	TaskID         string `gorm:"type:varchar(64)"`
 	Status         string `gorm:"type:varchar(64);not null;index"`
-	Source         string `gorm:"type:varchar(64);default:normal"` // 用于标识Ticket的来源。比如普通API请求的就是normal，而还有一种就是gitlab的
-	SourceRef      string `grom:"varchar(64);index;not null"`      // 作为关键来源标识（一组流程的唯一标识）
-	IdemoptencyKey string `gorm:"type:varchar(64);uniqueIndex"`
+	Source         int    `gorm:"type:smallint(1);not null;default:1"` // 用于标识Ticket的来源。normal:1     gitlab:2
+	SourceRef      string `grom:"varchar(64);index;"`                  // 作为关键来源标识
+	BusinessRef    string `grom:"varchar(64);index;"`                  // （一组流程的唯一标识）
+	IdemoptencyKey string `gorm:"type:varchar(64);index"`
 	AuthorID       uint   `gorm:"not null"` // 表示该Ticket所属者
 	UserForKey     User   `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:AuthorID;references:ID"`
 	ProjectID      int    `gorm:"uniqueIndex:idx_ticket;"`

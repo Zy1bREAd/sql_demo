@@ -45,6 +45,10 @@ func (cache *CachesMap) Set(key any, values any, expireTime uint, taskKindFlag i
 				ep.Produce(event.Event{
 					Type:    "clean_task",
 					Payload: task,
+					MetaData: event.EventMeta{
+						Source:    "cache",
+						Timestamp: time.Now().Format("20060102150405"),
+					},
 				})
 			})
 		}()

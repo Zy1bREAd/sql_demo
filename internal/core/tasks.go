@@ -97,74 +97,6 @@ type IssueQTask struct {
 	// IssDesc       *gapi.SQLIssueTemplate
 }
 
-// 多SQL执行(可Query可Excute), 遇到错误立即退出后续执行
-// func (qtg *QTaskGroup) ExcuteTask(ctx context.Context) {
-// 	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is working...", qtg.GID))
-// 	//! 执行任务函数只当只关心任务处理逻辑本身
-
-// 	ep := event.GetEventProducer()
-// 	rg := &dbo.SQLResultGroup{
-// 		GID:      qtg.TicketID,
-// 		ResGroup: make([]*dbo.SQLResult, 0),
-// 	}
-
-// 	for _, task := range qtg.QTasks {
-// 		// 子任务超时控制
-// 		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
-// 		defer cancel()
-// 		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is working...", task.ID))
-// 		var result dbo.SQLResult = dbo.SQLResult{
-// 			ID:   task.ID,
-// 			Stmt: task.ParsedSQL.SafeStmt,
-// 		}
-// 		// 获取对应数据库实例进行SQL查询
-// 		op, err := dbo.HaveDBIst(qtg.Env, qtg.DBName, qtg.Service)
-// 		if err != nil {
-// 			result.Errrrr = err
-// 			result.ErrMsg = result.Errrrr.Error()
-// 			rg.ResGroup = append(rg.ResGroup, &result)
-// 			break
-// 		}
-// 		// // 检查黑名单表名
-// 		// for _, illegal := range op.ExcludeTableList() {
-// 		// 	if task.ParsedSQL.Table != illegal {
-// 		// 		continue
-// 		// 	}
-// 		// 	result.Errrrr = utils.GenerateError("TaskPreCheck", task.ParsedSQL.From+" SQL Table Name is illegal")
-// 		// 	result.ErrMsg = result.Errrrr.Error()
-// 		// 	rg.ResGroup = append(rg.ResGroup, &result)
-// 		// 	break outerLoop
-// 		// }
-// 		// 执行前健康检查DB
-// 		err = op.HealthCheck(timeoutCtx)
-// 		if err != nil {
-// 			result.Errrrr = utils.GenerateError("HealthCheckFailed", err.Error())
-// 			result.ErrMsg = result.Errrrr.Error()
-// 			rg.ResGroup = append(rg.ResGroup, &result)
-// 			break
-// 		}
-// 		// 主要分查询和执行，核心通过解析SQL语句的类型来实现对应的逻辑
-// 		if task.ParsedSQL.Action == "select" {
-// 			result = op.Query(timeoutCtx, task.ParsedSQL.SafeStmt, task.ID, conf.DataMaskHandle)
-// 		} else {
-// 			result = op.Excute(timeoutCtx, task.ParsedSQL.SafeStmt, task.ID)
-// 		}
-
-// 		rg.ResGroup = append(rg.ResGroup, &result)
-// 		// 如果该条SQL遇到ERROR立即中止后续执行
-// 		if result.Errrrr != nil {
-// 			utils.ErrorPrint("TaskDetails", fmt.Sprintf("Task IID=%s is failed", task.ID))
-// 			break
-// 		}
-// 		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is completed", task.ID))
-// 	}
-// 	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is completed", qtg.GID))
-// 	ep.Produce(event.Event{
-// 		Type:    "save_result",
-// 		Payload: rg,
-// 	})
-// }
-
 func (et *ExportTask) Submit() {
 	auditCh := make(chan struct{}, 1)
 	today := time.Now().Format("20060102150405")
@@ -195,7 +127,7 @@ func (et *ExportTask) Submit() {
 		auditRecord.Payload = string(exportPayload)
 		auditRecord.CreateAt = time.Now()
 
-		err = auditRecord.InsertOne("RESULT_EXPORT")
+		err = auditRecord.InsertOne(&dbo.AuditRecordV2{})
 		if err != nil {
 			utils.ErrorPrint("AuditRecordV2", err.Error())
 			return
@@ -221,7 +153,6 @@ func (et *ExportTask) Submit() {
 	et.deadline = common.DefaultCacheMapDDL
 	ExportWorkMap.Set(et.GID, et.Result, common.DefaultCacheMapDDL, common.ExportWorkMapCleanFlag)
 	// 确保审计完成
-	fmt.Println("debug print gid::", et.GID)
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
 		Type:    "export_result",
@@ -355,7 +286,7 @@ func DoubleCheck(ctx context.Context, ticketID int64, redo ReExcute) (*PreCheckR
 			return assertVal, nil
 		}
 		// TIMEOUT
-		return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout")
+		return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeoutttttt")
 	}
 	// 再次二次检查进行对比
 	fristCheck, ok := cacheVal.(*PreCheckResultGroup)

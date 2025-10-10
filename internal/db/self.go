@@ -96,7 +96,7 @@ func (db *SelfDatabase) autoMigrator() error {
 		return utils.GenerateError("Migrator Failed", "self db is not init")
 	}
 	// 表多的话要以注册的方式注册进来，避免手动一个个输入
-	return db.conn.AutoMigrate(&User{}, &TempResultMap{}, &AuditRecordV2{}, &QueryDataBase{}, &QueryEnv{}, &Ticket{})
+	return db.conn.AutoMigrate(&User{}, &TempResult{}, &AuditRecordV2{}, &QueryDataBase{}, &QueryEnv{}, &Ticket{})
 }
 
 // 创建用户逻辑
@@ -247,8 +247,8 @@ func (usr *User) GetGitLabUserId() uint {
 // 存储临时结果链接
 func SaveTempResult(ticketID int64, uukey string, expireTime uint, allowExport bool) error {
 	now := time.Now().Add(time.Duration(expireTime) * time.Second)
-	tempData := TempResultMap{
-		UID:           uukey,
+	tempData := TempResult{
+		UUKey:         uukey,
 		TicketID:      ticketID,
 		ExpireAt:      now,
 		IsAllowExport: allowExport,
@@ -259,7 +259,7 @@ func SaveTempResult(ticketID int64, uukey string, expireTime uint, allowExport b
 	}
 	// 延时设置清理flag标志
 	time.AfterFunc(time.Duration(expireTime)*time.Second, func() {
-		res := selfDB.conn.Model(&TempResultMap{}).Where("uid = ?", uukey).Where("ticket_id = ?", ticketID).Update("is_deleted", 1)
+		res := selfDB.conn.Model(&TempResult{}).Where("uid = ?", uukey).Where("ticket_id = ?", ticketID).Update("is_deleted", 1)
 		if res.Error != nil {
 			utils.DebugPrint("DelTempResultError", "delete temp result link is failed "+res.Error.Error())
 			return
@@ -273,25 +273,8 @@ func SaveTempResult(ticketID int64, uukey string, expireTime uint, allowExport b
 	return nil
 }
 
-// 从数据库中获取结果集是否存在、是否过期
-func GetTempResult(uuKey string) (*TempResultMap, error) {
-	var tempData TempResultMap
-	res := selfDB.conn.Where("uid = ?", uuKey).First(&tempData)
-	if res.Error != nil {
-		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
-			return nil, errors.New("result link is not found")
-		}
-		return nil, res.Error
-	}
-	if tempData.IsDeleted != 0 || time.Now().After(tempData.ExpireAt) {
-		// 标识过期已被删除
-		return nil, utils.GenerateError("ResultExpiredErr", "Results and Result-Link is deleted due to expired")
-	}
-	return &tempData, nil
-}
-
 func AllowResultExport(taskId string) bool {
-	var tempData TempResultMap
+	var tempData TempResult
 	res := selfDB.conn.Where("task_id = ?", taskId).First(&tempData)
 	if res.Error != nil {
 		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
@@ -299,18 +282,18 @@ func AllowResultExport(taskId string) bool {
 		}
 		return false
 	}
-	if tempData.IsDeleted == 1 || time.Now().After(tempData.ExpireAt) {
+	if tempData.IsDeleted || time.Now().After(tempData.ExpireAt) {
 		return false
 	}
 	return tempData.IsAllowExport
 }
 
-func (v2 *AuditRecordV2) InsertOne(eventType string) error {
-	v2.EventType = eventType
-	db := HaveSelfDB()
-	tx := db.conn.Begin()
+// 审计日志：插入接口
+func (v2 *AuditRecordV2) InsertOne(data *AuditRecordV2) error {
+	dbConn := HaveSelfDB().GetConn()
+	tx := dbConn.Begin()
 	// 避免携带默认值插入污染导出相关信息
-	result := selfDB.conn.Create(&v2)
+	result := tx.Create(&data)
 	if result.Error != nil {
 		tx.Rollback()
 		return result.Error
@@ -669,6 +652,21 @@ func (t *Ticket) Create(data *Ticket) error {
 	return nil
 }
 
+// 检查是否存在该Ticket记录
+func (t *Ticket) IsExist(cond *Ticket) bool {
+	dbConn := HaveSelfDB().GetConn()
+	var findTicket Ticket
+	// 检查是否存在该Issue对应的Ticket
+	findRes := dbConn.Where(&cond).Last(&findTicket)
+	if findRes.Error != nil && !errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
+		return false
+	}
+	if findRes.RowsAffected != 1 {
+		return false
+	}
+	return true
+}
+
 // 不存在时创建记录，存在则更新 （根据SourceRef）
 func (t *Ticket) CreateOrUpdate(cond, data *Ticket) error {
 	dbConn := HaveSelfDB().GetConn()
@@ -682,7 +680,7 @@ func (t *Ticket) CreateOrUpdate(cond, data *Ticket) error {
 	}
 	if findRes.RowsAffected != 1 {
 		// 直接创建
-		createRes := tx.Create(&t)
+		createRes := tx.Create(&data)
 		if createRes.Error != nil {
 			tx.Rollback()
 			return createRes.Error
@@ -695,7 +693,9 @@ func (t *Ticket) CreateOrUpdate(cond, data *Ticket) error {
 	} else {
 		// 存在记录，则更新状态
 		updateRes := tx.Model(Ticket{}).Where(&cond).Updates(Ticket{
-			Status: common.EditedStatus, // 修改为Edited状态
+			Status:    common.EditedStatus, // 修改为Edited状态
+			ProjectID: data.ProjectID,
+			IssueID:   data.IssueID,
 		})
 		if updateRes.Error != nil {
 			tx.Rollback()
@@ -711,7 +711,7 @@ func (t *Ticket) CreateOrUpdate(cond, data *Ticket) error {
 }
 
 // 获取查找结果
-func (t *Ticket) FindOne(cond Ticket) (*Ticket, error) {
+func (t *Ticket) FindOne(cond *Ticket) (*Ticket, error) {
 	var resultTicket Ticket
 	dbConn := HaveSelfDB().GetConn()
 	findRes := dbConn.Where(&cond).Last(&resultTicket)
@@ -727,33 +727,38 @@ func (t *Ticket) FindOne(cond Ticket) (*Ticket, error) {
 	return &resultTicket, nil
 }
 
-// 按照指定CondTicket进行更新
-func (t *Ticket) Update(cond, updateTicket Ticket) error {
+// 按照指定CondTicket进行更新 (返回更新后的TicketID)
+func (t *Ticket) Update(cond, updateTicket *Ticket) (int64, error) {
 	dbConn := HaveSelfDB().GetConn()
 	// 根据ProjectID + IssueID作为条件，进行更新操作
 	tk, err := t.FindOne(cond)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	updateTicket.UID = t.UID
-	// UpdateAt
+	updateTicket.UID = tk.UID // ! 重大改动，修改为查找的TicketID
+
 	tx := dbConn.Begin()
 	res := tx.Model(&tk).Updates(&updateTicket)
 	if res.Error != nil {
 		tx.Rollback()
-		return res.Error
+		return 0, res.Error
 	}
 	if res.RowsAffected != 1 {
 		tx.Rollback()
-		return utils.GenerateError("TicketUpdateErr", "create rows is not 1")
+		return 0, utils.GenerateError("TicketUpdateErr", "create rows is not 1")
 	}
 	tx.Commit()
-	return nil
+	return tk.UID, nil
+}
+
+func (t *Ticket) UpdateByFind(cond, updateTicket *Ticket) error {
+	_, err := t.Update(cond, updateTicket)
+	return err
 }
 
 // 检查前置状态
-func (t *Ticket) ValidateStatus(cond Ticket, targetStatus ...string) error {
+func (t *Ticket) ValidateStatus(cond *Ticket, targetStatus ...string) error {
 	if len(targetStatus) == 0 {
 		return nil
 	}
@@ -766,22 +771,22 @@ func (t *Ticket) ValidateStatus(cond Ticket, targetStatus ...string) error {
 	if slices.Contains(targetStatus, tk.Status) {
 		return nil
 	}
-	return utils.GenerateError("TicketStatusNotMatch", fmt.Sprintf("Ticket Status:%s is not match", tk.Status))
+	return utils.GenerateError("TicketStatusNotMatch", fmt.Sprintf("Ticket Status:%s is not match %s", tk.Status, targetStatus))
 }
 
-func (t *Ticket) ValidateAndUpdate(cond, update Ticket, targetStatus ...string) error {
+func (t *Ticket) ValidateAndUpdate(cond, update *Ticket, targetStatus ...string) error {
 	err := t.ValidateStatus(cond, targetStatus...)
 	if err != nil {
 		return err
 	}
-	return t.Update(cond, update)
+	return t.UpdateByFind(cond, update)
 }
 
 // 封装
-func (t *Ticket) ValidateAndUpdateStatus(cond Ticket, status string, targetStatus ...string) error {
-	return t.ValidateAndUpdate(cond, Ticket{
+func (t *Ticket) ValidateAndUpdateStatus(cond *Ticket, status string, targetStatus ...string) error {
+	return t.ValidateAndUpdate(cond, &Ticket{
 		Status: status,
-	})
+	}, targetStatus...)
 }
 
 // 获取Ticket Status的统计
@@ -824,13 +829,76 @@ func (t *Ticket) StatsCount() (map[string]int, error) {
 	}, nil
 }
 
-func (t *Ticket) GetSourceRef(busniessDomain string, snowKey int64, cond Ticket) string {
-	switch t.Source {
-	case "normal":
-		return fmt.Sprintf("%s:user:%d:normal:%d", busniessDomain, cond.AuthorID, snowKey)
-	case "gitlab":
-		return fmt.Sprintf("%s:user:%d:gitlab:%d-%d", busniessDomain, cond.AuthorID, cond.ProjectID, cond.IssueID)
-	default:
-		return ""
+// 查找数据
+func (tmp *TempResult) FindOne(cond *TempResult) (*TempResult, error) {
+	var findRes TempResult
+	dbConn := HaveSelfDB().GetConn()
+	tx := dbConn.Where(&cond).Last(&findRes)
+	if tx.Error != nil {
+		return nil, tx.Error
 	}
+	if tx.RowsAffected != 1 {
+		return nil, utils.GenerateError("RowsError", "RowsAffected is not match")
+	}
+	return &findRes, nil
+}
+
+// 检查是否过期
+func (tmp *TempResult) IsExpired() bool {
+	if tmp.IsDeleted || time.Now().After(tmp.ExpireAt) {
+		return true
+	}
+	return false
+}
+
+// 检查是否过期
+func (tmp *TempResult) IsExport() bool {
+	if !tmp.IsAllowExport || time.Now().After(tmp.ExpireAt) {
+		return false
+	}
+	return true
+}
+
+func (tmp *TempResult) FindByUUKey(uuKey string) (*TempResult, error) {
+	findRes, err := tmp.FindOne(&TempResult{
+		UUKey: uuKey,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return findRes, nil
+}
+
+// 数据库创建临时结果集数据
+func (tmp *TempResult) Insert(data *TempResult) error {
+	dbConn := HaveSelfDB().GetConn()
+	tx := dbConn.Begin()
+	res := tx.Create(&data)
+	if res.Error != nil {
+		tx.Rollback()
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("CreateError", "tempresult data is insert failed")
+	}
+	tx.Commit()
+	return nil
+}
+
+// 批量更新
+func (tmp *TempResult) Update(cond, data *TempResult) error {
+	dbConn := HaveSelfDB().GetConn()
+	tx := dbConn.Begin()
+	res := tx.Model(&TempResult{}).Where(&cond).Updates(&data)
+	if res.Error != nil {
+		tx.Rollback()
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("CreateError", "tempresult data is update failed")
+	}
+	tx.Commit()
+	return nil
 }

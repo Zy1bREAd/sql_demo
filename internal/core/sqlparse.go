@@ -480,7 +480,6 @@ func (s *SQLForParseV2) parseWhere(expr sqlparser.Expr) (WhereParse, error) {
 	//! 等值作为递归结束条件
 	case *sqlparser.ComparisonExpr:
 		// = 0,> 2,LIKE 9,IN 7
-		fmt.Println("xxx ? xxx", w.Operator, w.Left, w.Right, w.Escape, w.Modifier)
 		leftVal, err := s.parseWhere(w.Left)
 		if err != nil {
 			return WhereParse{}, err
@@ -862,7 +861,7 @@ func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, Sr
 		Explain:           dbo.SQLResult{},
 		// 剩下两个使用零值
 	}
-	// opts.WithExplain = true		// 默认开启
+	opts.WithExplain = true // 默认开启
 	// 初始化
 	taskID := utils.GenerateUUIDKey()
 	ddlPrompt := make([]string, fromLength)
@@ -950,7 +949,6 @@ func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, Sr
 		// 目前仅获取第一个Choice
 		analyize := chat.Choices[0].Message.Content
 		result.AiAnalysis = analyize
-		// fmt.Println("debug print - ai content: ", analyize)
 	}
 
 	return result, nil

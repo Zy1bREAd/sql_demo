@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sql_demo/internal/conf"
 	dbo "sql_demo/internal/db"
-	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
 	"time"
 )
@@ -47,7 +46,7 @@ type QTaskGroupV2 struct {
 	UserID         uint // 关联执行用户id
 	Deadline       int  //整个任务组的超时时间，默认: (用户SQL条数*用户定义的时间)+用户定义的时间
 	TicketID       int64
-	GID            string // 任务组ID（使用TicketID可唯一追踪一个任务组）
+	GID            string // 任务组ID（一个TaskID对应一个Ticket）
 	DML            string
 	Env            string // 所执行环境
 	DBName         string
@@ -73,7 +72,7 @@ func (ce *FristCheckEvent) CheckTicketStats(targetStats []string) error {
 		UID:      ce.TicketID,
 		AuthorID: ce.UserID,
 	}
-	resultTicket, err := tk.FindOne(condTicket)
+	resultTicket, err := tk.FindOne(&condTicket)
 	if err != nil {
 		return err
 	}
@@ -95,7 +94,7 @@ func (ce *FristCheckEvent) UpdateTicketStats(targetStats string, exceptStats ...
 		UID:      ce.TicketID,
 		AuthorID: ce.UserID,
 	}
-	return tk.ValidateAndUpdateStatus(condTicket, targetStats, exceptStats...)
+	return tk.ValidateAndUpdateStatus(&condTicket, targetStats, exceptStats...)
 }
 
 // 更新Ticket状态信息，并按照指定前置状态进行判断
@@ -106,7 +105,7 @@ func (ce *DoubleCheckEvent) UpdateTicketStats(targetStats string, exceptStats ..
 		UID:      ce.TicketID,
 		AuthorID: ce.UserID,
 	}
-	return tk.ValidateAndUpdateStatus(condTicket, targetStats, exceptStats...)
+	return tk.ValidateAndUpdateStatus(&condTicket, targetStats, exceptStats...)
 }
 
 // 任务组：创建审计日日志
@@ -128,13 +127,12 @@ func (ce *DoubleCheckEvent) UpdateTicketStats(targetStats string, exceptStats ..
 // }
 
 // 多SQL执行(可Query可Excute), 遇到错误立即退出后续执行
-func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) {
+func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) *SQLResultGroupV2 {
 	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is working...", qtg.GID))
 	//! 执行任务函数只当只关心任务处理逻辑本身
 
-	ep := event.GetEventProducer()
 	rg := &SQLResultGroupV2{
-		GID:  qtg.TicketID, // 统一使用TicketID
+		GID:  qtg.GID, // 使用TaskID
 		Data: make([]*dbo.SQLResult, 0),
 	}
 
@@ -179,8 +177,5 @@ func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) {
 		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is completed", task.ID))
 	}
 	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is completed", qtg.GID))
-	ep.Produce(event.Event{
-		Type:    "save_result",
-		Payload: rg,
-	})
+	return rg
 }

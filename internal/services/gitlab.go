@@ -371,7 +371,8 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	} else if content.Online == CommentOnlineExcute {
 		return c.handleOnlineExcute()
 	} else {
-		return utils.GenerateError("ActionErr", "Unknown Action"+string(content.Approval))
+		utils.DebugPrint("Unknown Action = %d", content.Approval)
+		return nil
 	}
 }
 
@@ -387,6 +388,7 @@ type SQLIssueTemplate struct {
 	LongTime       bool `json:"long_time"`
 	IsExport       bool `json:"is_export"`
 	IsSoarAnalysis bool `json:"is_soar"` // 是否需要Soar检测获取SQL建议
+	IsAiAnalysis   bool `json:"is_analysis"`
 }
 
 // 集成Webhook结构体
@@ -404,9 +406,9 @@ type IssuePayload struct {
 
 // 评论结构体
 type CommentPayload struct {
-	Reason       string
-	Action       int // approval、reject、online
-	CommentDesc  *CommentWebhook
+	Reason string
+	Action int // approval、reject、online
+	// CommentDesc  *CommentWebhook
 	IssuePayload *IssuePayload
 }
 
