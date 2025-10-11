@@ -25,18 +25,32 @@ func (tk *TicketService) toORMData(data dto.TicketDTO) *dbo.Ticket {
 		Status:         data.Status,
 		Source:         data.Source,
 		SourceRef:      data.SourceRef,
+		BusinessRef:    data.BusinessRef,
 		IdemoptencyKey: data.IdemoptencyKey,
 		AuthorID:       data.AuthorID,
 		ProjectID:      int(data.ProjectID),
 		IssueID:        int(data.IssueIID),
+		TaskID:         data.TaskID,
+		TaskContent: dbo.TaskContent{
+			Env:          data.TaskContent.Env,
+			Service:      data.TaskContent.Service,
+			Statement:    data.TaskContent.Statement,
+			DBName:       data.TaskContent.DBName,
+			LongTime:     data.TaskContent.LongTime,
+			IsExport:     data.TaskContent.IsExport,
+			IsSOAR:       data.TaskContent.IsSOAR,
+			IsAiAnalysis: data.TaskContent.IsAiAnalysis,
+		},
 	}
 }
 
 // 创建一个Ticket(返回SourceRef、IdemoptencyKey和Error)
-func (tk *TicketService) Create(data dto.TicketDTO) error {
+func (tk *TicketService) Create(data dto.TicketDTO) (int64, error) {
+	data.UID = utils.GenerateSnowKey()
 	// 调用数据层进行创建
 	ticketORM := tk.toORMData(data)
-	return tk.DAO.Create(ticketORM)
+	//! 创建并关联任务内容
+	return data.UID, tk.DAO.Create(ticketORM)
 }
 
 // 不存在时创建记录，存在则更新 （并返回TicketID）
@@ -79,6 +93,17 @@ func (tk *TicketService) GetSourceRef(cond dto.TicketDTO) string {
 		return ""
 	}
 	return res.SourceRef
+}
+
+// 查找获取Ticket唯一标识
+func (tk *TicketService) GetUID(cond dto.TicketDTO) int64 {
+	// 更新Ticket信息
+	condORM := tk.toORMData(cond)
+	res, err := tk.DAO.FindOne(condORM)
+	if err != nil {
+		return 0
+	}
+	return res.UID
 }
 
 // 统计每个状态的Ticket数量

@@ -558,8 +558,13 @@ func (s *SQLForParseV2) parseWhere(expr sqlparser.Expr) (WhereParse, error) {
 	case *sqlparser.Literal:
 		where.Expr = w.Val
 		where.IsSimple = true
+	case sqlparser.ValTuple:
+		buf := sqlparser.NewTrackedBuffer(nil)
+		w.Format(buf)
+		where.Expr = buf.String()
+		buf.Reset()
 	default:
-		return WhereParse{}, utils.GenerateError("UnknownWhere", "不支持的Where类型: "+reflect.TypeOf(w).String())
+		return WhereParse{}, utils.GenerateError("UnknownWhere", "暂不支持的Where类型: "+reflect.TypeOf(w).String())
 	}
 	return where, nil
 }

@@ -96,7 +96,7 @@ func (db *SelfDatabase) autoMigrator() error {
 		return utils.GenerateError("Migrator Failed", "self db is not init")
 	}
 	// 表多的话要以注册的方式注册进来，避免手动一个个输入
-	return db.conn.AutoMigrate(&User{}, &TempResult{}, &AuditRecordV2{}, &QueryDataBase{}, &QueryEnv{}, &Ticket{})
+	return db.conn.AutoMigrate(&User{}, &TempResult{}, &AuditRecordV2{}, &QueryDataBase{}, &QueryEnv{}, &Ticket{}, &TaskContent{})
 }
 
 // 创建用户逻辑
@@ -466,7 +466,7 @@ func (source *QueryDataBase) GetEnvID(envName string) (uint, error) {
 		return 0, res.Error
 	}
 	if res.RowsAffected != 1 {
-		return 0, errors.New("Env Record is not exist")
+		return 0, errors.New("env Record is not exist")
 	}
 	return envResult.ID, nil
 }
@@ -717,7 +717,7 @@ func (t *Ticket) FindOne(cond *Ticket) (*Ticket, error) {
 	findRes := dbConn.Where(&cond).Last(&resultTicket)
 	if findRes.Error != nil {
 		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
-			return nil, utils.GenerateError("TicketErr", "the db record is not exist:"+findRes.Error.Error())
+			return nil, utils.GenerateError("TicketNotExist", findRes.Error.Error())
 		}
 		return nil, findRes.Error
 	}

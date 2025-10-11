@@ -16,7 +16,7 @@ func TestParseSQL(T *testing.T) {
 
 	// var reco func(*WhereParse)
 	for _, p := range res {
-		fmt.Println(p.Union)
+		fmt.Println(p.Where)
 	}
 	// 	fmt.Println("debg print ", p.Where)
 	// 	reco = func(w *WhereParse) {

@@ -129,21 +129,41 @@ func (temp *QueryDataBase) TableName() string {
 
 // 工单表（主要是完成Ticket的状态流转）
 type Ticket struct {
-	UID            int64  `gorm:"index;not null;uniqueIndex"` // 雪花ID
-	TaskID         string `gorm:"type:varchar(64)"`
-	Status         string `gorm:"type:varchar(64);not null;index"`
-	Source         int    `gorm:"type:smallint(1);not null;default:1"` // 用于标识Ticket的来源。normal:1     gitlab:2
-	SourceRef      string `grom:"varchar(64);index;"`                  // 作为关键来源标识
-	BusinessRef    string `grom:"varchar(64);index;"`                  // （一组流程的唯一标识）
-	IdemoptencyKey string `gorm:"type:varchar(64);index"`
+	UID            int64       `gorm:"index;not null;uniqueIndex"` // 雪花ID
+	TaskID         string      `gorm:"type:varchar(64)"`
+	Status         string      `gorm:"type:varchar(64);not null;index"`
+	Source         int         `gorm:"type:smallint(1);index:idx_gitlab_ticket;"` // 用于标识Ticket的来源。normal:1     gitlab:2
+	SourceRef      string      `gorm:"type:varchar(64);uniqueIndex;"`             // 作为关键来源标识
+	BusinessRef    string      `gorm:"type:varchar(64);index;"`                   // （一组流程的唯一标识）
+	IdemoptencyKey string      `gorm:"type:varchar(64);index"`
+	TaskContent    TaskContent `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:TaskContentID;references:ID"` //! 关联API Task Content
+	TaskContentID  uint
 	AuthorID       uint   `gorm:"not null"` // 表示该Ticket所属者
 	UserForKey     User   `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:AuthorID;references:ID"`
-	ProjectID      int    `gorm:"uniqueIndex:idx_ticket;"`
-	IssueID        int    `gorm:"uniqueIndex:idx_ticket;"`
+	ProjectID      int    `gorm:"index:idx_gitlab_ticket;"`
+	IssueID        int    `gorm:"index:idx_gitlab_ticket;"`
 	Link           string `gorm:"type:varchar(255)"`
 	gorm.Model
 }
 
 func (t *Ticket) TableName() string {
 	return "t_ticket"
+}
+
+// 任务内容
+type TaskContent struct {
+	Env          string `gorm:"type:varchar(64);not null"`
+	Service      string `gorm:"type:varchar(255);not null;index"`
+	DBName       string `gorm:"type:varchar(255);not null;index"`
+	Statement    string `gorm:"not null"`
+	LongTime     bool   `gorm:"default:false"`
+	IsExport     bool   `gorm:"default:false"`
+	IsSOAR       bool   `gorm:"default:false"`
+	IsAiAnalysis bool   `gorm:"default:false"`
+	// AuthorID
+	gorm.Model
+}
+
+func (t *TaskContent) TableName() string {
+	return "t_task_content"
 }

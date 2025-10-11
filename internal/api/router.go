@@ -130,8 +130,15 @@ func InitBaseRoutes() {
 		rgPublic.POST("/issue/callback", IssueCallBack)
 		rgPublic.POST("/comment/callback", CommentCallBack)
 
-		// JSON格式请求专用路由
-		rgAuth.POST("/sql/create", SQLTaskCreate)
+		// API JSON格式请求专用路由
+		rgAuth.POST("/sql-task/create", SQLTaskCreate)
+		rgAuth.PUT("/sql-task/update/:business_ref", SQLTaskCreate)
+		rgAuth.POST("/sql-task/delete", SQLTaskCreate)
+		rgAuth.GET("/sql-task/list", SQLTaskCreate)
+		rgAuth.POST("/sql-task/handle", SQLTaskHandle)
+
+		rgAuth.GET("/pre-check/details", getPreCheckData)
+		rgAuth.GET("/result/details", getTaskResultData)
 
 		// 配置管理
 		rgAuth.POST("/env/create", CreateEnvInfo)
@@ -221,7 +228,7 @@ type TaskCreateDTO struct {
 //	@Produce		json
 //	@Success		200	{object}	common.JSONResponse{data=TaskCreateDTO}
 //	@Failure		500	{object}	common.JSONResponse
-//	@Router			/sql/create [post]
+//	@Router			/sql-task/create [post]
 func SQLTaskCreate(ctx *gin.Context) {
 	userIdStr := ctx.GetString("user_id")
 	// 解析数据（需要临时存储）
@@ -250,12 +257,93 @@ func SQLTaskCreate(ctx *gin.Context) {
 	common.SuccessResp(ctx, dto.TicketResponse{
 		SourceRef:      tkData.SourceRef,
 		IdemoptencyKey: tkData.IdemoptencyKey,
-		UID:            tkData.UID,
+		BusinessRef:    tkData.BusinessRef,
 	}, "Create Ticket Success")
 
 }
 
-func SQLTaskApproval(ctx *gin.Context) {
+// 获取预检结果详情(通过bussinessRef)
+//
+//	@Summary		获取预检结果
+//	@Description	获取预检结果详情
+//	@Tags			SQLTask
+//	@Produce		json
+//	@Success		200	{object}	common.JSONResponse
+//	@Failure		500	{object}	common.JSONResponse
+//	@Router			/pre-check/details [get]
+func getPreCheckData(ctx *gin.Context) {
+	bussRefVal := ctx.Query("business_ref")
+	if bussRefVal == "" {
+		common.ErrorResp(ctx, "BussinessRef is not exist")
+		return
+	}
+	apiSrv := services.NewAPITaskService(services.WithAPITaskBusinessRef(bussRefVal))
+	preCheckData, err := apiSrv.GetCheckData()
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, preCheckData, "Get Success")
+}
+
+// 获取任务数据集
+//
+//	@Summary		获取任务数据集
+//	@Description	获取任务数据集详情
+//	@Tags			SQLTask
+//	@Produce		json
+//	@Success		200	{object}	common.JSONResponse
+//	@Failure		500	{object}	common.JSONResponse
+//	@Router			/result/details [get]
+func getTaskResultData(ctx *gin.Context) {
+	bussRefVal := ctx.Query("business_ref")
+	if bussRefVal == "" {
+		common.ErrorResp(ctx, "BussinessRef is not exist")
+		return
+	}
+	// 获取UserId
+	userID, err := getUserIDByJWT(ctx)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+	apiSrv := services.NewAPITaskService(
+		services.WithAPITaskBusinessRef(bussRefVal),
+		services.WithAPITaskUserID(userID))
+	taskResData, err := apiSrv.GetResultData()
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, taskResData, "Get Result Success")
+}
+
+// 获取数据集(外链形式进行简单展示)
+func getTaskResultDataURL(ctx *gin.Context) {
+	bussRefVal := ctx.Query("business_ref")
+	if bussRefVal == "" {
+		common.ErrorResp(ctx, "BussinessRef is not exist")
+		return
+	}
+	apiSrv := services.NewAPITaskService(services.WithAPITaskBusinessRef(bussRefVal))
+	taskResData, err := apiSrv.GetResultData()
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, taskResData, "Get Result Success")
+}
+
+// 对 SQLTask 审批通过
+//
+//	@Summary		审批通过
+//	@Description	审批通过
+//	@Tags			SQLTask
+//	@Produce		json
+//	@Success		200	{object}	common.JSONResponse{data=dto.SQLTaskResponse}
+//	@Failure		500	{object}	common.JSONResponse
+//	@Router			/sql-task/handle [post]
+func SQLTaskHandle(ctx *gin.Context) {
 	userIdStr := ctx.GetString("user_id")
 	// 解析数据（需要临时存储）
 	var content dto.SQLTaskReview
@@ -272,10 +360,9 @@ func SQLTaskApproval(ctx *gin.Context) {
 
 	apiTask := services.NewAPITaskService(
 		services.WithAPITaskUserID(userIdStr),
-		services.WithAPITaskSourceRef(content.BusinessRef),
+		services.WithAPITaskBusinessRef(content.BusinessRef),
 	)
-	// 创建API Ticket
-	err = apiTask.ActionHandle(content.Action)
+	err = apiTask.ActionHandle(ctx, content.Action)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
 		return

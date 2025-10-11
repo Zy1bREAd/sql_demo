@@ -55,7 +55,13 @@ func WithAPITaskUserID(userID string) APIOption {
 	}
 }
 
-func WithAPITaskSourceRef(businessRef string) APIOption {
+func WithAPITaskTaskUID(uid int64) APIOption {
+	return func(as *APITaskService) {
+		as.UID = uid
+	}
+}
+
+func WithAPITaskBusinessRef(businessRef string) APIOption {
 	return func(as *APITaskService) {
 		as.BusinessRef = businessRef
 	}
@@ -66,64 +72,135 @@ func (srv *APITaskService) Create(data dto.SQLTaskRequest) (*dto.TicketDTO, erro
 	// 创建Ticket(需要根据客户端来主动构造business_ref)信息
 	tk := NewTicketService()
 	busniessDomain := "sql-task"
-	snowKey := utils.GenerateSnowKey()
 	UUID := utils.GenerateUUIDKey()
 	userID := srv.UserID
-	sourceRef := fmt.Sprintf("%s:%s:source", busniessDomain, "api")
+	// {业务域}:{来源}:{UUID}:user:{主体id}
+	sourceRef := fmt.Sprintf("%s:%s:%s:user:%d", busniessDomain, "api", UUID, userID)
 	// 仅UUID
 	businessRef := UUID
 	// {动作}:{UUID}
 	IdempKey := fmt.Sprintf("%s:%s", "submit", UUID)
 
-	dtoData := dto.TicketDTO{
-		UID:            snowKey,
+	tkData := dto.TicketDTO{
 		Status:         common.CreatedStatus,
 		Source:         common.APISourceFlag,
 		SourceRef:      sourceRef,
 		BusinessRef:    businessRef,
 		IdemoptencyKey: IdempKey,
 		AuthorID:       userID,
+		TaskContent:    data,
 	}
-	err := tk.Create(dtoData)
+	tkID, err := tk.Create(tkData)
 	if err != nil {
 		return nil, err
 	}
+	tkData.UID = tkID
 	// !临时存储(不能使用UID，因为每次UID都会变动，需要使用businessRef来标识一组完整事件)
-	core.APITaskBodyMap.Set(businessRef, data, common.DefaultCacheMapDDL, common.APITaskBodyMapCleanFlag)
+	core.APITaskBodyMap.Set(tkData.UID, data, common.DefaultCacheMapDDL, common.APITaskBodyMapCleanFlag)
+
+	// 创建SQLTask的审计日志
+	taskBody, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	auditLogSrv := NewAuditRecordService()
+	err = auditLogSrv.Insert(dto.AuditRecordDTO{
+		UserID:    userID,
+		Payload:   string(taskBody),
+		TaskType:  common.APITaskType,
+		EventType: "TASK_CREATED",
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	// 生产事件(预检阶段)
 	ep := event.GetEventProducer()
 	ep.Produce(event.Event{
 		Type: "sql_check",
 		Payload: &FristCheckEventV2{
-			TicketID: dtoData.UID,
+			TicketID: tkData.UID,
 			UserID:   userID,
 			Source:   common.APISourceFlag,
-			Ref:      dtoData.BusinessRef,
+			Ref:      tkData.BusinessRef,
 		},
 		MetaData: event.EventMeta{
 			Source:    "api",
 			Operator:  int(srv.UserID),
 			Timestamp: time.Now().Format("20060102150405"),
+			// ! 额外增加追溯唯一标识
+			TraceID: businessRef,
 		},
 	})
 
-	return &dtoData, nil
+	return &tkData, nil
 }
 
-func (srv *APITaskService) CheckDataSave(ctx context.Context, preCheckVal *core.PreCheckResultGroup) error {
+func (srv *APITaskService) getTicketID() int64 {
+	tk := NewTicketService()
+	tkData := dto.TicketDTO{
+		BusinessRef: srv.BusinessRef,
+	}
+	return tk.GetUID(tkData)
+}
+
+func (srv *APITaskService) SaveCheckData(ctx context.Context, preCheckVal *core.PreCheckResultGroup) error {
+	//! 存储预检任务信息
+	core.CheckTaskMap.Set(srv.UID, preCheckVal, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
 	return nil
 }
 
-// 审批通过或者驳回请求
-func (srv *APITaskService) ActionHandle(status int) error {
+// 获取预检数据
+func (srv *APITaskService) GetCheckData() (*core.PreCheckResultGroup, error) {
+	//获取雪花ID
+	tkID := srv.getTicketID()
+	srv.UID = tkID
+	val, exist := core.CheckTaskMap.Get(tkID)
+	if !exist {
+		return nil, utils.GenerateError("CheckDataError", "Check Data is not exist")
+	}
+	preCheckVal, ok := val.(*core.PreCheckResultGroup)
+	if !ok {
+		return nil, utils.GenerateError("CheckDataError", "Check Data assert failed")
+	}
+	return preCheckVal, nil
+}
+
+// 获取结果集数据
+func (srv *APITaskService) GetResultData() (*core.SQLResultGroupV2, error) {
+	//获取雪花ID
+	tkID := srv.getTicketID()
+	srv.UID = tkID
+	val, exist := core.ResultMap.Get(tkID)
+	if !exist {
+		return nil, utils.GenerateError("ResultDataError", "SQLTask Result Data is not exist")
+	}
+	resultVal, ok := val.(*core.SQLResultGroupV2)
+	if !ok {
+		return nil, utils.GenerateError("ResultDataError", "SQLTask Result Data assert failed")
+	}
+
+	if resultVal.Errrr != nil {
+		return nil, resultVal.Errrr
+	}
+
+	// 审计日志
+	auditLogSrv := NewAuditRecordService()
+	auditLogSrv.Update(dto.AuditRecordDTO{
+		TaskID: resultVal.GID,
+	}, "RESULT_VIEW", srv.UserID, "")
+	return resultVal, nil
+}
+
+// 审批通过、驳回和上线
+func (srv *APITaskService) ActionHandle(ctx context.Context, status int) error {
 	switch status {
 	case common.ApprovalActionFlag:
 		return srv.approval()
 	case common.RejectActionFlag:
 		return srv.reject()
 	case common.OnlineActionFlag:
-		return srv.online()
+		return srv.online(ctx)
 	default:
 		return errors.New("unknown Action")
 	}
@@ -159,25 +236,38 @@ func (srv *APITaskService) reject() error {
 	return err
 }
 
-func (srv *APITaskService) online() error {
+func (srv *APITaskService) online(ctx context.Context) error {
 	tk := NewTicketService()
-	// 利用business_ref获取请求数据
-	val, exist := core.APITaskBodyMap.Get(srv.BusinessRef)
+	// 利用business_ref间接获取雪花ID来获取其他数据
+	tkID := srv.getTicketID()
+	srv.UID = tkID
+
+	val, exist := core.APITaskBodyMap.Get(tkID)
 	if !exist {
 		// TODO：如果不存在，则重新请求获取数据库中重新解析
 		return utils.GenerateError("CacheNotExist", "api task cache is not exist")
 	}
-	taskBody, ok := val.(*dto.SQLTaskRequest)
+	taskBody, ok := val.(dto.SQLTaskRequest)
 	if !ok {
 		return utils.GenerateError("CacheNotMatch", "api task cache kind is not match")
 	}
 	ep := event.GetEventProducer()
 
+	//! 上线前二次检查
+	_, err := srv.DoubleCheck(ctx, ReExcute{
+		IsReExcute: true,
+		Deadline:   common.RetryTimeOut,
+		Fn:         srv.ReCheck,
+	})
+	if err != nil {
+		return err
+	}
+
 	//! 上线前检查是否有修改痕迹(判断状态)
 	expectStatus := []string{
-		common.ApprovalPassedStatus,
+		common.DoubleCheckSuccessStatus,
 	}
-	err := tk.UpdateTicketStats(
+	err = tk.UpdateTicketStats(
 		dto.TicketDTO{
 			BusinessRef: srv.BusinessRef,
 		},
@@ -189,9 +279,8 @@ func (srv *APITaskService) online() error {
 	ep.Produce(event.Event{
 		Type: "sql_query",
 		Payload: &core.QTaskGroupV2{
-			TicketID: srv.UID,
-			GID:      utils.GenerateUUIDKey(),
-			// DML:            taskBody.Action,
+			TicketID:       srv.UID,
+			GID:            utils.GenerateUUIDKey(), //! 全局任务ID
 			UserID:         srv.UserID,
 			DBName:         taskBody.DBName,
 			Env:            taskBody.Env,
@@ -200,12 +289,13 @@ func (srv *APITaskService) online() error {
 			IsExport:       taskBody.IsExport,
 			IsLongTime:     taskBody.LongTime,
 			IsSoarAnalysis: taskBody.IsSOAR,
-			IsAiAnalysis:   taskBody.IsAnalysis,
+			IsAiAnalysis:   taskBody.IsAiAnalysis,
 		},
 		MetaData: event.EventMeta{
 			Source:    "api",
 			Operator:  int(srv.UserID),
 			Timestamp: time.Now().Format("20060102150405"),
+			TraceID:   srv.BusinessRef,
 		},
 	})
 	return nil
@@ -227,6 +317,7 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 		common.CreatedStatus,
 		common.EditedStatus,
 		common.ReInitedStatus,
+		common.DoubleCheckingStatus,
 	}
 	tk := NewTicketService()
 	err := tk.UpdateTicketStats(dto.TicketDTO{
@@ -245,17 +336,21 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 	resultGroup.Data.ParsedSQL = parseStmts
 
 	// EXPLAIN 解析与建议
+	var analysisOpts core.AnalysisFnOpts = core.AnalysisFnOpts{
+		WithExplain: true,
+	}
+	// 启用AI分析
+	if taskBodyVal.IsAiAnalysis {
+		analysisOpts.WithAi = true
+		analysisOpts.WithDDL = true
+		analysisOpts.WithSchema = true
+	}
 	for _, stmt := range parseStmts {
 		analysisRes, err := stmt.ExplainAnalysis(ctx,
 			taskBodyVal.Env,
 			taskBodyVal.DBName,
 			taskBodyVal.Service,
-			core.AnalysisFnOpts{
-				WithExplain: true,
-				WithDDL:     true,
-				WithSchema:  true,
-				WithAi:      true,
-			},
+			analysisOpts,
 		)
 		if err != nil {
 			return err
@@ -300,31 +395,37 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 				recuErrCh <- utils.GenerateError("GoroutineError", "Goroutine Break Off")
 				return
 			default:
+				for _, f := range froms {
+					// 需要处理派生表的情况（subFrom出现违规表)
+					if slices.Contains(illegalDBs, f.DBName) {
+						recuErrCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL DB Name is illegal.Statement: `%s`", f.DBName, stmt.SafeStmt))
+						return
+					}
+					if slices.Contains(illegalTables, f.TableName) {
+						recuErrCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL Table Name is illegal.Statement: `%s`", f.TableName, stmt.SafeStmt))
+						return
+					}
+					if f.IsDerivedTable {
+						recu(f.SubFrom)
+					}
+
+					// 2. 检查是否可写
+					if !ist.IsWrite && stmtVal.Action != "select" {
+						recuErrCh <- utils.GenerateError("NoPermission", "Your DB Instance is no permission")
+						return
+					}
+				}
+			}
+			// 2. 检查是否可写
+			if !ist.IsWrite && stmtVal.Action != "select" {
+				recuErrCh <- utils.GenerateError("NoPermission", "Your DB Instance is no permission")
+				return
 			}
 
-			for _, f := range froms {
-				// 需要处理派生表的情况（subFrom出现违规表)
-				if slices.Contains(illegalDBs, f.DBName) {
-					recuErrCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL DB Name is illegal.Statement: `%s`", f.DBName, stmt.SafeStmt))
-					return
-				}
-				if slices.Contains(illegalTables, f.TableName) {
-					recuErrCh <- utils.GenerateError("IllegalTable", fmt.Sprintf("%s SQL Table Name is illegal.Statement: `%s`", f.TableName, stmt.SafeStmt))
-					return
-				}
-				if f.IsDerivedTable {
-					recu(f.SubFrom)
-				}
-
-				// 2. 检查是否可写
-				if !ist.IsWrite && stmtVal.Action != "select" {
-					recuErrCh <- utils.GenerateError("NoPermission", "Your DB Instance is no permission")
-					return
-				}
-			}
 		}
 		recu(stmtVal.From)
 	}
+	recuErrCh <- nil // 预检成功
 	if err := <-recuErrCh; err != nil {
 		return err
 	}
@@ -341,16 +442,305 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 	return nil
 }
 
+// 上线前双重检查
 func (srv *APITaskService) DoubleCheck(ctx context.Context, redo ReExcute) (*core.PreCheckResultGroup, error) {
-	// TODO: 待补充API的双重检查
-	return nil, nil
+	var fristCheckVal *core.PreCheckResultGroup
+	doubleCheckVal := &core.PreCheckResultGroup{
+		Data: &core.PreCheckResult{
+			ParsedSQL:       make([]core.SQLForParseV2, 0),
+			ExplainAnalysis: make([]core.ExplainAnalysisResult, 0),
+			Soar: core.SoarCheck{
+				Results: make([]byte, 0),
+			},
+		},
+	}
+
+	// 获取APITask信息
+	val, exist := core.APITaskBodyMap.Get(srv.UID)
+	if !exist {
+		return nil, utils.GenerateError("TaskBodyError", "API Task Body is not exist")
+	}
+	taskBodyVal, ok := val.(dto.SQLTaskRequest)
+	if !ok {
+		return nil, utils.GenerateError("TaskBodyError", "API Task Body type is assert failed")
+	}
+
+	// 更新Ticket信息(正在处理预检)
+	tk := NewTicketService()
+	err := tk.UpdateTicketStats(api.TicketDTO{
+		BusinessRef: srv.BusinessRef,
+	}, common.DoubleCheckingStatus, common.ApprovalPassedStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	// ! 获取首次预检结果(重试版)
+	val, exist = core.CheckTaskMap.Get(srv.UID)
+	if !exist {
+		if redo.IsReExcute {
+			fmt.Println("涉及重做机制：DoubleCheck")
+			// TODO：再次重新解析SQL
+			redo.Fn()
+			// 同步方式每秒检测是否查询任务完成，来获取结果集
+			ticker := time.NewTicker(time.Duration(time.Second))
+			defer ticker.Stop()
+			// 超时控制
+			timeout, cancel := context.WithTimeout(ctx, time.Duration(redo.Deadline)*time.Second)
+			defer cancel()
+
+		redoLoop:
+			for {
+				select {
+				case <-ticker.C:
+					mapVal, ok := core.CheckTaskMap.Get(srv.UID)
+					if !ok {
+						continue
+					}
+					fristCheckVal, ok = mapVal.(*core.PreCheckResultGroup)
+					if !ok {
+						return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
+					}
+					// 重新预检，再次进入double check
+					err := tk.UpdateTicketStats(api.TicketDTO{
+						BusinessRef: srv.BusinessRef,
+					}, common.DoubleCheckingStatus, common.PreCheckSuccessStatus)
+					if err != nil {
+						return nil, err
+					}
+					break redoLoop
+				case <-timeout.Done(): // TIMEOUT
+					return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout...")
+				}
+			}
+		} else {
+			return nil, utils.GenerateError("CheckResultError", "不存在该CheckTask数据，也没有开启重做机制")
+		}
+
+	} else {
+		fristCheckVal, ok = val.(*core.PreCheckResultGroup)
+		if !ok {
+			return nil, utils.GenerateError("CheckResultError", "Frist Check Result is not exist")
+		}
+	}
+
+	// 仅EXPLAIN解析（用于对比检查）
+	for _, stmt := range fristCheckVal.Data.ParsedSQL {
+		analysisRes, err := stmt.ExplainAnalysis(ctx,
+			taskBodyVal.Env,
+			taskBodyVal.DBName,
+			taskBodyVal.Service,
+			core.AnalysisFnOpts{
+				WithExplain: true,
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+		doubleCheckVal.Data.ExplainAnalysis = append(doubleCheckVal.Data.ExplainAnalysis, *analysisRes)
+	}
+
+	// TODO：是否要加入SELECT COUNT(*)的数据量对比
+
+	//TODO: 对比首次预检检查结果
+	for i, analysis := range doubleCheckVal.Data.ExplainAnalysis {
+		for j, val := range analysis.Explain.Results {
+			fritst := fristCheckVal.Data.ExplainAnalysis[i].Explain.Results[j]
+			//! (仅Explain type示例)
+			if val["type"] == fritst["type"] {
+				fmt.Println("debug print::double check ", val["type"])
+			}
+			// TODO: 对比数据量是否激增
+		}
+	}
+
+	// 更新Ticket信息
+	err = tk.UpdateTicketStats(dto.TicketDTO{
+		BusinessRef: srv.BusinessRef,
+	}, common.DoubleCheckSuccessStatus, common.DoubleCheckingStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	return doubleCheckVal, nil
 }
 
 func (srv *APITaskService) ReCheck() {
-	// 检查的重做函数
+	// TODO:检查的重做函数
+	ep := event.GetEventProducer()
+
+	ep.Produce(event.Event{
+		Type: "sql_check",
+		Payload: &FristCheckEventV2{
+			TicketID: srv.UID,
+			UserID:   srv.UserID,
+			Source:   common.APISourceFlag,
+			Ref:      srv.BusinessRef,
+		},
+		MetaData: event.EventMeta{
+			Source:    "api",
+			Operator:  int(srv.UserID),
+			Timestamp: time.Now().Format("20060102150405"),
+			TraceID:   srv.BusinessRef,
+		},
+	})
 }
 
-// 接口方法
+// ! 执行任务
+func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) error {
+	errCh := make(chan error, 1)
+	ep := event.GetEventProducer()
+	go func() {
+		// （更新）Ticket记录
+		tk := NewTicketService()
+		err := tk.UpdateTicketStats(dto.TicketDTO{
+			BusinessRef: srv.BusinessRef,
+		}, common.PendingStatus, common.OnlinePassedStatus)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		// 获取雪花ID进行链路追踪
+		tkID := srv.getTicketID()
+		srv.UID = tkID
+		// ! 获取首次预检结果 (如果不存在，则不重新解析)
+		preCheckVal, err := getPreCheckResult(ctx, srv.UID, ReExcute{
+			IsReExcute: false,
+			Deadline:   common.RetryTimeOut,
+			Fn:         srv.ReCheck,
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		//! 构造任务组V3
+		core.QueryTaskMap.Set(srv.UID, qtg, common.DefaultCacheMapDDL, common.QueryTaskMapCleanFlag)
+
+		taskGroup := make([]*core.SQLTask, 0)
+		var maxDeadline int
+		// 分别定义每个SQL语句的超时时间，SELECT和其他DML的不同超时时间
+		for _, s := range preCheckVal.Data.ParsedSQL {
+			var ddl int
+			if qtg.IsLongTime {
+				if s.Action == "select" {
+					ddl = common.LongSelectDDL
+				} else {
+					ddl = common.LongOtherDDL
+				}
+			} else {
+				if s.Action == "select" {
+					ddl = common.SelectDDL
+				} else {
+					ddl = common.OtherDDL
+				}
+			}
+			qTask := core.SQLTask{
+				ID:        utils.GenerateUUIDKey(),
+				ParsedSQL: s,
+				Deadline:  ddl,
+			}
+			taskGroup = append(taskGroup, &qTask)
+			maxDeadline += ddl
+		}
+		qtg.QTasks = taskGroup
+		qtg.Deadline = maxDeadline + 60
+		qtg.TicketID = srv.UID
+		// 执行查询任务组v2
+		resultGroup := qtg.ExcuteTask(ctx)
+		resultGroup.TicketID = srv.UID
+		ep.Produce(event.Event{
+			Type:    "save_result",
+			Payload: resultGroup,
+			MetaData: event.EventMeta{
+				Source:    "api",
+				Operator:  int(srv.UserID),
+				Timestamp: time.Now().Format("20060102150405"),
+				TraceID:   srv.BusinessRef,
+			},
+		})
+		// 日志审计插入v2
+		jsonBytes, err := json.Marshal(taskGroup)
+		if err != nil {
+			utils.ErrorPrint("AuditRecordV2", err.Error())
+		}
+		auditLogSrv := NewAuditRecordService()
+		err = auditLogSrv.Insert(dto.AuditRecordDTO{
+			TaskID:    qtg.GID,
+			UserID:    qtg.UserID,
+			Payload:   string(jsonBytes),
+			TaskType:  common.APITaskType,
+			EventType: "SQL_QUERY",
+		})
+		if err != nil {
+			errCh <- err
+			return
+		}
+	}()
+
+	// 统一错误处理
+	select {
+	case err := <-errCh:
+		if err != nil {
+			err := srv.UpdateTicketStats(common.FailedStatus)
+			if err != nil {
+				utils.ErrorPrint("TicketStatsError", "Ticket Status update is failed")
+			}
+
+			// 传递携带错误信息的结果集
+			ep.Produce(event.Event{
+				Type: "save_result",
+				Payload: &core.SQLResultGroupV2{
+					Data:     nil,
+					Errrr:    err,
+					GID:      qtg.GID,
+					TicketID: srv.UID,
+				},
+				MetaData: event.EventMeta{
+					Source:    "api",
+					Operator:  int(srv.UserID),
+					Timestamp: time.Now().Format("20060102150405"),
+					TraceID:   srv.BusinessRef,
+				},
+			})
+		}
+	case <-ctx.Done():
+		utils.ErrorPrint("GoroutineErr", "goroutine is error")
+	}
+	return nil
+}
+
+// 存储结果集
+func (srv *APITaskService) SaveResult(ctx context.Context, sqlResult *core.SQLResultGroupV2) error {
+	tk := NewTicketService()
+	//! 后期核心处理结果集的代码逻辑块
+	core.ResultMap.Set(srv.UID, sqlResult, common.DefaultCacheMapDDL, common.ResultMapCleanFlag)
+
+	// Ticket状态：成功
+	err := tk.UpdateTicketStats(dto.TicketDTO{
+		BusinessRef: srv.BusinessRef,
+	}, common.CompletedStatus, common.PendingStatus)
+	if err != nil {
+		return utils.GenerateError("TicketErr", err.Error())
+	}
+
+	// // 存储结果、输出结果临时链接
+	// uuKey, tempURL := glbapi.NewHashTempLink()
+	// tempResSrv := NewTempResultService(srv.UserID)
+	// err = tempResSrv.Insert(dto.TempResultDTO{
+	// 	UUKey:         uuKey,
+	// 	TaskID:        sqlResult.GID,
+	// 	TicketID:      srv.UID,
+	// 	IsAllowExport: IssueVal.QTG.IsExport,
+	// }, common.DefaultCacheMapDDL)
+	// if err != nil {
+	// 	return err
+	// }
+
+	return nil
+}
+
+// 直接更新Ticket状态
 func (srv *APITaskService) UpdateTicketStats(targetStats string, exceptStats ...string) error {
 	tk := NewTicketService()
 	return tk.UpdateTicketStats(dto.TicketDTO{
@@ -436,7 +826,23 @@ func (srv *GitLabTaskService) Create(payload *IssuePayload) (*dto.TicketDTO, err
 	}
 	core.GitLabIssueMap.Set(tkData.UID, issCache, common.TicketCacheMapDDL, common.GitLabTaskType)
 
-	// TODO: 创建SQLTask的审计日志
+	//  创建SQLTask的审计日志
+	taskBody, err := json.Marshal(issCache)
+	if err != nil {
+		return nil, err
+	}
+	auditLogSrv := NewAuditRecordService()
+	err = auditLogSrv.Insert(dto.AuditRecordDTO{
+		UserID:    userID,
+		Payload:   string(taskBody),
+		TaskType:  common.GitLabTaskType,
+		ProjectID: issCache.ProjectID,
+		IssueID:   issCache.IID,
+		EventType: "TASK_CREATED",
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	// 生产事件(预检阶段)
 	ep := event.GetEventProducer()
@@ -545,15 +951,12 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 	// EXPLAIN 解析与建议
 	var analysisOpts core.AnalysisFnOpts = core.AnalysisFnOpts{
 		WithExplain: true,
-		WithDDL:     true,
-		WithSchema:  true,
-		WithAi:      true,
 	}
-	// 不启用AI分析
-	if !issCache.Content.IsAiAnalysis {
-		analysisOpts.WithAi = false
-		analysisOpts.WithDDL = false
-		analysisOpts.WithSchema = false
+	// 启用AI分析
+	if issCache.Content.IsAiAnalysis {
+		analysisOpts.WithAi = true
+		analysisOpts.WithDDL = true
+		analysisOpts.WithSchema = true
 	}
 	for _, stmt := range parseStmts {
 		analysisRes, err := stmt.ExplainAnalysis(ctx,
@@ -634,7 +1037,7 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 		}
 		recu(stmtVal.From)
 	}
-	recuErrCh <- nil
+	recuErrCh <- nil // 预检成功
 	if err := <-recuErrCh; err != nil {
 		srv.NotifyGitLab(err.Error())
 		return err
@@ -733,8 +1136,8 @@ func (srv *GitLabTaskService) DoubleCheck(ctx context.Context, redo ReExcute) (*
 	} else {
 		fristCheckVal, ok = val.(*core.PreCheckResultGroup)
 		if !ok {
-			srv.NotifyGitLab("Frist Check Resul type is invalid")
-			return nil, utils.GenerateError("CheckResultError", "Frist Check Resul type is invalid")
+			srv.NotifyGitLab("Frist Check Result is not exist")
+			return nil, utils.GenerateError("CheckResultError", "Frist Check Result is not exist")
 		}
 	}
 
@@ -1257,7 +1660,7 @@ func (srv *GitLabTaskService) SaveCheckData(ctx context.Context, preCheckVal *co
 		title = "Frist-Check"
 	}
 	if preCheckVal.Errrr != nil {
-		updateMsg = fmt.Sprintf("TicketID=%d \n%s Task is Failed\n- %s", preCheckVal.TicketID, title, preCheckVal.Errrr.Error())
+		updateMsg = fmt.Sprintf("TicketID=%d \n%s Task is Failed\n- %s", preCheckVal.TicketID, title, preCheckVal.ErrMsg)
 	} else {
 		updateMsg = fmt.Sprintf("TicketID=%d \n%s Task is Success\n", preCheckVal.TicketID, title)
 	}

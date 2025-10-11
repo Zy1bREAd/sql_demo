@@ -186,23 +186,25 @@ func (wrapper *EventHandlerWrapper) Start() {
 
 func (wrapper *EventHandlerWrapper) workLoop() {
 	for {
+		ctx, cancel := context.WithCancel(context.Background()) // 正常取决于Event中的事件超时
 		select {
+		case <-wrapper.stopCh:
+			cancel()
+			utils.DebugPrint("EventHandlerExit", fmt.Sprintf("正常收到信号，关闭 %s 处理", wrapper.handler.Name()))
+			return
 		case event, ok := <-wrapper.queue:
 			if !ok {
 				utils.ErrorPrint("WorkQueueErr", "Worker Queue is Full")
+				cancel()
 				return
 			}
-			ctx, cancel := context.WithCancel(context.Background()) // 正常取决于Event中的事件超时
 			err := wrapper.handler.Work(ctx, event)
-			cancel()
+			cancel() // 显式取消
 			if err != nil {
-				// 判断错误是否严重不可逆，来决定是否中断Worker
+				// TODO: 判断错误是否严重不可逆，来决定是否中断Worker
 				utils.ErrorPrint("EventHandlerError", err)
 				continue
 			}
-		case <-wrapper.stopCh:
-			utils.DebugPrint("EventHandlerExit", fmt.Sprintf("正常收到信号，关闭 %s 处理", wrapper.handler.Name()))
-			return
 		}
 	}
 }

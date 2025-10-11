@@ -31,6 +31,7 @@ func NewTempResultService(userID uint) *TempResultService {
 }
 
 // 从数据库中获取结果集是否存在、是否过期？审计日志可选
+// 通过UUkey -> Ticket ID -> 结果集
 func (srv *TempResultService) GetData(ctx context.Context, cond dto.TempResultDTO, isAudit bool) (*core.SQLResultGroupV2, error) {
 	condORM := srv.toORMData(cond)
 	findRes, err := srv.DAO.FindOne(condORM)

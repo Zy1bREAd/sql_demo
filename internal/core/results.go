@@ -24,13 +24,14 @@ type SQLResultGroupV2 struct {
 	Data     []*dbo.SQLResult
 	Errrr    error
 	GID      string
-	TicketID int64
+	TicketID int64 `json:"-"`
 }
 
 type PreCheckResultGroup struct {
 	Data          *PreCheckResult
-	Errrr         error
+	Errrr         error `json:"-"`
+	ErrMsg        string
 	GID           string
-	TicketID      int64
-	IsDoubleCheck bool // 首次或第二次检查
+	TicketID      int64 `json:"-"`
+	IsDoubleCheck bool  `json:"-"` // 首次或第二次检查
 }

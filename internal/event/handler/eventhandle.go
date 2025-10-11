@@ -70,13 +70,13 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	// 判断哪种类型的QueryTask
 	switch t := e.Payload.(type) {
 	case *core.QTaskGroupV2:
-		_ = services.NewAPITaskService()
-		// metadata = event.EventMeta{
-		// 	Source:    "api",
-		// 	Operator:  int(t.UserID),
-		// 	Timestamp: time.Now().String(),
-		// }
-		utils.DebugPrint("等待更新", t.DBName)
+		apiSrv := services.NewAPITaskService(
+			services.WithAPITaskBusinessRef(e.MetaData.TraceID),
+			services.WithAPITaskUserID(string(t.UserID)),
+		)
+		err := apiSrv.Excute(ctx, t)
+		return err
+
 	case *core.IssueQTaskV2:
 		// 获取Service层操作对象
 		gitlabSrv := services.NewGitLabTaskService(
@@ -91,7 +91,6 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 		return utils.GenerateError("UnknownTask", "Task Event Kind is Unknown")
 	}
 
-	return nil
 }
 
 // 消费事件、处理结果
@@ -119,10 +118,10 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			return gitlabSrv.SaveCheckData(ctx, res)
 		case "api":
 			// TODO: 补全API Task Service接口
-			apiSrv := services.NewAPITaskService()
-			return apiSrv.CheckDataSave(ctx, res)
+			apiSrv := services.NewAPITaskService(services.WithAPITaskTaskUID(res.TicketID))
+			return apiSrv.SaveCheckData(ctx, res)
 		default:
-			fmt.Println("???? unknown source")
+			utils.DebugPrint("UnknownSource", "未知请求源")
 		}
 
 	case *core.SQLResultGroupV2:
@@ -136,7 +135,14 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 		case "api":
 			// TODO: 补全API Task Service接口
-
+			apiSrv := services.NewAPITaskService(services.WithAPITaskTaskUID(res.TicketID),
+				services.WithAPITaskBusinessRef(e.MetaData.TraceID))
+			err := apiSrv.SaveResult(ctx, res)
+			if err != nil {
+				utils.ErrorPrint("EventError", err.Error())
+			}
+		default:
+			utils.DebugPrint("UnknownSource", "未知请求源")
 		}
 
 	default:
@@ -453,9 +459,19 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			}(ctx)
 
 		case "api":
-			// TODO: APITaskService的双重检查
+			go func(parentCtx context.Context) {
+				apiSrv := services.NewAPITaskService(services.WithAPITaskTaskUID(p.TicketID), services.WithAPITaskBusinessRef(p.Ref))
+				tasker = apiSrv
+				err := apiSrv.FristCheck(parentCtx, preCheckRes)
+				if err != nil {
+					utils.DebugPrint("PreCheckErr", err.Error())
+					errCh <- err
+				}
+				errCh <- nil // 表示正常完成（!）
+
+			}(ctx)
 		default:
-			fmt.Println("???? unknow source")
+			utils.DebugPrint("UnknownSource", "未知请求源")
 		}
 	}
 
@@ -463,19 +479,16 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			preCheckRes.Errrr = err
+			preCheckRes.ErrMsg = err.Error()
 			ep.Produce(event.Event{
 				Type:     "save_result",
 				Payload:  preCheckRes,
 				MetaData: metadata,
 			})
 
-			// GitLab 服务特有操作
-			if e.MetaData.Source == "gitlab" {
-				err = tasker.UpdateTicketStats(common.PreCheckFailedStatus)
-				if err != nil {
-					utils.ErrorPrint("TicketStatsErr", "Update Ticket Status is failed")
-				}
+			err = tasker.UpdateTicketStats(common.PreCheckFailedStatus)
+			if err != nil {
+				utils.ErrorPrint("TicketStatsErr", "Update Ticket Status is failed")
 			}
 			return nil
 		}
@@ -487,7 +500,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 		})
 
 	case <-ctx.Done():
-		utils.ErrorPrint("GoroutineErr", "goroutine is error")
+		utils.ErrorPrint("GoroutineErr", "goroutine is error,break off!")
 	}
 	return nil
 }

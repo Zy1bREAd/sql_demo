@@ -49,22 +49,23 @@ type AuditRecordDTO struct {
 }
 
 type TicketDTO struct {
-	TaskID         string `json:"task_id"`
-	Status         string `json:"status"`
-	SourceRef      string `json:"source_ref"`   // 标识来源
-	BusinessRef    string `json:"business_ref"` // 针对API调用作为一组流程的聚合
-	IdemoptencyKey string `json:"idem_key"`
-	UID            int64  `json:"uid"`       // 雪花ID
-	Source         int    `json:"source"`    // 用于标识Ticket的来源。
-	AuthorID       uint   `json:"author_id"` // 表示该Ticket所属者
-	ProjectID      uint   `json:"project_id"`
-	IssueIID       uint   `json:"issue_iid"`
+	TaskContent    SQLTaskRequest `json:"task_content"`
+	TaskID         string         `json:"task_id"`
+	Status         string         `json:"status"`
+	SourceRef      string         `json:"source_ref"`   // 标识来源
+	BusinessRef    string         `json:"business_ref"` // 针对API调用作为一组流程的聚合
+	IdemoptencyKey string         `json:"idem_key"`
+	UID            int64          `json:"uid"`       // 雪花ID
+	Source         int            `json:"source"`    // 用于标识Ticket的来源。
+	AuthorID       uint           `json:"author_id"` // 表示该Ticket所属者
+	ProjectID      uint           `json:"project_id"`
+	IssueIID       uint           `json:"issue_iid"`
 }
 
 type TicketResponse struct {
-	SourceRef      string `json:"source_ref"` // 作为关键来源标识（一组流程的唯一标识）
+	SourceRef      string `json:"source_ref"`
 	IdemoptencyKey string `json:"idem_key"`
-	UID            int64  `json:"uid"` // 雪花ID
+	BusinessRef    string `json:"businessRef"` // 作为关键来源标识（一组流程的唯一标识）
 }
 
 // TicketStatusStats 票据状态统计 DTO（数据传输对象）
@@ -81,14 +82,14 @@ type TicketStatusStatsDTO struct {
 
 // 请求SQL任务的 DTO
 type SQLTaskRequest struct {
-	Env        string `json:"env" validate:"required"`
-	Service    string `json:"service" validate:"required"`
-	DBName     string `json:"db_name" validate:"required"`
-	Statement  string `json:"statement" validate:"required,min=1"`
-	LongTime   bool   `json:"long_time"`
-	IsExport   bool   `json:"is_export"`
-	IsSOAR     bool   `json:"is_soar"`
-	IsAnalysis bool   `json:"is_analysis default:true"`
+	Env          string `json:"env" validate:"required"`
+	Service      string `json:"service" validate:"required"`
+	DBName       string `json:"db_name" validate:"required"`
+	Statement    string `json:"statement" validate:"required,min=1"`
+	LongTime     bool   `json:"long_time"`
+	IsExport     bool   `json:"is_export"`
+	IsSOAR       bool   `json:"is_soar"`
+	IsAiAnalysis bool   `json:"is_aianalysis default:true"`
 }
 
 // 校验
