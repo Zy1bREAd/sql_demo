@@ -34,6 +34,7 @@ func (audit *AuditRecordService) toORMData(dto dto.AuditRecordDTO) *dbo.AuditRec
 		IssueID:   dto.IssueID,
 		ProjectID: dto.ProjectID,
 		TaskKind:  dto.TaskType,
+		TicketID:  dto.TicketID,
 	}
 }
 
@@ -47,6 +48,7 @@ func (audit *AuditRecordService) toDTOData(orm dbo.AuditRecordV2) *dto.AuditReco
 		IssueID:   orm.IssueID,
 		UserName:  orm.User.Name,
 		Payload:   orm.Payload,
+		TicketID:  orm.TicketID,
 	}
 }
 

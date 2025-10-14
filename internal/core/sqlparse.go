@@ -896,18 +896,20 @@ func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, Sr
 	// 1. 获取DDL
 	if opts.WithDDL {
 		ddl := make([]dbo.SQLResult, fromLength)
-		for _, from := range s.From {
+		for key, from := range s.From {
 			if from.IsDerivedTable {
 				continue
 			}
 			res := ist.ShowCreate(ctx, from.DBName, from.TableName, taskID)
-			ddl = append(ddl, res)
+			ddl[key] = res
+			// ddl = append(ddl, res)
 		}
-		for _, t := range ddl {
+		for key, t := range ddl {
 			if t.Results == nil {
 				continue
 			}
-			ddlPrompt = append(ddlPrompt, t.OutputJSON())
+			// ddlPrompt = append(ddlPrompt, t.OutputJSON())
+			ddlPrompt[key] = t.OutputJSON()
 		}
 		result.DDL = ddl
 	}
@@ -915,18 +917,20 @@ func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, Sr
 	// 2. 获取Information_schema表信息
 	if opts.WithSchema {
 		schema := make([]dbo.SQLResult, fromLength)
-		for _, from := range s.From {
+		for key, from := range s.From {
 			if from.IsDerivedTable {
 				continue
 			}
 			res := ist.TableInformation(ctx, from.DBName, from.TableName, taskID)
-			schema = append(schema, res)
+			// schema = append(schema, res)
+			schema[key] = res
 		}
-		for _, t := range schema {
+		for key, t := range schema {
 			if t.Results == nil {
 				continue
 			}
-			schemaPrompt = append(schemaPrompt, t.OutputJSON())
+			schemaPrompt[key] = t.OutputJSON()
+			// schemaPrompt = append(schemaPrompt, t.OutputJSON())
 		}
 		result.InformationSchema = schema
 	}

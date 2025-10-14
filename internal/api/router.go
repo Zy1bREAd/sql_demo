@@ -60,7 +60,7 @@ func InitRouter() {
 	InitBaseRoutes()
 
 	// Swagger API Docs
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.PersistAuthorization(true)))
 
 	// 加载路由注册函数
 	for _, fn := range fnRoutes {
@@ -132,9 +132,10 @@ func InitBaseRoutes() {
 
 		// API JSON格式请求专用路由
 		rgAuth.POST("/sql-task/create", SQLTaskCreate)
-		rgAuth.PUT("/sql-task/update/:business_ref", SQLTaskCreate)
-		rgAuth.POST("/sql-task/delete", SQLTaskCreate)
-		rgAuth.GET("/sql-task/list", SQLTaskCreate)
+		rgAuth.PUT("/sql-task/update", SQLTaskUpdate)
+		rgAuth.DELETE("/sql-task/delete", SQLTaskDelete)
+		rgAuth.POST("/sql-task/batch-delete", SQLTaskDelete)
+		rgAuth.GET("/sql-task/list", SQLTaskList)
 		rgAuth.POST("/sql-task/handle", SQLTaskHandle)
 
 		rgAuth.GET("/pre-check/details", getPreCheckData)
@@ -214,21 +215,15 @@ type UserInfo struct {
 	Email    string `json:"email"`
 }
 
-type TaskCreateDTO struct {
-	SourceRef      string `json:"source_ref"`
-	IdempotencyKey string `json:"idempotency_key"`
-	UID            string `json:"uid"`
-}
-
-// 创建一个任务
-//
-//	@Summary		创建SQL任务
-//	@Description	创建SQL任务
-//	@Tags			SQLTask
-//	@Produce		json
-//	@Success		200	{object}	common.JSONResponse{data=TaskCreateDTO}
-//	@Failure		500	{object}	common.JSONResponse
-//	@Router			/sql-task/create [post]
+// @Summary		创建SQL任务
+// @Description	根据JSON内容创建SQL任务
+// @Tags			SQLTask
+// @Produce		json
+// @Param			content	body		SQLTaskRequest	true	"SQL task content"
+// @Success		200		{object}	common.JSONResponse{data=TicketResponse}
+// @Failure		500		{object}	common.JSONResponse
+// @Router			/sql-task/create [post]
+// @Security		ApiKeyAuth
 func SQLTaskCreate(ctx *gin.Context) {
 	userIdStr := ctx.GetString("user_id")
 	// 解析数据（需要临时存储）
@@ -259,18 +254,101 @@ func SQLTaskCreate(ctx *gin.Context) {
 		IdemoptencyKey: tkData.IdemoptencyKey,
 		BusinessRef:    tkData.BusinessRef,
 	}, "Create Ticket Success")
-
 }
 
-// 获取预检结果详情(通过bussinessRef)
-//
-//	@Summary		获取预检结果
-//	@Description	获取预检结果详情
-//	@Tags			SQLTask
-//	@Produce		json
-//	@Success		200	{object}	common.JSONResponse
-//	@Failure		500	{object}	common.JSONResponse
-//	@Router			/pre-check/details [get]
+// @Summary		编辑更新SQLTask
+// @Description	编辑更新SQLTask
+// @Tags			SQLTask
+// @Produce		json
+// @Param			business_ref	query		string			true	"busniess ref"
+// @Param			content			body		SQLTaskRequest	true	"sql task content"
+// @Success		200				{object}	common.JSONResponse{data=TicketResponse}
+// @Failure		500				{object}	common.JSONResponse
+// @Router			/sql-task/update [put]
+// @Security		ApiKeyAuth
+func SQLTaskUpdate(ctx *gin.Context) {
+	userIdStr := ctx.GetString("user_id")
+	bussRefVal := ctx.Query("business_ref")
+	if bussRefVal == "" {
+		common.ErrorResp(ctx, "BussinessRef is not exist")
+		return
+	}
+	// 解析数据（需要临时存储）
+	var content dto.SQLTaskRequest
+	err := ctx.ShouldBindJSON(&content)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+	err = content.Validate()
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+
+	// 临时存储task信息
+	apiTask := services.NewAPITaskService(services.WithAPITaskUserID(userIdStr), services.WithAPITaskBusinessRef(bussRefVal))
+	// 创建API Ticket
+	err = apiTask.Update(content)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
+		return
+	}
+
+	// 返回sourceRef以及idempKey
+	common.SuccessResp(ctx, dto.TicketResponse{
+		BusinessRef: bussRefVal,
+	}, "Update Ticket Success")
+}
+
+// @Summary		删除SQLTask
+// @Description	删除SQLTask（可单删可批量）
+// @Tags			SQLTask
+// @Produce		json
+// @Param			business_ref	query		string	true	"busniess ref"
+// @Success		200				{object}	common.JSONResponse{data=TicketResponse}
+// @Failure		500				{object}	common.JSONResponse
+// @Router			/sql-task/delete [delete]
+// @Router			/sql-task/delete [post]
+// @Security		ApiKeyAuth
+func SQLTaskDelete(ctx *gin.Context) {
+	userIdStr := ctx.GetString("user_id")
+	switch ctx.Request.Method {
+	case "POST":
+		fmt.Println("批量删除,暂不实现")
+		// 返回sourceRef以及idempKey
+		common.SuccessResp(ctx, nil, "批量删除,暂不实现")
+	case "DELETE":
+		bussRefVal := ctx.Query("business_ref")
+		if bussRefVal == "" {
+			common.ErrorResp(ctx, "BussinessRef is not exist")
+			return
+		}
+
+		// 临时存储task信息
+		apiTask := services.NewAPITaskService(services.WithAPITaskUserID(userIdStr), services.WithAPITaskBusinessRef(bussRefVal))
+		// 创建API Ticket
+		err := apiTask.Delete()
+		if err != nil {
+			common.ErrorResp(ctx, err.Error())
+			return
+		}
+		// 返回sourceRef以及idempKey
+		common.SuccessResp(ctx, dto.TicketResponse{
+			BusinessRef: bussRefVal,
+		}, "Delete Ticket Success")
+	}
+}
+
+// @Summary		获取预检结果
+// @Description	获取预检结果详情(通过bussinessRef)
+// @Tags			SQLTask
+// @Produce		json
+// @Param			business_ref	query		string	true	"busniess ref"
+// @Success		200				{object}	common.JSONResponse
+// @Failure		500				{object}	common.JSONResponse
+// @Router			/pre-check/details [get]
+// @Security		ApiKeyAuth
 func getPreCheckData(ctx *gin.Context) {
 	bussRefVal := ctx.Query("business_ref")
 	if bussRefVal == "" {
@@ -286,15 +364,19 @@ func getPreCheckData(ctx *gin.Context) {
 	common.SuccessResp(ctx, preCheckData, "Get Success")
 }
 
-// 获取任务数据集
-//
-//	@Summary		获取任务数据集
-//	@Description	获取任务数据集详情
-//	@Tags			SQLTask
-//	@Produce		json
-//	@Success		200	{object}	common.JSONResponse
-//	@Failure		500	{object}	common.JSONResponse
-//	@Router			/result/details [get]
+type SQLResultGroupDTO struct {
+	*core.SQLResultGroupV2
+}
+
+// @Summary		获取任务数据集
+// @Description	获取任务数据集详情
+// @Tags			SQLTask
+// @Produce		json
+// @Param			business_ref	query		string	true	"busniess ref"
+// @Success		200				{object}	common.JSONResponse{data=SQLResultGroupDTO}
+// @Failure		500				{object}	common.JSONResponse
+// @Router			/result/details [get]
+// @Security		ApiKeyAuth
 func getTaskResultData(ctx *gin.Context) {
 	bussRefVal := ctx.Query("business_ref")
 	if bussRefVal == "" {
@@ -315,7 +397,9 @@ func getTaskResultData(ctx *gin.Context) {
 		common.ErrorResp(ctx, err.Error())
 		return
 	}
-	common.SuccessResp(ctx, taskResData, "Get Result Success")
+	common.SuccessResp(ctx, SQLResultGroupDTO{
+		taskResData,
+	}, "Get Result Success")
 }
 
 // 获取数据集(外链形式进行简单展示)
@@ -334,15 +418,18 @@ func getTaskResultDataURL(ctx *gin.Context) {
 	common.SuccessResp(ctx, taskResData, "Get Result Success")
 }
 
-// 对 SQLTask 审批通过
+// @Summary		处理SQLTask
+// @Description	对SQLTask执行操作
+// @Tags			SQLTask
+// @Produce		json
+// @Param			business_ref	body		string	true	"busniess ref"
+// @Param			reason			body		string	false	"page size"
+// @Param			action			body		int		true	"handle action flag"
+// @Success		200				{object}	common.JSONResponse{data=SQLTaskResponse}
+// @Failure		500				{object}	common.JSONResponse
+// @Router			/sql-task/handle [post]
 //
-//	@Summary		审批通过
-//	@Description	审批通过
-//	@Tags			SQLTask
-//	@Produce		json
-//	@Success		200	{object}	common.JSONResponse{data=dto.SQLTaskResponse}
-//	@Failure		500	{object}	common.JSONResponse
-//	@Router			/sql-task/handle [post]
+// @Security		ApiKeyAuth
 func SQLTaskHandle(ctx *gin.Context) {
 	userIdStr := ctx.GetString("user_id")
 	// 解析数据（需要临时存储）
@@ -376,6 +463,56 @@ func SQLTaskHandle(ctx *gin.Context) {
 		OperateTime: time.Now().Format("20060102150405"),
 	}, "Handle Action Success")
 
+}
+
+// @Summary		获取任务列表
+// @Description	获取任务列表(具备分页)
+// @Tags			SQLTask
+// @Produce		json
+// @Param			page		query		int		false	"page number"
+// @Param			page_size	query		int		false	"page size"
+// @Param			status		query		string	false	"status of sql task"
+// @Success		200			{object}	common.JSONResponse{data=TicketDTO}
+// @Failure		500			{object}	common.JSONResponse
+// @Router			/sql-task/handle [get]
+//
+// @Security		ApiKeyAuth
+func SQLTaskList(ctx *gin.Context) {
+	// pageQuery := ctx.Query("page")
+	// pageSizeQuery := ctx.Query("page_size")
+	// taskStatusQuery := ctx.Query("status")
+	userIdStr := ctx.GetString("user_id")
+	type RDTO struct {
+		Page     int    `form:"page,default=1"`
+		PageSize int    `form:"page_size,default=10"`
+		Status   string `form:"status"`
+	}
+	var rdto RDTO
+	err := ctx.ShouldBindQuery(&rdto)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+
+	pagni, err := common.NewPaginatior(rdto.Page, rdto.PageSize)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+
+	apiTask := services.NewAPITaskService(
+		services.WithAPITaskUserID(userIdStr),
+	)
+	// TODO: 补充搜索条件
+	result, err := apiTask.Get(dto.TicketDTO{
+		Status: rdto.Status,
+	}, &pagni)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	pagni.SetTotalPages(int(pagni.Total+pagni.PageSize-1) / pagni.PageSize)
+	common.SuccessResp(ctx, result, "Get Success", common.WithPagination(pagni))
 }
 
 func IssueCallBack(ctx *gin.Context) {
@@ -539,15 +676,18 @@ func SSOCallBack(ctx *gin.Context) {
 	}, "sso login success")
 }
 
-// 结果集导出路由逻辑(SSE)
+// @Summary		导出结果集
+// @Description	导出临时结果集成文件形式(SSE)
+// @Tags			Result
+// @Produce		json
+// @Param			task_id		query		string	true	"task id"
+// @Param			is_only		query		bool	true	"is only flag"
+// @Param			result_idx	query		int		false	"only export index"
+// @Success		200			{object}	[]byte
+// @Failure		500			{object}	[]byte
+// @Router			/result/export [get]
 //
-//	@Summary		导出结果集
-//	@Description	导出临时结果集成文件形式
-//	@Tags			SQLTask
-//	@Produce		json
-//	@Success		200	{object}	[]byte
-//	@Failure		500	{object}	[]byte
-//	@Router			/result/export [get]
+// @Security		ApiKeyAuth
 func ResultExport(ctx *gin.Context) {
 	//! 添加SSE的Header
 	ctx.Header("Content-Type", "text/event-stream")
@@ -671,14 +811,16 @@ func ResultExport(ctx *gin.Context) {
 	}
 }
 
-// 下载导出结果集文件
 // @Summary		下载导出结果文件
 // @Description	下载导出结果集文件
-// @Tags			SQLTask
+// @Tags			Result
 // @Produce		json
-// @Success		200	{object}	[]byte
-// @Failure		500	{object}	[]byte
+// @Param			task_id	query		string	true	"task id"
+// @Success		200		{object}	[]byte
+// @Failure		500		{object}	[]byte
 // @Router			/result/download [get]
+//
+// @Security		ApiKeyAuth
 func DownloadFile(ctx *gin.Context) {
 	//TODO: 引入其他参数防止伪造task_id来请求偷取下载文件
 	taskId := ctx.Query("task_id")
@@ -687,18 +829,12 @@ func DownloadFile(ctx *gin.Context) {
 		return
 	}
 	// 获取 UserId
-	val, exist := ctx.Get("user_id")
-	if !exist {
-		common.ErrorResp(ctx, "User not exist")
-		return
-	}
-	userId, ok := val.(string)
-	if !ok {
-		common.ErrorResp(ctx, "convert type is failed")
-		return
+	userIDStr, err := getUserIDByJWT(ctx)
+	if err != nil {
+		common.ErrorResp(ctx, err.Error())
 	}
 
-	downloadSrv := services.NewDownloadService(utils.StrToUint(userId))
+	downloadSrv := services.NewDownloadService(utils.StrToUint(userIDStr))
 	filePath, err := downloadSrv.Download(taskId)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
@@ -709,14 +845,16 @@ func DownloadFile(ctx *gin.Context) {
 	ctx.File(filePath)
 }
 
-// 外链形式展示ticket任务执行结果
 // @Summary		输出临时结果集
-// @Description	输出SQL任务临时结果集
-// @Tags			SQLTask
+// @Description	外链形式展示ticket任务执行结果
+// @Tags			Result
 // @Produce		json
-// @Success		200	{object}	common.JSONResponse{data=TempResultResponse}
-// @Failure		500	{object}	common.JSONResponse
+// @Param			identifier	query		string	true	"identifier (uukey)"
+// @Success		200			{object}	common.JSONResponse{data=TempResultResponse}
+// @Failure		500			{object}	common.JSONResponse
 // @Router			/result/temp-view/:identifier [get]
+//
+// @Security		ApiKeyAuth
 func getTicketTempResults(ctx *gin.Context) {
 	uuKey := ctx.Param("identifier")
 	// 获取UserId

@@ -75,16 +75,70 @@
                 }
             }
         },
-        "/sql/create": {
-            "post": {
-                "description": "创建SQL任务",
+        "/pre-check/details": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取预检结果详情(通过bussinessRef)",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "SQLTask"
                 ],
-                "summary": "创建SQL任务",
+                "summary": "获取预检结果",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "busniess ref",
+                        "name": "business_ref",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/result/details": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取任务数据集详情",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SQLTask"
+                ],
+                "summary": "获取任务数据集",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "busniess ref",
+                        "name": "business_ref",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -97,7 +151,517 @@
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/api.TaskCreateDTO"
+                                            "$ref": "#/definitions/api.SQLResultGroupDTO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/result/download": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "下载导出结果集文件",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Result"
+                ],
+                "summary": "下载导出结果文件",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "task id",
+                        "name": "task_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "format": "int32"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "format": "int32"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/result/export": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "导出临时结果集成文件形式(SSE)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Result"
+                ],
+                "summary": "导出结果集",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "task id",
+                        "name": "task_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "is only flag",
+                        "name": "is_only",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "only export index",
+                        "name": "result_idx",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "format": "int32"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer",
+                                "format": "int32"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/result/temp-view/:identifier": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "外链形式展示ticket任务执行结果",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Result"
+                ],
+                "summary": "输出临时结果集",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "identifier (uukey)",
+                        "name": "identifier",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.TempResultResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sql-task/create": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "根据JSON内容创建SQL任务",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SQLTask"
+                ],
+                "summary": "创建SQL任务",
+                "parameters": [
+                    {
+                        "description": "SQL task content",
+                        "name": "content",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.SQLTaskRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.TicketResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sql-task/delete": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "删除SQLTask（可单删可批量）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SQLTask"
+                ],
+                "summary": "删除SQLTask",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "busniess ref",
+                        "name": "business_ref",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.TicketResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "删除SQLTask（可单删可批量）",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SQLTask"
+                ],
+                "summary": "删除SQLTask",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "busniess ref",
+                        "name": "business_ref",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.TicketResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sql-task/handle": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取任务列表(具备分页)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SQLTask"
+                ],
+                "summary": "获取任务列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "status of sql task",
+                        "name": "status",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.TicketDTO"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "对SQLTask执行操作",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SQLTask"
+                ],
+                "summary": "处理SQLTask",
+                "parameters": [
+                    {
+                        "description": "busniess ref",
+                        "name": "business_ref",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "page size",
+                        "name": "reason",
+                        "in": "body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "handle action flag",
+                        "name": "action",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.SQLTaskResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sql-task/update": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "编辑更新SQLTask",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SQLTask"
+                ],
+                "summary": "编辑更新SQLTask",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "busniess ref",
+                        "name": "business_ref",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "description": "sql task content",
+                        "name": "content",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.SQLTaskRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.TicketResponse"
                                         }
                                     }
                                 }
@@ -144,16 +708,156 @@
                 }
             }
         },
-        "api.TaskCreateDTO": {
+        "api.SQLResultGroupDTO": {
             "type": "object",
             "properties": {
-                "idempotency_key": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dbo.SQLResult"
+                    }
+                },
+                "errrr": {},
+                "gid": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.SQLTaskRequest": {
+            "type": "object",
+            "properties": {
+                "db_name": {
                     "type": "string"
                 },
+                "env": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "minLength": 1
+                },
+                "is_aianalysis": {
+                    "type": "boolean"
+                },
+                "is_export": {
+                    "type": "boolean"
+                },
+                "is_soar": {
+                    "type": "boolean"
+                },
+                "long_time": {
+                    "type": "boolean"
+                },
+                "service": {
+                    "type": "string"
+                },
+                "statement": {
+                    "description": "TODO: 后期支持切片（数组）形式",
+                    "type": "string"
+                }
+            }
+        },
+        "api.SQLTaskResponse": {
+            "type": "object",
+            "required": [
+                "action",
+                "business_ref",
+                "operate_time"
+            ],
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "business_ref": {
+                    "type": "string"
+                },
+                "operate_time": {
+                    "type": "string"
+                },
+                "operator": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.TempResultResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "Data      *core.SQLResultGroupV2 `json:\"data\"`",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dbo.SQLResult"
+                    }
+                },
+                "is_export": {
+                    "type": "boolean"
+                },
+                "is_expried": {
+                    "type": "boolean"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.TicketDTO": {
+            "type": "object",
+            "properties": {
+                "author_id": {
+                    "description": "表示该Ticket所属者",
+                    "type": "integer"
+                },
+                "business_ref": {
+                    "description": "针对API调用作为一组流程的聚合",
+                    "type": "string"
+                },
+                "idem_key": {
+                    "type": "string"
+                },
+                "issue_iid": {
+                    "type": "integer"
+                },
+                "project_id": {
+                    "type": "integer"
+                },
+                "source": {
+                    "description": "用于标识Ticket的来源。",
+                    "type": "integer"
+                },
                 "source_ref": {
+                    "description": "标识来源",
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "taskContentID": {
+                    "type": "integer"
+                },
+                "task_content": {
+                    "$ref": "#/definitions/api.SQLTaskRequest"
+                },
+                "task_id": {
                     "type": "string"
                 },
                 "uid": {
+                    "description": "雪花ID",
+                    "type": "integer"
+                }
+            }
+        },
+        "api.TicketResponse": {
+            "type": "object",
+            "properties": {
+                "businessRef": {
+                    "description": "作为关键来源标识（一组流程的唯一标识）",
+                    "type": "string"
+                },
+                "idem_key": {
+                    "type": "string"
+                },
+                "source_ref": {
                     "type": "string"
                 }
             }
@@ -193,6 +897,51 @@
                 },
                 "total_pages": {
                     "type": "integer"
+                }
+            }
+        },
+        "dbo.SQLResult": {
+            "type": "object",
+            "properties": {
+                "errMsg": {
+                    "description": "错误信息",
+                    "type": "string"
+                },
+                "errrrr": {},
+                "handleTime": {
+                    "description": "处理结果集的时间",
+                    "type": "number",
+                    "format": "float64"
+                },
+                "id": {
+                    "description": "task id",
+                    "type": "string"
+                },
+                "lastId": {
+                    "description": "用于Excute的最新ID",
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "queryTime": {
+                    "description": "查询花费的时间",
+                    "type": "number",
+                    "format": "float64"
+                },
+                "results": {
+                    "description": "结果集列表",
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    }
+                },
+                "rowCount": {
+                    "description": "返回结果条数",
+                    "type": "integer"
+                },
+                "stmt": {
+                    "description": "查询的原生SQL",
+                    "type": "string"
                 }
             }
         }

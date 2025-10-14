@@ -42,6 +42,7 @@ type AuditRecordV2 struct {
 	EventType string    `gorm:"type:varchar(64);not null"`
 	Payload   string    `gorm:""` // 记录审计的载体，以JSON格式
 	TaskKind  int       `gorm:"type:smallint"`
+	TicketID  int64     `gorm:"index"`
 	CreateAt  time.Time `gorm:"type:datetime(0);autoCreateTime"`
 	// 关联User表
 	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user_v2"`
@@ -139,7 +140,7 @@ type Ticket struct {
 	TaskContent    TaskContent `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:TaskContentID;references:ID"` //! 关联API Task Content
 	TaskContentID  uint
 	AuthorID       uint   `gorm:"not null"` // 表示该Ticket所属者
-	UserForKey     User   `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:AuthorID;references:ID"`
+	UserForKey     User   `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:AuthorID;references:ID"`
 	ProjectID      int    `gorm:"index:idx_gitlab_ticket;"`
 	IssueID        int    `gorm:"index:idx_gitlab_ticket;"`
 	Link           string `gorm:"type:varchar(255)"`

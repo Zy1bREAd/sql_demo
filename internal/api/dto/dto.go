@@ -38,6 +38,7 @@ type AuditRecordDTO struct {
 	IssueID   uint   `json:"issue_id"`
 	UserID    uint   `json:"user_id"`
 	TaskType  int    `json:"task_type"`
+	TicketID  int64  `json:"ticket_id"`
 	TaskID    string `json:"task_id"`
 	UserName  string `json:"username"`
 	EventType string `json:"event_type"`
@@ -49,6 +50,7 @@ type AuditRecordDTO struct {
 }
 
 type TicketDTO struct {
+	TaskContentID  uint           `json:"-`
 	TaskContent    SQLTaskRequest `json:"task_content"`
 	TaskID         string         `json:"task_id"`
 	Status         string         `json:"status"`
@@ -82,14 +84,15 @@ type TicketStatusStatsDTO struct {
 
 // 请求SQL任务的 DTO
 type SQLTaskRequest struct {
-	Env          string `json:"env" validate:"required"`
-	Service      string `json:"service" validate:"required"`
-	DBName       string `json:"db_name" validate:"required"`
-	Statement    string `json:"statement" validate:"required,min=1"`
+	ID           uint   `json:"-"`
+	Env          string `json:"env" validate:"omitempty"`
+	Service      string `json:"service" validate:"omitempty"`
+	DBName       string `json:"db_name" validate:"omitempty"`
+	Statement    string `json:"statement" validate:"omitempty"` // TODO: 后期支持切片（数组）形式
 	LongTime     bool   `json:"long_time"`
 	IsExport     bool   `json:"is_export"`
 	IsSOAR       bool   `json:"is_soar"`
-	IsAiAnalysis bool   `json:"is_aianalysis default:true"`
+	IsAiAnalysis bool   `json:"is_aianalysis"`
 }
 
 // 校验

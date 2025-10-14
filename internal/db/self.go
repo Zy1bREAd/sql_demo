@@ -710,11 +710,11 @@ func (t *Ticket) CreateOrUpdate(cond, data *Ticket) error {
 	return nil
 }
 
-// 获取查找结果
+// 获取查找结果(关联加载TaskContent和User模型)
 func (t *Ticket) FindOne(cond *Ticket) (*Ticket, error) {
 	var resultTicket Ticket
 	dbConn := HaveSelfDB().GetConn()
-	findRes := dbConn.Where(&cond).Last(&resultTicket)
+	findRes := dbConn.Preload("TaskContent").Preload("UserForKey").Where(&cond).Last(&resultTicket)
 	if findRes.Error != nil {
 		if errors.Is(findRes.Error, gorm.ErrRecordNotFound) {
 			return nil, utils.GenerateError("TicketNotExist", findRes.Error.Error())
@@ -725,6 +725,35 @@ func (t *Ticket) FindOne(cond *Ticket) (*Ticket, error) {
 		return nil, utils.GenerateError("TicketErr", "rows is not 1")
 	}
 	return &resultTicket, nil
+}
+
+// !查询符合条件的所有Tickets
+func (t *Ticket) Finds(cond *Ticket, pagni *common.Pagniation) ([]Ticket, error) {
+	var tks []Ticket
+	dbConn := HaveSelfDB().GetConn()
+	// 构造基础查询链
+	tx := dbConn.Model(&Ticket{}).Where(&cond).Preload("TaskContent").Preload("UserForKey")
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	//! 防止无效分页请求(前提是分页器有数据，像初始化时分页器无数据则无需判断)
+	if pagni.Page != 0 && pagni.PageSize != 0 {
+		if (int(total)/pagni.PageSize)+1 <= pagni.Page {
+			return nil, utils.GenerateError("PageErr", "Page must be too big")
+		}
+		tx = tx.Offset(pagni.Offset).Limit(pagni.PageSize)
+	}
+	pagni.SetTotal(int(total))
+	findRes := tx.Find(&tks)
+	if findRes.Error != nil {
+		return nil, utils.GenerateError("TicketFindErr", findRes.Error.Error())
+	}
+	// debug
+	for _, v := range tks {
+		fmt.Println("debug piring2 v.TaskContent", v.TaskContent)
+	}
+	return tks, nil
 }
 
 // 按照指定CondTicket进行更新 (返回更新后的TicketID)
@@ -752,6 +781,48 @@ func (t *Ticket) Update(cond, updateTicket *Ticket) (int64, error) {
 	return tk.UID, nil
 }
 
+func (t *Ticket) SaveTaskContent(cond, data *Ticket) error {
+	dbConn := HaveSelfDB().GetConn()
+	tk, err := t.FindOne(cond)
+	if err != nil {
+		return err
+	}
+	// 更新被查找出来的ticket data
+	t.UID = tk.UID //! 传递修改UID后续再次预检需要使用
+	data.TaskContent.ID = tk.TaskContent.ID
+	data.TaskContent.CreatedAt = tk.TaskContent.CreatedAt
+	tk.TaskContent = data.TaskContent
+	tk.Status = data.Status
+
+	tx := dbConn.Begin()
+	if err = tx.Save(&tk.TaskContent).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err = tx.Save(&tk).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
+	return nil
+}
+
+func (t *Ticket) DeleteOne(cond *Ticket) error {
+	dbConn := HaveSelfDB().GetConn()
+	tx := dbConn.Begin()
+	res := tx.Delete(&cond)
+	if res.Error != nil {
+		tx.Rollback()
+		return utils.GenerateError("DeleteError", res.Error.Error())
+	}
+	if res.RowsAffected != 1 {
+		tx.Rollback()
+		return utils.GenerateError("DeleteError", "delete row is error")
+	}
+	tx.Commit()
+	return nil
+}
+
 func (t *Ticket) UpdateByFind(cond, updateTicket *Ticket) error {
 	_, err := t.Update(cond, updateTicket)
 	return err
@@ -762,7 +833,6 @@ func (t *Ticket) ValidateStatus(cond *Ticket, targetStatus ...string) error {
 	if len(targetStatus) == 0 {
 		return nil
 	}
-	// 根据ProjectID + IssueID作为条件，进行更新操作
 	tk, err := t.FindOne(cond)
 	if err != nil {
 		return err
@@ -771,6 +841,7 @@ func (t *Ticket) ValidateStatus(cond *Ticket, targetStatus ...string) error {
 	if slices.Contains(targetStatus, tk.Status) {
 		return nil
 	}
+	// TODO: 修改正确的错误描述
 	return utils.GenerateError("TicketStatusNotMatch", fmt.Sprintf("Ticket Status:%s is not match %s", tk.Status, targetStatus))
 }
 

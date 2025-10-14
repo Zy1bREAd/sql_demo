@@ -111,6 +111,7 @@ func (srv *GitLabTaskService) Create(payload *IssuePayload) (*dto.TicketDTO, err
 		ProjectID: issCache.ProjectID,
 		IssueID:   issCache.IID,
 		EventType: "TASK_CREATED",
+		TicketID:  tkID,
 	})
 	if err != nil {
 		return nil, err
@@ -737,6 +738,7 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *core.IssueQTas
 			IssueID:   issQTG.IssIID,
 			TaskType:  common.GitLabTaskType,
 			EventType: "SQL_QUERY",
+			TicketID:  srv.UID,
 		})
 		if err != nil {
 			errCh <- err

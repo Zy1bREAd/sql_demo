@@ -104,6 +104,7 @@ func (srv *APITaskService) Create(data dto.SQLTaskRequest) (*dto.TicketDTO, erro
 		Payload:   string(taskBody),
 		TaskType:  common.APITaskType,
 		EventType: "TASK_CREATED",
+		TicketID:  tkID,
 	})
 	if err != nil {
 		return nil, err
@@ -131,6 +132,76 @@ func (srv *APITaskService) Create(data dto.SQLTaskRequest) (*dto.TicketDTO, erro
 	return &tkData, nil
 }
 
+// 更新Ticket状态以及Task Contente
+func (srv *APITaskService) Update(data dto.SQLTaskRequest) error {
+	tk := NewTicketService()
+	tkData := dto.TicketDTO{
+		BusinessRef: srv.BusinessRef,
+	}
+	err := tk.UpdateTaskContent(tkData, data)
+	if err != nil {
+		return err
+	}
+	tkID := srv.getTicketID()
+	// 创建SQLTask的审计日志
+	taskBody, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	auditLogSrv := NewAuditRecordService()
+	err = auditLogSrv.Insert(dto.AuditRecordDTO{
+		UserID:    srv.UserID,
+		Payload:   string(taskBody),
+		TaskType:  common.APITaskType,
+		EventType: "TASK_EDITED",
+		TicketID:  tkID,
+	})
+	if err != nil {
+		return err
+	}
+
+	// 生产事件(编辑-预检阶段)
+	ep := event.GetEventProducer()
+	ep.Produce(event.Event{
+		Type: "sql_check",
+		Payload: &FristCheckEventV2{
+			TicketID: tkID,
+			UserID:   srv.UserID,
+			Source:   common.APISourceFlag,
+			Ref:      srv.BusinessRef,
+		},
+		MetaData: event.EventMeta{
+			Source:    "api",
+			Operator:  int(srv.UserID),
+			Timestamp: time.Now().Format("20060102150405"),
+			// ! 额外增加追溯唯一标识
+			TraceID: srv.BusinessRef,
+		},
+	})
+
+	return nil
+}
+
+// 更新Ticket状态以及Task Contente
+func (srv *APITaskService) Delete() error {
+	tk := NewTicketService()
+	tkData := dto.TicketDTO{
+		BusinessRef: srv.BusinessRef,
+	}
+	err := tk.Delete(tkData)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 更新Ticket状态以及Task Contente
+func (srv *APITaskService) Get(cond dto.TicketDTO, pagni *common.Pagniation) ([]dto.TicketDTO, error) {
+	tk := NewTicketService()
+	return tk.Get(cond, pagni)
+}
+
 func (srv *APITaskService) getTicketID() int64 {
 	tk := NewTicketService()
 	tkData := dto.TicketDTO{
@@ -139,8 +210,8 @@ func (srv *APITaskService) getTicketID() int64 {
 	return tk.GetUID(tkData)
 }
 
+// ! 存储预检任务信息
 func (srv *APITaskService) SaveCheckData(ctx context.Context, preCheckVal *core.PreCheckResultGroup) error {
-	//! 存储预检任务信息
 	core.CheckTaskMap.Set(srv.UID, preCheckVal, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
 	return nil
 }
@@ -666,6 +737,7 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 			Payload:   string(jsonBytes),
 			TaskType:  common.APITaskType,
 			EventType: "SQL_QUERY",
+			TicketID:  tkID,
 		})
 		if err != nil {
 			errCh <- err
