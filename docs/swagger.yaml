@@ -34,8 +34,6 @@ definitions:
       db_name:
         type: string
       env:
-        maxLength: 32
-        minLength: 1
         type: string
       is_aianalysis:
         type: boolean
@@ -67,6 +65,21 @@ definitions:
     - action
     - business_ref
     - operate_time
+    type: object
+  api.SQLTaskReview:
+    properties:
+      action:
+        description: 上线(2)、审批(1)、驳回(0)等
+        type: integer
+      business_ref:
+        description: 业务标识
+        type: string
+      reason:
+        description: 驳回原因
+        type: string
+    required:
+    - action
+    - business_ref
     type: object
   api.TempResultResponse:
     properties:
@@ -108,8 +121,6 @@ definitions:
         $ref: '#/definitions/api.SQLTaskRequest'
       task_id:
         type: string
-      taskContentID:
-        type: integer
       uid:
         description: 雪花ID
         type: integer
@@ -516,23 +527,12 @@ paths:
     post:
       description: 对SQLTask执行操作
       parameters:
-      - description: busniess ref
+      - description: SQLTaskReview
         in: body
-        name: business_ref
+        name: review_content
         required: true
         schema:
-          type: string
-      - description: page size
-        in: body
-        name: reason
-        schema:
-          type: string
-      - description: handle action flag
-        in: body
-        name: action
-        required: true
-        schema:
-          type: integer
+          $ref: '#/definitions/api.SQLTaskReview'
       produces:
       - application/json
       responses:

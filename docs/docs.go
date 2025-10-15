@@ -568,29 +568,12 @@ const docTemplate = `{
                 "summary": "处理SQLTask",
                 "parameters": [
                     {
-                        "description": "busniess ref",
-                        "name": "business_ref",
+                        "description": "SQLTaskReview",
+                        "name": "review_content",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "page size",
-                        "name": "reason",
-                        "in": "body",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "description": "handle action flag",
-                        "name": "action",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "integer"
+                            "$ref": "#/definitions/api.SQLTaskReview"
                         }
                     }
                 ],
@@ -736,9 +719,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "env": {
-                    "type": "string",
-                    "maxLength": 32,
-                    "minLength": 1
+                    "type": "string"
                 },
                 "is_aianalysis": {
                     "type": "boolean"
@@ -782,6 +763,27 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "remark": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.SQLTaskReview": {
+            "type": "object",
+            "required": [
+                "action",
+                "business_ref"
+            ],
+            "properties": {
+                "action": {
+                    "description": "上线(2)、审批(1)、驳回(0)等",
+                    "type": "integer"
+                },
+                "business_ref": {
+                    "description": "业务标识",
+                    "type": "string"
+                },
+                "reason": {
+                    "description": "驳回原因",
                     "type": "string"
                 }
             }
@@ -837,9 +839,6 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
-                },
-                "taskContentID": {
-                    "type": "integer"
                 },
                 "task_content": {
                     "$ref": "#/definitions/api.SQLTaskRequest"

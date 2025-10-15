@@ -49,15 +49,16 @@ type MySQLConfig struct {
 // type SQLError struct
 // 查询和执行SQL的结果集
 type SQLResult struct {
-	RowCount   int     // 返回结果条数
-	LastId     int64   // 用于Excute的最新ID
-	QueryTime  float64 // 查询花费的时间
-	HandleTime float64 // 处理结果集的时间
-	ID         string  // task id
-	Stmt       string  // 查询的原生SQL
-	Errrrr     error
+	RowCount   int              // 返回结果条数
+	LastId     int64            `json:"-"` // 用于Excute的最新ID
+	QueryTime  float64          // 查询花费的时间
+	HandleTime float64          // 处理结果集的时间
+	ID         string           // task id
+	Stmt       string           // 查询的原生SQL
+	Errrrr     error            `json:"-"`
 	ErrMsg     string           // 错误信息
 	Results    []map[string]any // 结果集列表
+	// TODO： 引入任务状态
 }
 
 // 后期转泛型

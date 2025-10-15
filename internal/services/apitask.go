@@ -303,24 +303,24 @@ func (srv *APITaskService) reject() error {
 }
 
 func (srv *APITaskService) online(ctx context.Context) error {
+	ep := event.GetEventProducer()
 	tk := NewTicketService()
 	// 利用business_ref间接获取雪花ID来获取其他数据
 	tkID := srv.getTicketID()
 	srv.UID = tkID
 
-	val, exist := core.APITaskBodyMap.Get(tkID)
-	if !exist {
-		// TODO：如果不存在，则重新请求获取数据库中重新解析
-		return utils.GenerateError("CacheNotExist", "api task cache is not exist")
+	// 获取Task Body数据v2 重做机制版
+	taskBodyVal, err := srv.getTaskBodyV2(ReExcute{
+		IsReExcute: true,
+		Deadline:   90,
+		Fn:         srv.ReGetTaskBody,
+	})
+	if err != nil {
+		return utils.GenerateError("TaskBodyError", err.Error())
 	}
-	taskBody, ok := val.(dto.SQLTaskRequest)
-	if !ok {
-		return utils.GenerateError("CacheNotMatch", "api task cache kind is not match")
-	}
-	ep := event.GetEventProducer()
 
 	//! 上线前二次检查
-	_, err := srv.DoubleCheck(ctx, ReExcute{
+	_, err = srv.DoubleCheck(ctx, ReExcute{
 		IsReExcute: true,
 		Deadline:   common.RetryTimeOut,
 		Fn:         srv.ReCheck,
@@ -348,14 +348,14 @@ func (srv *APITaskService) online(ctx context.Context) error {
 			TicketID:       srv.UID,
 			GID:            utils.GenerateUUIDKey(), //! 全局任务ID
 			UserID:         srv.UserID,
-			DBName:         taskBody.DBName,
-			Env:            taskBody.Env,
-			Service:        taskBody.Service,
-			StmtRaw:        taskBody.Statement,
-			IsExport:       taskBody.IsExport,
-			IsLongTime:     taskBody.LongTime,
-			IsSoarAnalysis: taskBody.IsSOAR,
-			IsAiAnalysis:   taskBody.IsAiAnalysis,
+			DBName:         taskBodyVal.DBName,
+			Env:            taskBodyVal.Env,
+			Service:        taskBodyVal.Service,
+			StmtRaw:        taskBodyVal.Statement,
+			IsExport:       taskBodyVal.IsExport,
+			IsLongTime:     taskBodyVal.LongTime,
+			IsSoarAnalysis: taskBodyVal.IsSOAR,
+			IsAiAnalysis:   taskBodyVal.IsAiAnalysis,
 		},
 		MetaData: event.EventMeta{
 			Source:    "api",
@@ -424,6 +424,7 @@ func (srv *APITaskService) ReGetTaskBody() {
 		utils.ErrorPrint("RedoError", err.Error())
 	}
 	taskBodyData := dto.SQLTaskRequest{
+		ID:           res.TaskContent.ID,
 		Env:          res.TaskContent.Env,
 		Service:      res.TaskContent.Service,
 		DBName:       res.TaskContent.DBName,
@@ -860,19 +861,27 @@ func (srv *APITaskService) SaveResult(ctx context.Context, sqlResult *core.SQLRe
 	if err != nil {
 		return utils.GenerateError("TicketErr", err.Error())
 	}
+	taskContent, err := srv.getTaskBodyV2(ReExcute{
+		IsReExcute: true,
+		Deadline:   90,
+		Fn:         srv.ReGetTaskBody,
+	})
+	if err != nil {
+		return err
+	}
 
-	// // 存储结果、输出结果临时链接
-	// uuKey, tempURL := glbapi.NewHashTempLink()
-	// tempResSrv := NewTempResultService(srv.UserID)
-	// err = tempResSrv.Insert(dto.TempResultDTO{
-	// 	UUKey:         uuKey,
-	// 	TaskID:        sqlResult.GID,
-	// 	TicketID:      srv.UID,
-	// 	IsAllowExport: IssueVal.QTG.IsExport,
-	// }, common.DefaultCacheMapDDL)
-	// if err != nil {
-	// 	return err
-	// }
+	// 存储临时结果集
+	uuKey := utils.GenerateUUIDKey()
+	tempResSrv := NewTempResultService(srv.UserID)
+	err = tempResSrv.Insert(dto.TempResultDTO{
+		UUKey:         uuKey,
+		TaskID:        sqlResult.GID,
+		TicketID:      srv.UID,
+		IsAllowExport: taskContent.IsExport,
+	}, common.DefaultCacheMapDDL)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

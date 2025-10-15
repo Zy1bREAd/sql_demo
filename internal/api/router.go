@@ -422,9 +422,7 @@ func getTaskResultDataURL(ctx *gin.Context) {
 // @Description	对SQLTask执行操作
 // @Tags			SQLTask
 // @Produce		json
-// @Param			business_ref	query		string	true	"busniess ref"
-// @Param			reason			query		string	false	"page size"
-// @Param			action			query		int		true	"handle action flag"
+// @Param			review_content	body		SQLTaskReview	true	"SQLTaskReview"
 // @Success		200				{object}	common.JSONResponse{data=SQLTaskResponse}
 // @Failure		500				{object}	common.JSONResponse
 // @Router			/sql-task/handle [post]
