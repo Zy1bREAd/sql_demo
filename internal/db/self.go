@@ -791,15 +791,44 @@ func (t *Ticket) SaveTaskContent(cond, data *Ticket) error {
 	t.UID = tk.UID //! 传递修改UID后续再次预检需要使用
 	data.TaskContent.ID = tk.TaskContent.ID
 	data.TaskContent.CreatedAt = tk.TaskContent.CreatedAt
-	tk.TaskContent = data.TaskContent
+	// tk.TaskContent = data.TaskContent
 	tk.Status = data.Status
 
+	// !使用map来精准控制布尔值类型必须更新，其余类型字段非零值可跳过更新（沿用旧数据）
+	updatesMap := map[string]any{
+		"ID":           data.TaskContent.ID,
+		"LongTime":     data.TaskContent.LongTime,
+		"IsExport":     data.TaskContent.IsExport,
+		"IsSOAR":       data.TaskContent.IsSOAR,
+		"IsAiAnalysis": data.TaskContent.IsAiAnalysis,
+	}
+	//! 取消Reflect反射判断，改用""
+	if data.TaskContent.Env == "" {
+		updatesMap["Env"] = tk.TaskContent.Env
+	} else {
+		updatesMap["Env"] = data.TaskContent.Env
+	}
+	if data.TaskContent.Service == "" {
+		updatesMap["Service"] = tk.TaskContent.Service
+	} else {
+		updatesMap["Service"] = data.TaskContent.Service
+	}
+	if data.TaskContent.DBName == "" {
+		updatesMap["DBName"] = tk.TaskContent.DBName
+	} else {
+		updatesMap["DBName"] = data.TaskContent.DBName
+	}
+	if data.TaskContent.Statement == "" {
+		updatesMap["Statement"] = tk.TaskContent.Statement
+	} else {
+		updatesMap["Statement"] = data.TaskContent.Statement
+	}
 	tx := dbConn.Begin()
-	if err = tx.Save(&tk.TaskContent).Error; err != nil {
+	if err = tx.Model(&TaskContent{}).Where("id = ?", tk.TaskContent.ID).Updates(updatesMap).Error; err != nil {
 		tx.Rollback()
 		return err
 	}
-	if err = tx.Save(&tk).Error; err != nil {
+	if err = tx.Omit("TaskContent").Updates(&tk).Error; err != nil {
 		tx.Rollback()
 		return err
 	}

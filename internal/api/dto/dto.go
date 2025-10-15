@@ -50,7 +50,7 @@ type AuditRecordDTO struct {
 }
 
 type TicketDTO struct {
-	TaskContentID  uint           `json:"-`
+	TaskContentID  uint           `json:"-"`
 	TaskContent    SQLTaskRequest `json:"task_content"`
 	TaskID         string         `json:"task_id"`
 	Status         string         `json:"status"`
@@ -97,6 +97,23 @@ type SQLTaskRequest struct {
 
 // 校验
 func (dto SQLTaskRequest) Validate() error {
+	va := utils.NewValidator()
+	err := va.Struct(&dto)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// GitLab Issue内容
+type IssueTaskContent struct {
+	SQLTaskRequest
+	Action string `json:"action"`
+	Remark string `json:"remark,omitempty"`
+}
+
+// 校验
+func (dto IssueTaskContent) Validate() error {
 	va := utils.NewValidator()
 	err := va.Struct(&dto)
 	if err != nil {

@@ -448,7 +448,10 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 		switch e.MetaData.Source {
 		case "gitlab":
 			go func(parentCtx context.Context) {
-				gitlabSrv := services.NewGitLabTaskService(services.WithGitLabTaskUID(p.TicketID))
+				gitlabSrv := services.NewGitLabTaskService(services.WithGitLabTaskUID(p.TicketID),
+					services.WithGitLabTaskProjectID(e.MetaData.ProjectID),
+					services.WithGitLabTaskIssueIID(e.MetaData.IssueIID),
+				)
 				tasker = gitlabSrv
 				err := gitlabSrv.FristCheck(parentCtx, preCheckRes)
 				if err != nil {

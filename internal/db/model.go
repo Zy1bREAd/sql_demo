@@ -157,10 +157,10 @@ type TaskContent struct {
 	Service      string `gorm:"type:varchar(255);not null;index"`
 	DBName       string `gorm:"type:varchar(255);not null;index"`
 	Statement    string `gorm:"not null"`
-	LongTime     bool   `gorm:"default:false"`
-	IsExport     bool   `gorm:"default:false"`
-	IsSOAR       bool   `gorm:"default:false"`
-	IsAiAnalysis bool   `gorm:"default:false"`
+	LongTime     bool   `gorm:""`
+	IsExport     bool   `gorm:""`
+	IsSOAR       bool   `gorm:""`
+	IsAiAnalysis bool   `gorm:""`
 	// AuthorID
 	gorm.Model
 }

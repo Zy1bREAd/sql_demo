@@ -367,15 +367,85 @@ func (srv *APITaskService) online(ctx context.Context) error {
 	return nil
 }
 
-func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
+// 从数据库中获取任务Body(抽象版)
+func (srv *APITaskService) getTaskBodyV2(redo ReExcute) (dto.SQLTaskRequest, error) {
 	// 获取Task Body数据
+	var taskBodyVal dto.SQLTaskRequest
 	body, exist := core.APITaskBodyMap.Get(srv.UID)
 	if !exist {
-		return utils.GenerateError("TaskBodyError", "API Task Body is not exist")
+		if redo.IsReExcute {
+			// TODO: 补充超时控制context
+			go redo.Fn()
+			ticker := time.NewTicker(time.Duration(time.Second))
+			defer ticker.Stop()
+			// 超时控制
+			timeout, cancel := context.WithTimeout(context.Background(), time.Duration(redo.Deadline)*time.Second)
+			defer cancel()
+
+		redoLoop:
+			for {
+				select {
+				case <-ticker.C:
+					mapVal, ok := core.APITaskBodyMap.Get(srv.UID)
+					if !ok {
+						continue
+					}
+					tempTaskBody, ok := mapVal.(dto.SQLTaskRequest)
+					if !ok {
+						return dto.SQLTaskRequest{}, utils.GenerateError("TaskBodyError", "API Task Body Type is not match")
+					}
+					taskBodyVal = tempTaskBody
+
+					break redoLoop
+				case <-timeout.Done():
+					return dto.SQLTaskRequest{}, utils.GenerateError("ReExcuteTask", "re-excute task is timeout...")
+				}
+			}
+		}
+		return taskBodyVal, nil
+	} else {
+		tempTaskBody, ok := body.(dto.SQLTaskRequest)
+		if !ok {
+			return dto.SQLTaskRequest{}, utils.GenerateError("TaskBodyError", "API Task Body Type is not match")
+		}
+		taskBodyVal = tempTaskBody
 	}
-	taskBodyVal, ok := body.(dto.SQLTaskRequest)
-	if !ok {
-		return utils.GenerateError("TaskBodyError", "API Task Body Type is not match")
+	return taskBodyVal, nil
+}
+
+// 从数据库重新获取数据，存储回内存。
+func (srv *APITaskService) ReGetTaskBody() {
+	tk := NewTicketService()
+	dataORM := tk.toORMData(dto.TicketDTO{
+		UID: srv.UID,
+	})
+	res, err := tk.DAO.FindOne(dataORM)
+	if err != nil {
+		utils.ErrorPrint("RedoError", err.Error())
+	}
+	taskBodyData := dto.SQLTaskRequest{
+		Env:          res.TaskContent.Env,
+		Service:      res.TaskContent.Service,
+		DBName:       res.TaskContent.DBName,
+		Statement:    res.TaskContent.Statement,
+		LongTime:     res.TaskContent.LongTime,
+		IsExport:     res.TaskContent.IsExport,
+		IsSOAR:       res.TaskContent.IsSOAR,
+		IsAiAnalysis: res.TaskContent.IsAiAnalysis,
+	}
+	// !存储在Sync.Map中
+	core.APITaskBodyMap.Set(srv.UID, taskBodyData, common.DefaultCacheMapDDL, common.APITaskBodyMapCleanFlag)
+}
+
+func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
+	// 获取Task Body数据v2 重做机制版
+	taskBodyVal, err := srv.getTaskBodyV2(ReExcute{
+		IsReExcute: true,
+		Deadline:   90,
+		Fn:         srv.ReGetTaskBody,
+	})
+	if err != nil {
+		return utils.GenerateError("TaskBodyError", err.Error())
 	}
 
 	// 更新Ticket信息(正在处理预检)
@@ -386,7 +456,7 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 		common.DoubleCheckingStatus,
 	}
 	tk := NewTicketService()
-	err := tk.UpdateTicketStats(dto.TicketDTO{
+	err = tk.UpdateTicketStats(dto.TicketDTO{
 		UID:      srv.UID,
 		AuthorID: srv.UserID,
 	}, common.PreCheckingStatus, targetStats...)

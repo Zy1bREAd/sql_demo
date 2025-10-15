@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	dto "sql_demo/internal/api/dto"
 	clients "sql_demo/internal/clients/gitlab"
 	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/conf"
@@ -15,10 +16,31 @@ import (
 	"github.com/goccy/go-json"
 )
 
-// 缓存结构体(组合优于继承)
-type IssueCache struct {
+// type IssueCache struct {
+// 	*clients.Issue
+// 	Content *SQLIssueTemplate
+// 	action  int
+// }
+
+// 集成Webhook结构体
+type GitLabWebhook struct {
+	Webhook string // issue、comment
+	Payload any
+}
+
+// IssueTask内容的结构体(组合优于继承)
+type IssuePayload struct {
 	*clients.Issue
-	Content *SQLIssueTemplate
+	Content *dto.IssueTaskContent
+	Action  int // open、update
+}
+
+// 评论结构体
+type CommentPayload struct {
+	Reason string
+	Action int // approval、reject、online
+	// CommentDesc  *CommentWebhook
+	IssuePayload *IssuePayload
 }
 
 const (
@@ -93,7 +115,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 		"update": IssueUpdateFlag,
 	}
 	// 初始化
-	var issContent *SQLIssueTemplate
+	var issContent *dto.IssueTaskContent
 	ep := event.GetEventProducer()
 
 	switch i.ObjectAttr.Action {
@@ -104,7 +126,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			utils.DebugPrint("ParseError", err.Error())
 			return err
 		}
-		issDesc, err := ParseIssueTemplate(descBytes)
+		issDesc, err := ParseTaskContent(descBytes)
 		if err != nil {
 			return err
 		}
@@ -129,9 +151,9 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			Payload: &GitLabWebhook{
 				Webhook: IssueHandle,
 				Payload: &IssuePayload{
-					Issue:  &i.ObjectAttr,
-					Action: issueActionMap[i.ObjectAttr.Action],
-					Desc:   issContent,
+					Action:  issueActionMap[i.ObjectAttr.Action],
+					Issue:   &i.ObjectAttr,
+					Content: issContent,
 				},
 			},
 		})
@@ -148,7 +170,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 					utils.DebugPrint("ParseError", err.Error())
 					return err
 				}
-				issDesc, err := ParseIssueTemplate(descBytes)
+				issDesc, err := ParseTaskContent(descBytes)
 				if err != nil {
 					return err
 				}
@@ -172,9 +194,9 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 					Payload: &GitLabWebhook{
 						Webhook: IssueHandle,
 						Payload: &IssuePayload{
-							Issue:  &i.ObjectAttr,
-							Action: issueActionMap[i.ObjectAttr.Action],
-							Desc:   issContent,
+							Issue:   &i.ObjectAttr,
+							Action:  issueActionMap[i.ObjectAttr.Action],
+							Content: issContent,
 						},
 					},
 				})
@@ -221,7 +243,7 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 		utils.DebugPrint("ParseError", err.Error())
 		return err
 	}
-	issDesc, err := ParseIssueTemplate(descBytes)
+	issDesc, err := ParseTaskContent(descBytes)
 	if err != nil {
 		return err
 	}
@@ -234,8 +256,8 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 			Payload: &CommentPayload{
 				Action: CommentApprovalPassed,
 				IssuePayload: &IssuePayload{
-					Issue: &c.Issue,
-					Desc:  issDesc,
+					Issue:   &c.Issue,
+					Content: issDesc,
 				},
 			},
 		},
@@ -318,6 +340,11 @@ func (c *CommentWebhook) handleOnlineExcute() error {
 		robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
 		return utils.GenerateError("AssigneerNotMatch", robotMsg)
 	}
+	gitlabSrv := NewGitLabTaskService(WithGitLabTaskProjectID(c.Project.ID),
+		WithGitLabTaskIssueIID(c.Issue.IID),
+		WithGitLabTaskUserID(c.User.ID),
+	)
+	gitlabSrv.ParseIssue()
 	// 解析指定Issue
 	iss, err := glab.IssueView(c.Project.ID, c.Issue.IID)
 	if err != nil {
@@ -334,7 +361,7 @@ func (c *CommentWebhook) handleOnlineExcute() error {
 		utils.DebugPrint("ParseError", err.Error())
 		return err
 	}
-	issContent, err := ParseIssueTemplate(descBytes)
+	issContent, err := ParseTaskContent(descBytes)
 	if err != nil {
 		return err
 	}
@@ -347,8 +374,8 @@ func (c *CommentWebhook) handleOnlineExcute() error {
 			Payload: &CommentPayload{
 				Action: CommentOnlineExcute,
 				IssuePayload: &IssuePayload{
-					Issue: &c.Issue,
-					Desc:  issContent,
+					Issue:   &c.Issue,
+					Content: issContent,
 				},
 			},
 		},
@@ -376,45 +403,9 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	}
 }
 
-// 问题内容
-type SQLIssueTemplate struct {
-	Action    string `json:"action"`
-	Remark    string `json:"remark,omitempty"`
-	Env       string `json:"env"`
-	Statement string `json:"statement"`
-	DBName    string `json:"db_name"`
-	Service   string `json:"service"`
-	// Deadline int  `json:"deadline,omitempty"`
-	LongTime       bool `json:"long_time"`
-	IsExport       bool `json:"is_export"`
-	IsSoarAnalysis bool `json:"is_soar"` // 是否需要Soar检测获取SQL建议
-	IsAiAnalysis   bool `json:"is_analysis"`
-}
-
-// 集成Webhook结构体
-type GitLabWebhook struct {
-	Webhook string // issue、comment
-	Payload any
-}
-
-// 集成批准、驳回两大数据的结构体
-type IssuePayload struct {
-	Action int // open、update
-	Issue  *clients.Issue
-	Desc   *SQLIssueTemplate
-}
-
-// 评论结构体
-type CommentPayload struct {
-	Reason string
-	Action int // approval、reject、online
-	// CommentDesc  *CommentWebhook
-	IssuePayload *IssuePayload
-}
-
 // 反序列化
-func ParseIssueTemplate(descContent []byte) (*SQLIssueTemplate, error) {
-	var content SQLIssueTemplate
+func ParseTaskContent(descContent []byte) (*dto.IssueTaskContent, error) {
+	var content dto.IssueTaskContent
 	err := json.Unmarshal(descContent, &content)
 	if err != nil {
 		var syntaxErr *json.SyntaxError
