@@ -1,9 +1,5 @@
 package common
 
-import (
-	"sql_demo/internal/utils"
-)
-
 type Pagniation struct {
 	Page       int `json:"page"`
 	PageSize   int `json:"page_size"`
@@ -15,11 +11,11 @@ type Pagniation struct {
 
 // 新建分页器，会按照Page和PageSize初始化Offset
 func NewPaginatior(page, pageSize int) (Pagniation, error) {
-	if page < 1 {
-		return Pagniation{}, utils.GenerateError("PaginatiorErr", "Page must be >= 1")
+	if page <= 0 {
+		page = 1
 	}
-	if pageSize < 1 {
-		return Pagniation{}, utils.GenerateError("PaginatiorErr", "PageSize must be >= 1")
+	if pageSize <= 0 {
+		pageSize = 20
 	}
 	return Pagniation{
 		Page:     page,

@@ -134,7 +134,7 @@ func InitBaseRoutes() {
 		rgAuth.POST("/sql-task/create", SQLTaskCreate)
 		rgAuth.PUT("/sql-task/update", SQLTaskUpdate)
 		rgAuth.DELETE("/sql-task/delete", SQLTaskDelete)
-		rgAuth.POST("/sql-task/batch-delete", SQLTaskDelete)
+		rgAuth.POST("/sql-task/batch-delete", SQLTaskBatchDelete)
 		rgAuth.GET("/sql-task/list", SQLTaskList)
 		rgAuth.POST("/sql-task/handle", SQLTaskHandle)
 
@@ -143,13 +143,13 @@ func InitBaseRoutes() {
 
 		// 配置管理
 		rgAuth.POST("/env/create", CreateEnvInfo)
-		rgAuth.POST("/env/list", GetEnvConfigList)
+		rgAuth.GET("/env/list", GetEnvConfigList)
 		rgAuth.GET("/env/name/list", GetEnvNameList)
 		rgAuth.PUT("/env/update/:uid", UpdateEnvInfo)
 		rgAuth.DELETE("/env/delete/:uid", DeleteEnvInfo)
 
 		rgAuth.POST("/sources/create", CreateDBInfo)
-		rgAuth.POST("/sources/list", GetDBConfig)
+		rgAuth.GET("/sources/list", GetDBConfig)
 		rgAuth.PUT("/sources/update/:uid", UpdateDBInfo)
 		rgAuth.DELETE("/sources/delete/:uid", DeleteDBInfo)
 		rgAuth.POST("/sources/connection/test", SourceConnTest)
@@ -302,14 +302,13 @@ func SQLTaskUpdate(ctx *gin.Context) {
 }
 
 // @Summary		删除SQLTask
-// @Description	删除SQLTask（可单删可批量）
+// @Description	删除SQLTask
 // @Tags			SQLTask
 // @Produce		json
 // @Param			business_ref	query		string	true	"busniess ref"
 // @Success		200				{object}	common.JSONResponse{data=TicketResponse}
 // @Failure		500				{object}	common.JSONResponse
 // @Router			/sql-task/delete [delete]
-// @Router			/sql-task/delete [post]
 // @Security		ApiKeyAuth
 func SQLTaskDelete(ctx *gin.Context) {
 	userIdStr := ctx.GetString("user_id")
@@ -338,6 +337,22 @@ func SQLTaskDelete(ctx *gin.Context) {
 			BusinessRef: bussRefVal,
 		}, "Delete Ticket Success")
 	}
+}
+
+// @Summary		批量删除SQLTask
+// @Description	批量删除SQLTask
+// @Tags			SQLTask
+// @Produce		json
+// @Param			business_ref	query		[]string	true	"busniess ref"
+// @Success		200				{object}	common.JSONResponse{data=TicketResponse}
+// @Failure		500				{object}	common.JSONResponse
+// @Router			/sql-task/delete [post]
+// @Security		ApiKeyAuth
+func SQLTaskBatchDelete(ctx *gin.Context) {
+	// userIdStr := ctx.GetString("user_id")
+	fmt.Println("批量删除,暂不实现")
+	// 返回sourceRef以及idempKey
+	common.SuccessResp(ctx, nil, "批量删除,暂不实现")
 }
 
 // @Summary		获取预检结果
@@ -469,42 +484,33 @@ func SQLTaskHandle(ctx *gin.Context) {
 // @Produce		json
 // @Param			page		query		int		false	"page number"
 // @Param			page_size	query		int		false	"page size"
-// @Param			status		query		string	false	"status of sql task"
+// @Param			keyword		query		string	false	"keyword search"
 // @Success		200			{object}	common.JSONResponse{data=TicketDTO}
 // @Failure		500			{object}	common.JSONResponse
-// @Router			/sql-task/handle [get]
+// @Router			/sql-task/list [get]
 //
 // @Security		ApiKeyAuth
 func SQLTaskList(ctx *gin.Context) {
-	// pageQuery := ctx.Query("page")
-	// pageSizeQuery := ctx.Query("page_size")
-	// taskStatusQuery := ctx.Query("status")
 	userIdStr := ctx.GetString("user_id")
-	type RDTO struct {
-		Page     int    `form:"page,default=1"`
-		PageSize int    `form:"page_size,default=10"`
-		Status   string `form:"status"`
-	}
-	var rdto RDTO
+	var rdto dto.SearchRequest
 	err := ctx.ShouldBindQuery(&rdto)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
+	// qStatus := ctx.Query("status")
 
 	pagni, err := common.NewPaginatior(rdto.Page, rdto.PageSize)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-
 	apiTask := services.NewAPITaskService(
 		services.WithAPITaskUserID(userIdStr),
 	)
+
 	// TODO: 补充搜索条件
-	result, err := apiTask.Get(dto.TicketDTO{
-		Status: rdto.Status,
-	}, &pagni)
+	result, err := apiTask.Get(rdto.Keyword, &pagni)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
@@ -1001,18 +1007,16 @@ type QueryEnvSwagger struct {
 	Desc    string   `json:"description"`
 }
 
-// 创建数据库连接信息
-//
-//	@Summary		Create a Env Info
-//	@Description	创建数据库环境信息
-//	@Security		ApiKeyAuth
-//	@Tags			Env
-//	@Accept			application/json
-//	@Produce		application/json
-//	@Param			env_body	body		QueryEnvDTO	true	"Env Body"
-//	@Success		200			{object}	common.JSONResponse{data=nil}
-//	@Failure		500			{object}	common.JSONResponse
-//	@Router			/env/create [post]
+// @Summary		创建执行环境信息
+// @Description	创建执行环境信息
+// @Tags			Env
+// @Accept			application/json
+// @Produce		application/json
+// @Param			env_body	body		QueryEnvDTO	true	"执行环境内容"
+// @Success		200			{object}	common.JSONResponse
+// @Failure		500			{object}	common.JSONResponse
+// @Router			/env/create [post]
+// @Security		ApiKeyAuth
 func CreateEnvInfo(ctx *gin.Context) {
 	var envInfo dto.QueryEnvDTO
 	err := ctx.ShouldBindJSON(&envInfo)
@@ -1021,12 +1025,9 @@ func CreateEnvInfo(ctx *gin.Context) {
 		return
 	}
 	// 表单校验
-	if envInfo.Name == "" {
-		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("ValidateError", "data is not null").Error())
-		return
-	}
-	if len(envInfo.Name) < 2 || len(envInfo.Name) > 16 {
-		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("ValidateError", "data length should be 2 to 16").Error())
+	err = envInfo.Validate()
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("ValidateError", err.Error()).Error())
 		return
 	}
 	srv := services.NewEnvService()
@@ -1038,16 +1039,19 @@ func CreateEnvInfo(ctx *gin.Context) {
 	common.SuccessResp(ctx, nil, "create success")
 }
 
-// 获取全部数据源信息
+// @Summary		获取全部数据源配置
+// @Description	获取全部数据源信息
+// @Tags			Sources
+// @Produce		application/json
+// @Param			page		query		string	false	"页码"
+// @Param			page_size	query		string	false	"页大小"
+// @Success		200	{object}	common.JSONResponse{data=map[string][]QueryDataBaseDTO}
+// @Failure		500	{object}	common.JSONResponse
+// @Router			/sources/list [get]
+// @Security		ApiKeyAuth
 func GetDBConfig(ctx *gin.Context) {
-	// RDTO: Request DTO ,主要接收前端的请求体数据，将其反序列化
-	type RDTO struct {
-		Page     int `json:"page"`
-		PageSize int `json:"page_size"`
-		// Data     QueryEnvDTO `json:"conds"`
-	}
-	var rdto RDTO
-	err := ctx.ShouldBindJSON(&rdto)
+	var rdto dto.PagniationDTO
+	err := ctx.ShouldBindQuery(&rdto)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
@@ -1068,15 +1072,23 @@ func GetDBConfig(ctx *gin.Context) {
 	common.SuccessResp(ctx, result, "get db all data success", common.WithPagination(pagni))
 }
 
-// 健康检查-数据源(alphe)
+type HealthCheck struct {
+	Env     string `json:"env_name"`
+	Service string `json:"service"`
+	Status  int    `json:"status"`
+	Msg     string `json:"msg"`
+}
+
+// @Summary		数据源健康检查
+// @Description	健康检查-数据源(全部)
+// @Tags			Sources
+// @Produce		application/json
+// @Success		200	{object}	common.JSONResponse{data=[]HealthCheck}
+// @Failure		500	{object}	common.JSONResponse
+// @Router			/sources/health-check [get]
+// @Security		ApiKeyAuth
 func HealthCheckSources(ctx *gin.Context) {
 	pool := dbo.GetDBPoolManager()
-	type HealthCheck struct {
-		Env     string `json:"env_name"`
-		Service string `json:"service"`
-		Status  int    `json:"status"`
-		Msg     string `json:"msg"`
-	}
 	result := make([]HealthCheck, 0)
 	for env, services := range pool.Pool {
 		for srv, dbIst := range services {
@@ -1091,10 +1103,17 @@ func HealthCheckSources(ctx *gin.Context) {
 			})
 		}
 	}
-	common.SuccessResp(ctx, result, "ok")
+	common.SuccessResp(ctx, result, "OK")
 }
 
-// 获取全部数据源信息
+// @Summary		搜索数据源信息
+// @Description	关键字来搜索数据源配置
+// @Tags			Sources
+// @Produce		application/json
+// @Success		200	{object}	common.JSONResponse{data=map[string][]QueryDataBaseDTO}
+// @Failure		500	{object}	common.JSONResponse
+// @Router			/sources/search [get]
+// @Security		ApiKeyAuth
 func SearchDBConfig(ctx *gin.Context) {
 	// 依靠URL上的Params作为参数
 	kw := ctx.Query("keyword")
@@ -1126,6 +1145,15 @@ func SearchDBConfig(ctx *gin.Context) {
 	common.SuccessResp(ctx, result, "search db configs success", common.WithPagination(pagni))
 }
 
+// @Summary		数据源配置连接测试
+// @Description	数据源配置连接测试
+// @Tags			Sources
+// @Produce		application/json
+// @Param			connection_body		body		dbo.ConnectInfo 	true	"连接配置信息"
+// @Success		200	{object}	common.JSONResponse{data=string}
+// @Failure		500	{object}	common.JSONResponse
+// @Router			/sources/connection/test [post]
+// @Security		ApiKeyAuth
 func SourceConnTest(ctx *gin.Context) {
 	var connInfo dbo.ConnectInfo
 	ctx.ShouldBindJSON(&connInfo)
@@ -1137,23 +1165,33 @@ func SourceConnTest(ctx *gin.Context) {
 	common.SuccessResp(ctx, "OK", "source connection is OK")
 }
 
-// 仅获取Env名字的函数
+// @Summary		获取所有执行环境列表
+// @Description	获取所有执行环境名字列表
+// @Tags			Env
+// @Produce		application/json
+// @Success		200	{object}	common.JSONResponse{data=[]string}
+// @Failure		500	{object}	common.JSONResponse
+// @Router			/env/name/list [get]
+// @Security		ApiKeyAuth
 func GetEnvNameList(ctx *gin.Context) {
 	env := services.NewEnvService()
 	result := env.NameListWithPool()
 	common.SuccessResp(ctx, result, "get env name list success")
 }
 
-// 获取全部Env信息
+// @Summary		获取所有执行环境配置
+// @Description	获取所有执行环境配置
+// @Tags			Env
+// @Produce		application/json
+// @Param			page		query		string	false	"页码"
+// @Param			page_size	query		string	false	"页大小"
+// @Success		200			{object}	common.JSONResponse{data=[]QueryEnvDTO}
+// @Failure		500			{object}	common.JSONResponse
+// @Router			/env/list [get]
+// @Security		ApiKeyAuth
 func GetEnvConfigList(ctx *gin.Context) {
-	// RDTO: Request DTO ,主要接收前端的请求体数据，将其反序列化
-	type RDTO struct {
-		Page     int             `json:"page"`
-		PageSize int             `json:"page_size"`
-		Data     dto.QueryEnvDTO `json:"conds"`
-	}
-	var rdto RDTO
-	err := ctx.ShouldBindJSON(&rdto)
+	var rdto dto.PagniationDTO
+	err := ctx.ShouldBindQuery(&rdto)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
@@ -1165,7 +1203,7 @@ func GetEnvConfigList(ctx *gin.Context) {
 	}
 
 	env := services.NewEnvService()
-	result, err := env.Get(rdto.Data, &pagni)
+	result, err := env.Get(dto.QueryEnvDTO{}, &pagni)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
@@ -1174,6 +1212,15 @@ func GetEnvConfigList(ctx *gin.Context) {
 	common.SuccessResp(ctx, result, "get env data success", common.WithPagination(pagni))
 }
 
+// @Summary		更新单个执行环境配置
+// @Description	更新单个执行环境配置
+// @Tags			Env
+// @Produce		application/json
+// @Param			request_body	body		QueryEnvDTO	true	"更新请求体"
+// @Success		200				{object}	common.JSONResponse{data=string}
+// @Failure		500				{object}	common.JSONResponse
+// @Router			/env/update/:uid [put]
+// @Security		ApiKeyAuth
 func UpdateEnvInfo(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 	if uid == "" {
@@ -1189,12 +1236,24 @@ func UpdateEnvInfo(ctx *gin.Context) {
 	}
 	envInfo.UID = uid
 	env := services.NewEnvService()
-	result := env.UpdateInfo(dto.QueryEnvDTO{
+	err = env.UpdateInfo(dto.QueryEnvDTO{
 		UID: uid,
 	}, envInfo)
-	common.SuccessResp(ctx, result, "update env Success")
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+	}
+	common.SuccessResp(ctx, uid, "update env Success")
 }
 
+// @Summary		更新单个数据源配置
+// @Description	更新单个数据源配置
+// @Tags			Sources
+// @Produce		application/json
+// @Param			request_body	body		QueryDataBaseDTO	true	"更新请求体"
+// @Success		200				{object}	common.JSONResponse{data=string}
+// @Failure		500				{object}	common.JSONResponse
+// @Router			/sources/update/:uid [put]
+// @Security		ApiKeyAuth
 func UpdateDBInfo(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 	if uid == "" {
@@ -1221,9 +1280,17 @@ func UpdateDBInfo(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	common.SuccessResp(ctx, nil, "update db config success")
+	common.SuccessResp(ctx, uid, "update db config success")
 }
 
+// @Summary		删除单个执行环境配置
+// @Description	删除单个执行环境配置
+// @Tags			Env
+// @Produce		application/json
+// @Success		200	{object}	common.JSONResponse{data=string}
+// @Failure		500	{object}	common.JSONResponse
+// @Router			/env/delete/:uid [put]
+// @Security		ApiKeyAuth
 func DeleteEnvInfo(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 	if uid == "" {
@@ -1234,10 +1301,21 @@ func DeleteEnvInfo(ctx *gin.Context) {
 	var envInfo dto.QueryEnvDTO
 	envInfo.UID = uid
 	env := services.NewEnvService()
-	result := env.Delete(envInfo)
-	common.SuccessResp(ctx, result, "delete env Success")
+	err := env.Delete(envInfo)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+	}
+	common.SuccessResp(ctx, uid, "delete env Success")
 }
 
+// @Summary		删除单个数据源配置
+// @Description	删除单个数据源配置
+// @Tags			Sources
+// @Produce		application/json
+// @Success		200	{object}	common.JSONResponse{data=string}
+// @Failure		500	{object}	common.JSONResponse
+// @Router			/sources/delete/:uid [put]
+// @Security		ApiKeyAuth
 func DeleteDBInfo(ctx *gin.Context) {
 	uid := ctx.Param("uid")
 	if uid == "" {
@@ -1252,7 +1330,7 @@ func DeleteDBInfo(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, "request body is error: "+err.Error())
 		return
 	}
-	common.SuccessResp(ctx, nil, "delete db config success")
+	common.SuccessResp(ctx, uid, "delete db config success")
 }
 
 // 审计日志

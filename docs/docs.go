@@ -31,7 +31,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "创建数据库环境信息",
+                "description": "创建执行环境信息",
                 "consumes": [
                     "application/json"
                 ],
@@ -41,11 +41,202 @@ const docTemplate = `{
                 "tags": [
                     "Env"
                 ],
-                "summary": "Create a Env Info",
+                "summary": "创建执行环境信息",
                 "parameters": [
                     {
-                        "description": "Env Body",
+                        "description": "执行环境内容",
                         "name": "env_body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.QueryEnvDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/env/delete/:uid": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "删除单个执行环境配置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Env"
+                ],
+                "summary": "删除单个执行环境配置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/env/list": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取所有执行环境配置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Env"
+                ],
+                "summary": "获取所有执行环境配置",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "页大小",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/api.QueryEnvDTO"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/env/name/list": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取所有执行环境名字列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Env"
+                ],
+                "summary": "获取所有执行环境列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/env/update/:uid": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "更新单个执行环境配置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Env"
+                ],
+                "summary": "更新单个执行环境配置",
+                "parameters": [
+                    {
+                        "description": "更新请求体",
+                        "name": "request_body",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -65,7 +256,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "type": "object"
+                                            "type": "string"
                                         }
                                     }
                                 }
@@ -334,6 +525,315 @@ const docTemplate = `{
                 }
             }
         },
+        "/sources/connection/test": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "数据源配置连接测试",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "数据源配置连接测试",
+                "parameters": [
+                    {
+                        "description": "连接配置信息",
+                        "name": "connection_body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dbo.ConnectInfo"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sources/delete/:uid": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "删除单个数据源配置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "删除单个数据源配置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sources/health-check": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "健康检查-数据源(全部)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "数据源健康检查",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/api.HealthCheck"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sources/list": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取全部数据源信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "获取全部数据源配置",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "页大小",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "array",
+                                                "items": {
+                                                    "$ref": "#/definitions/api.QueryDataBaseDTO"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sources/search": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "关键字来搜索数据源配置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "搜索数据源信息",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "array",
+                                                "items": {
+                                                    "$ref": "#/definitions/api.QueryDataBaseDTO"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sources/update/:uid": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "更新单个数据源配置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "更新单个数据源配置",
+                "parameters": [
+                    {
+                        "description": "更新请求体",
+                        "name": "request_body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.QueryDataBaseDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/sql-task/create": {
             "post": {
                 "security": [
@@ -395,17 +895,21 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "删除SQLTask（可单删可批量）",
+                "description": "批量删除SQLTask",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "SQLTask"
                 ],
-                "summary": "删除SQLTask",
+                "summary": "批量删除SQLTask",
                 "parameters": [
                     {
-                        "type": "string",
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
                         "description": "busniess ref",
                         "name": "business_ref",
                         "in": "query",
@@ -445,7 +949,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "删除SQLTask（可单删可批量）",
+                "description": "删除SQLTask",
                 "produces": [
                     "application/json"
                 ],
@@ -491,67 +995,6 @@ const docTemplate = `{
             }
         },
         "/sql-task/handle": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "获取任务列表(具备分页)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "SQLTask"
-                ],
-                "summary": "获取任务列表",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "page number",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "page size",
-                        "name": "page_size",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "status of sql task",
-                        "name": "status",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/common.JSONResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/api.TicketDTO"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/common.JSONResponse"
-                        }
-                    }
-                }
-            },
             "post": {
                 "security": [
                     {
@@ -590,6 +1033,69 @@ const docTemplate = `{
                                     "properties": {
                                         "data": {
                                             "$ref": "#/definitions/api.SQLTaskResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/common.JSONResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sql-task/list": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取任务列表(具备分页)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SQLTask"
+                ],
+                "summary": "获取任务列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page size",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "keyword search",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/common.JSONResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/api.TicketDTO"
                                         }
                                     }
                                 }
@@ -668,8 +1174,87 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.HealthCheck": {
+            "type": "object",
+            "properties": {
+                "env_name": {
+                    "type": "string"
+                },
+                "msg": {
+                    "type": "string"
+                },
+                "service": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.QueryDataBaseDTO": {
+            "type": "object",
+            "properties": {
+                "confirm_pwd": {
+                    "description": "二次验证新密码",
+                    "type": "string"
+                },
+                "connection": {
+                    "description": "连接信息",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dbo.ConnectInfo"
+                        }
+                    ]
+                },
+                "create_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "env_id": {
+                    "description": "关键指定EnvID",
+                    "type": "integer"
+                },
+                "env_name": {
+                    "type": "string"
+                },
+                "exclude_db": {
+                    "description": "排除的数据库名",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "exclude_table": {
+                    "description": "排除的数据表名",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "is_write": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "service": {
+                    "type": "string"
+                },
+                "uid": {
+                    "type": "string"
+                },
+                "update_at": {
+                    "type": "string"
+                }
+            }
+        },
         "api.QueryEnvDTO": {
             "type": "object",
+            "required": [
+                "name"
+            ],
             "properties": {
                 "create_at": {
                     "type": "string"
@@ -681,7 +1266,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "name": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 16,
+                    "minLength": 2
                 },
                 "tag": {
                     "type": "array",
@@ -905,6 +1492,32 @@ const docTemplate = `{
                 }
             }
         },
+        "dbo.ConnectInfo": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "idle_time": {
+                    "type": "integer"
+                },
+                "max_conn": {
+                    "type": "integer"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
+                },
+                "tls": {
+                    "type": "boolean"
+                },
+                "user": {
+                    "type": "string"
+                }
+            }
+        },
         "dbo.SQLResult": {
             "type": "object",
             "properties": {
@@ -912,7 +1525,6 @@ const docTemplate = `{
                     "description": "错误信息",
                     "type": "string"
                 },
-                "errrrr": {},
                 "handleTime": {
                     "description": "处理结果集的时间",
                     "type": "number",
@@ -921,11 +1533,6 @@ const docTemplate = `{
                 "id": {
                     "description": "task id",
                     "type": "string"
-                },
-                "lastId": {
-                    "description": "用于Excute的最新ID",
-                    "type": "integer",
-                    "format": "int64"
                 },
                 "queryTime": {
                     "description": "查询花费的时间",

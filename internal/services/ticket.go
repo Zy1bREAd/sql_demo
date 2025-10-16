@@ -193,6 +193,21 @@ func (tk *TicketService) UpdateTaskContent(cond dto.TicketDTO, updateContent dto
 	return nil
 }
 
+// 关键词模糊搜索Ticket内容
+func (tk *TicketService) Search(keyword string, pagni *common.Pagniation) ([]dto.TicketDTO, error) {
+	res, err := tk.DAO.MatchAgainst([]string{
+		"env", "service", "db_name", "statement",
+	}, keyword, "IN BOOLEAN MODE", pagni)
+	if err != nil {
+		return nil, err
+	}
+	searchRes := make([]dto.TicketDTO, len(res))
+	for key, result := range res {
+		searchRes[key] = *tk.toDTOData(result)
+	}
+	return searchRes, nil
+}
+
 // 删除Ticket
 func (tk *TicketService) Delete(cond dto.TicketDTO) error {
 	condORM := tk.toORMData(cond)

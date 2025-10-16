@@ -497,6 +497,7 @@ func (source *QueryDataBase) Find(cond *QueryDataBase, pagni *common.Pagniation)
 	return dbList, nil
 }
 
+// TODO: 使用全文索引方案代替
 func (source *QueryDataBase) FindByKeyWord(kw string, pagni *common.Pagniation) ([]QueryDataBase, error) {
 	dbConn := HaveSelfDB().GetConn()
 	tx := dbConn.Model(&QueryDataBase{}).Preload("EnvForKey")
@@ -739,7 +740,7 @@ func (t *Ticket) Finds(cond *Ticket, pagni *common.Pagniation) ([]Ticket, error)
 	}
 	//! 防止无效分页请求(前提是分页器有数据，像初始化时分页器无数据则无需判断)
 	if pagni.Page != 0 && pagni.PageSize != 0 {
-		if (int(total)/pagni.PageSize)+1 <= pagni.Page {
+		if (int(total)/pagni.PageSize)+1 < pagni.Page {
 			return nil, utils.GenerateError("PageErr", "Page must be too big")
 		}
 		tx = tx.Offset(pagni.Offset).Limit(pagni.PageSize)
@@ -748,10 +749,6 @@ func (t *Ticket) Finds(cond *Ticket, pagni *common.Pagniation) ([]Ticket, error)
 	findRes := tx.Find(&tks)
 	if findRes.Error != nil {
 		return nil, utils.GenerateError("TicketFindErr", findRes.Error.Error())
-	}
-	// debug
-	for _, v := range tks {
-		fmt.Println("debug piring2 v.TaskContent", v.TaskContent)
 	}
 	return tks, nil
 }
@@ -927,6 +924,44 @@ func (t *Ticket) StatsCount() (map[string]int, error) {
 		"failed":         statsCount.FailedCount,
 		"total":          statsCount.TotalCount,
 	}, nil
+}
+
+// 原生SQL语句 + Find实现,关键词查找TaskContent
+func (t *Ticket) MatchAgainst(cols []string, q string, fullIdxMode string, pagni *common.Pagniation) ([]Ticket, error) {
+	var tks []Ticket
+	var tksContentID []string
+	dbConn := HaveSelfDB().GetConn()
+	matchCols := strings.Join(cols, ",")
+	rawQ := fmt.Sprintf("MATCH(%s) AGAINST(? %s)", matchCols, fullIdxMode)
+	// 布尔模式启用通配符匹配关键词
+	if fullIdxMode == "IN BOOLEAN MODE" {
+		q += "*"
+	}
+	if err := dbConn.Model(&TaskContent{}).Select("ID").Where(rawQ, q).Find(&tksContentID).Error; err != nil {
+		utils.ErrorPrint("TestError", err.Error())
+		return nil, err
+	}
+
+	tx := dbConn.Model(&Ticket{}).Where("task_content_id IN ?", tksContentID).Preload("TaskContent").Preload("UserForKey")
+	// tx := dbConn.Model(&TaskContent{}).Where(rawQ, q).Preload("TaskContent").Preload("UserForKey")
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, err
+	}
+	//! 防止无效分页请求(前提是分页器有数据，像初始化时分页器无数据则无需判断)
+	if pagni.Page != 0 && pagni.PageSize != 0 {
+		if (int(total)/pagni.PageSize)+1 < pagni.Page {
+			return nil, utils.GenerateError("PageErr", "Page must be too big")
+		}
+		tx = tx.Offset(pagni.Offset).Limit(pagni.PageSize)
+	}
+	pagni.SetTotal(int(total))
+
+	err := tx.Find(&tks).Error
+	if err != nil {
+		return nil, err
+	}
+	return tks, nil
 }
 
 // 查找数据

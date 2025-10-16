@@ -196,11 +196,19 @@ func (srv *APITaskService) Delete() error {
 	return nil
 }
 
-// 更新Ticket状态以及Task Contente
-func (srv *APITaskService) Get(cond dto.TicketDTO, pagni *common.Pagniation) ([]dto.TicketDTO, error) {
+// 关键词查找还是全部获取数据
+func (srv *APITaskService) Get(keyword string, pagni *common.Pagniation) ([]dto.TicketDTO, error) {
 	tk := NewTicketService()
-	return tk.Get(cond, pagni)
+	if keyword == "" {
+		return tk.Get(dto.TicketDTO{}, pagni)
+	}
+	return tk.Search(keyword, pagni)
 }
+
+// func (srv *APITaskService) Search(keyword string, pagni *common.Pagniation) ([]dto.TicketDTO, error) {
+// 	tk := NewTicketService()
+// 	return tk.Search(keyword)
+// }
 
 func (srv *APITaskService) getTicketID() int64 {
 	tk := NewTicketService()
@@ -546,11 +554,6 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 						recu(f.SubFrom)
 					}
 
-					// 2. 检查是否可写
-					if !ist.IsWrite && stmtVal.Action != "select" {
-						recuErrCh <- utils.GenerateError("NoPermission", "Your DB Instance is no permission")
-						return
-					}
 				}
 			}
 			// 2. 检查是否可写

@@ -85,9 +85,10 @@ func (env *EnvSerivce) Get(cond dto.QueryEnvDTO, pagni *common.Pagniation) ([]dt
 
 	// 格式化
 	DTOResults := make([]dto.QueryEnvDTO, len(envRes))
-	for _, result := range envRes {
+	for key, result := range envRes {
 		data := env.toDTOData(result)
-		DTOResults = append(DTOResults, *data)
+		// DTOResults = append(DTOResults, *data)
+		DTOResults[key] = *data
 	}
 	return DTOResults, nil
 }

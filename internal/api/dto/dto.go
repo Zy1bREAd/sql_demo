@@ -24,13 +24,23 @@ type QueryDataBaseDTO struct {
 }
 
 type QueryEnvDTO struct {
-	IsWrite  bool     `json:"is_write"`
-	UID      string   `json:"uid"`
-	Name     string   `json:"name"`
 	Tag      []string `json:"tag"`
+	UID      string   `json:"uid"`
+	Name     string   `json:"name" validate:"required,min=2,max=16"`
 	Desc     string   `json:"description"`
 	CreateAt string   `json:"create_at"`
 	UpdateAt string   `json:"update_at"`
+	IsWrite  bool     `json:"is_write"`
+}
+
+// 校验
+func (dto QueryEnvDTO) Validate() error {
+	va := utils.NewValidator()
+	err := va.Struct(&dto)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type AuditRecordDTO struct {
@@ -182,4 +192,14 @@ type ExportResultRequest struct {
 	TicketID  int64  `json:"ticket_id" query:"ticket_id"`
 	ResultIdx int    `json:"result_idx" query:"result_idx"` // 用于仅导出指定结果集的索引（前端传递）
 	IsOnly    bool   `json:"is_only" query:"is_only"`
+}
+
+type PagniationDTO struct {
+	Page     int `json:"page" form:"page" default:"1"`
+	PageSize int `json:"page_size" form:"page_size" default:"20"`
+}
+
+type SearchRequest struct {
+	PagniationDTO
+	Keyword string `form:"keyword" binding:"required"`
 }

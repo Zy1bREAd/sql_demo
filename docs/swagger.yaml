@@ -1,5 +1,55 @@
 basePath: /api/v1
 definitions:
+  api.HealthCheck:
+    properties:
+      env_name:
+        type: string
+      msg:
+        type: string
+      service:
+        type: string
+      status:
+        type: integer
+    type: object
+  api.QueryDataBaseDTO:
+    properties:
+      confirm_pwd:
+        description: 二次验证新密码
+        type: string
+      connection:
+        allOf:
+        - $ref: '#/definitions/dbo.ConnectInfo'
+        description: 连接信息
+      create_at:
+        type: string
+      description:
+        type: string
+      env_id:
+        description: 关键指定EnvID
+        type: integer
+      env_name:
+        type: string
+      exclude_db:
+        description: 排除的数据库名
+        items:
+          type: string
+        type: array
+      exclude_table:
+        description: 排除的数据表名
+        items:
+          type: string
+        type: array
+      is_write:
+        type: boolean
+      name:
+        type: string
+      service:
+        type: string
+      uid:
+        type: string
+      update_at:
+        type: string
+    type: object
   api.QueryEnvDTO:
     properties:
       create_at:
@@ -9,6 +59,8 @@ definitions:
       is_write:
         type: boolean
       name:
+        maxLength: 16
+        minLength: 2
         type: string
       tag:
         items:
@@ -18,6 +70,8 @@ definitions:
         type: string
       update_at:
         type: string
+    required:
+    - name
     type: object
   api.SQLResultGroupDTO:
     properties:
@@ -160,12 +214,28 @@ definitions:
       total_pages:
         type: integer
     type: object
+  dbo.ConnectInfo:
+    properties:
+      host:
+        type: string
+      idle_time:
+        type: integer
+      max_conn:
+        type: integer
+      password:
+        type: string
+      port:
+        type: string
+      tls:
+        type: boolean
+      user:
+        type: string
+    type: object
   dbo.SQLResult:
     properties:
       errMsg:
         description: 错误信息
         type: string
-      errrrr: {}
       handleTime:
         description: 处理结果集的时间
         format: float64
@@ -173,10 +243,6 @@ definitions:
       id:
         description: task id
         type: string
-      lastId:
-        description: 用于Excute的最新ID
-        format: int64
-        type: integer
       queryTime:
         description: 查询花费的时间
         format: float64
@@ -212,11 +278,122 @@ paths:
     post:
       consumes:
       - application/json
-      description: 创建数据库环境信息
+      description: 创建执行环境信息
       parameters:
-      - description: Env Body
+      - description: 执行环境内容
         in: body
         name: env_body
+        required: true
+        schema:
+          $ref: '#/definitions/api.QueryEnvDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 创建执行环境信息
+      tags:
+      - Env
+  /env/delete/:uid:
+    put:
+      description: 删除单个执行环境配置
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 删除单个执行环境配置
+      tags:
+      - Env
+  /env/list:
+    get:
+      description: 获取所有执行环境配置
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: string
+      - description: 页大小
+        in: query
+        name: page_size
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/api.QueryEnvDTO'
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 获取所有执行环境配置
+      tags:
+      - Env
+  /env/name/list:
+    get:
+      description: 获取所有执行环境名字列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  items:
+                    type: string
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 获取所有执行环境列表
+      tags:
+      - Env
+  /env/update/:uid:
+    put:
+      description: 更新单个执行环境配置
+      parameters:
+      - description: 更新请求体
+        in: body
+        name: request_body
         required: true
         schema:
           $ref: '#/definitions/api.QueryEnvDTO'
@@ -230,7 +407,7 @@ paths:
             - $ref: '#/definitions/common.JSONResponse'
             - properties:
                 data:
-                  type: object
+                  type: string
               type: object
         "500":
           description: Internal Server Error
@@ -238,7 +415,7 @@ paths:
             $ref: '#/definitions/common.JSONResponse'
       security:
       - ApiKeyAuth: []
-      summary: Create a Env Info
+      summary: 更新单个执行环境配置
       tags:
       - Env
   /pre-check/details:
@@ -397,6 +574,183 @@ paths:
       summary: 输出临时结果集
       tags:
       - Result
+  /sources/connection/test:
+    post:
+      description: 数据源配置连接测试
+      parameters:
+      - description: 连接配置信息
+        in: body
+        name: connection_body
+        required: true
+        schema:
+          $ref: '#/definitions/dbo.ConnectInfo'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 数据源配置连接测试
+      tags:
+      - Sources
+  /sources/delete/:uid:
+    put:
+      description: 删除单个数据源配置
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 删除单个数据源配置
+      tags:
+      - Sources
+  /sources/health-check:
+    get:
+      description: 健康检查-数据源(全部)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/api.HealthCheck'
+                  type: array
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 数据源健康检查
+      tags:
+      - Sources
+  /sources/list:
+    get:
+      description: 获取全部数据源信息
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: string
+      - description: 页大小
+        in: query
+        name: page_size
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  additionalProperties:
+                    items:
+                      $ref: '#/definitions/api.QueryDataBaseDTO'
+                    type: array
+                  type: object
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 获取全部数据源配置
+      tags:
+      - Sources
+  /sources/search:
+    get:
+      description: 关键字来搜索数据源配置
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  additionalProperties:
+                    items:
+                      $ref: '#/definitions/api.QueryDataBaseDTO'
+                    type: array
+                  type: object
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 搜索数据源信息
+      tags:
+      - Sources
+  /sources/update/:uid:
+    put:
+      description: 更新单个数据源配置
+      parameters:
+      - description: 更新请求体
+        in: body
+        name: request_body
+        required: true
+        schema:
+          $ref: '#/definitions/api.QueryDataBaseDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 更新单个数据源配置
+      tags:
+      - Sources
   /sql-task/create:
     post:
       description: 根据JSON内容创建SQL任务
@@ -430,7 +784,7 @@ paths:
       - SQLTask
   /sql-task/delete:
     delete:
-      description: 删除SQLTask（可单删可批量）
+      description: 删除SQLTask
       parameters:
       - description: busniess ref
         in: query
@@ -459,13 +813,16 @@ paths:
       tags:
       - SQLTask
     post:
-      description: 删除SQLTask（可单删可批量）
+      description: 批量删除SQLTask
       parameters:
-      - description: busniess ref
+      - collectionFormat: csv
+        description: busniess ref
         in: query
+        items:
+          type: string
         name: business_ref
         required: true
-        type: string
+        type: array
       produces:
       - application/json
       responses:
@@ -484,46 +841,10 @@ paths:
             $ref: '#/definitions/common.JSONResponse'
       security:
       - ApiKeyAuth: []
-      summary: 删除SQLTask
+      summary: 批量删除SQLTask
       tags:
       - SQLTask
   /sql-task/handle:
-    get:
-      description: 获取任务列表(具备分页)
-      parameters:
-      - description: page number
-        in: query
-        name: page
-        type: integer
-      - description: page size
-        in: query
-        name: page_size
-        type: integer
-      - description: status of sql task
-        in: query
-        name: status
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/common.JSONResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/api.TicketDTO'
-              type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/common.JSONResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 获取任务列表
-      tags:
-      - SQLTask
     post:
       description: 对SQLTask执行操作
       parameters:
@@ -552,6 +873,43 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: 处理SQLTask
+      tags:
+      - SQLTask
+  /sql-task/list:
+    get:
+      description: 获取任务列表(具备分页)
+      parameters:
+      - description: page number
+        in: query
+        name: page
+        type: integer
+      - description: page size
+        in: query
+        name: page_size
+        type: integer
+      - description: keyword search
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/common.JSONResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.TicketDTO'
+              type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/common.JSONResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 获取任务列表
       tags:
       - SQLTask
   /sql-task/update:
