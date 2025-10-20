@@ -34,4 +34,5 @@ type PreCheckResultGroup struct {
 	GID           string
 	TicketID      int64 `json:"-"`
 	IsDoubleCheck bool  `json:"-"` // 首次或第二次检查
+	IsReDone      bool  `json:"-"` // 表示是否重做
 }

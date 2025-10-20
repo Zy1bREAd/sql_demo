@@ -4,7 +4,6 @@ import (
 	"fmt"
 	dto "sql_demo/internal/api/dto"
 	"sql_demo/internal/common"
-	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 )
@@ -147,7 +146,6 @@ func (tk *TicketService) Get(cond dto.TicketDTO, pagni *common.Pagniation) ([]dt
 	for k, result := range tksData {
 		data := tk.toDTOData(result)
 		// DTOResults = append(DTOResults, *data)
-		fmt.Println("debug print eeeename", result.TaskContent.Env)
 		DTOResults[k] = *data
 	}
 	return DTOResults, nil
@@ -221,14 +219,8 @@ func (tk *TicketService) StatusCount() (map[string]int, error) {
 
 // 检查事件payload
 type FristCheckEventV2 struct {
-	// Tasker   TaskService
 	Ref      string // SourceRef 或 BusinessRef
 	Source   int
 	TicketID int64
 	UserID   uint
-}
-
-type DoubleCheckEventV2 struct {
-	FristCheckEventV2
-	FristCheck *core.PreCheckResultGroup
 }

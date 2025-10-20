@@ -321,18 +321,14 @@ func (srv *APITaskService) online(ctx context.Context) error {
 	taskBodyVal, err := srv.getTaskBodyV2(ReExcute{
 		IsReExcute: true,
 		Deadline:   90,
-		Fn:         srv.ReGetTaskBody,
+		Fn:         srv.retryGetTaskBody,
 	})
 	if err != nil {
 		return utils.GenerateError("TaskBodyError", err.Error())
 	}
 
 	//! 上线前二次检查
-	_, err = srv.DoubleCheck(ctx, ReExcute{
-		IsReExcute: true,
-		Deadline:   common.RetryTimeOut,
-		Fn:         srv.ReCheck,
-	})
+	err = srv.doubleCheck(ctx)
 	if err != nil {
 		return err
 	}
@@ -349,7 +345,8 @@ func (srv *APITaskService) online(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	//! 发起sql_query的事件，准备执行SQL
+
+	//! 发起执行SQL_QUERY的事件
 	ep.Produce(event.Event{
 		Type: "sql_query",
 		Payload: &core.QTaskGroupV2{
@@ -422,7 +419,7 @@ func (srv *APITaskService) getTaskBodyV2(redo ReExcute) (dto.SQLTaskRequest, err
 }
 
 // 从数据库重新获取数据，存储回内存。
-func (srv *APITaskService) ReGetTaskBody() {
+func (srv *APITaskService) retryGetTaskBody() {
 	tk := NewTicketService()
 	dataORM := tk.toORMData(dto.TicketDTO{
 		UID: srv.UID,
@@ -451,7 +448,7 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 	taskBodyVal, err := srv.getTaskBodyV2(ReExcute{
 		IsReExcute: true,
 		Deadline:   90,
-		Fn:         srv.ReGetTaskBody,
+		Fn:         srv.retryGetTaskBody,
 	})
 	if err != nil {
 		return utils.GenerateError("TaskBodyError", err.Error())
@@ -486,6 +483,7 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 	}
 	// 启用AI分析
 	if taskBodyVal.IsAiAnalysis {
+		analysisOpts.WithExplain = true
 		analysisOpts.WithAi = true
 		analysisOpts.WithDDL = true
 		analysisOpts.WithSchema = true
@@ -582,9 +580,8 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 	return nil
 }
 
-// 上线前双重检查
-func (srv *APITaskService) DoubleCheck(ctx context.Context, redo ReExcute) (*core.PreCheckResultGroup, error) {
-	var fristCheckVal *core.PreCheckResultGroup
+// 上线前双重检查(支持重做)，返回任务内容
+func (srv *APITaskService) doubleCheck(ctx context.Context) error {
 	doubleCheckVal := &core.PreCheckResultGroup{
 		Data: &core.PreCheckResult{
 			ParsedSQL:       make([]core.SQLForParseV2, 0),
@@ -595,101 +592,63 @@ func (srv *APITaskService) DoubleCheck(ctx context.Context, redo ReExcute) (*cor
 		},
 	}
 
-	// 获取APITask信息
-	val, exist := core.APITaskBodyMap.Get(srv.UID)
-	if !exist {
-		return nil, utils.GenerateError("TaskBodyError", "API Task Body is not exist")
-	}
-	taskBodyVal, ok := val.(dto.SQLTaskRequest)
-	if !ok {
-		return nil, utils.GenerateError("TaskBodyError", "API Task Body type is assert failed")
-	}
-
 	// 更新Ticket信息(正在处理预检)
 	tk := NewTicketService()
 	err := tk.UpdateTicketStats(dto.TicketDTO{
 		BusinessRef: srv.BusinessRef,
 	}, common.DoubleCheckingStatus, common.ApprovalPassedStatus)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	// ! 获取首次预检结果(重试版)
-	val, exist = core.CheckTaskMap.Get(srv.UID)
-	if !exist {
-		if redo.IsReExcute {
-			fmt.Println("涉及重做机制：DoubleCheck")
-			// TODO：再次重新解析SQL
-			redo.Fn()
-			// 同步方式每秒检测是否查询任务完成，来获取结果集
-			ticker := time.NewTicker(time.Duration(time.Second))
-			defer ticker.Stop()
-			// 超时控制
-			timeout, cancel := context.WithTimeout(ctx, time.Duration(redo.Deadline)*time.Second)
-			defer cancel()
-
-		redoLoop:
-			for {
-				select {
-				case <-ticker.C:
-					mapVal, ok := core.CheckTaskMap.Get(srv.UID)
-					if !ok {
-						continue
-					}
-					fristCheckVal, ok = mapVal.(*core.PreCheckResultGroup)
-					if !ok {
-						return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
-					}
-					// 重新预检，再次进入double check
-					err := tk.UpdateTicketStats(dto.TicketDTO{
-						BusinessRef: srv.BusinessRef,
-					}, common.DoubleCheckingStatus, common.PreCheckSuccessStatus)
-					if err != nil {
-						return nil, err
-					}
-					break redoLoop
-				case <-timeout.Done(): // TIMEOUT
-					return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout...")
-				}
-			}
-		} else {
-			return nil, utils.GenerateError("CheckResultError", "不存在该CheckTask数据，也没有开启重做机制")
-		}
-
-	} else {
-		fristCheckVal, ok = val.(*core.PreCheckResultGroup)
-		if !ok {
-			return nil, utils.GenerateError("CheckResultError", "Frist Check Result is not exist")
-		}
+	//! 获取首次预检结果 (如果不存在，则不重新解析)
+	preCheckVal, err := srv.getPreCheckResult(ctx, ReExcute{
+		IsReExcute: true,
+		Deadline:   300,
+		Fn:         srv.ReCheck,
+	})
+	if err != nil {
+		return utils.GenerateError("PreCheckResultError", err.Error())
 	}
+	preCheckVal.IsDoubleCheck = true
 
-	// 仅EXPLAIN解析（用于对比检查）
-	for _, stmt := range fristCheckVal.Data.ParsedSQL {
-		analysisRes, err := stmt.ExplainAnalysis(ctx,
-			taskBodyVal.Env,
-			taskBodyVal.DBName,
-			taskBodyVal.Service,
-			core.AnalysisFnOpts{
-				WithExplain: true,
-			},
-		)
+	if !preCheckVal.IsReDone {
+		// 获取Task Body数据v2 重做机制版
+		taskBodyVal, err := srv.getTaskBodyV2(ReExcute{
+			IsReExcute: true,
+			Deadline:   90,
+			Fn:         srv.retryGetTaskBody,
+		})
 		if err != nil {
-			return nil, err
+			return utils.GenerateError("TaskBodyError", err.Error())
 		}
-		doubleCheckVal.Data.ExplainAnalysis = append(doubleCheckVal.Data.ExplainAnalysis, *analysisRes)
-	}
 
-	// TODO：是否要加入SELECT COUNT(*)的数据量对比
-
-	//TODO: 对比首次预检检查结果
-	for i, analysis := range doubleCheckVal.Data.ExplainAnalysis {
-		for j, val := range analysis.Explain.Results {
-			fritst := fristCheckVal.Data.ExplainAnalysis[i].Explain.Results[j]
-			//! (仅Explain type示例)
-			if val["type"] == fritst["type"] {
-				fmt.Println("debug print::double check ", val["type"])
+		// 仅EXPLAIN解析（用于对比检查）
+		for _, stmt := range preCheckVal.Data.ParsedSQL {
+			analysisRes, err := stmt.ExplainAnalysis(ctx,
+				taskBodyVal.Env,
+				taskBodyVal.DBName,
+				taskBodyVal.Service,
+				core.AnalysisFnOpts{
+					WithExplain: true,
+				},
+			)
+			if err != nil {
+				return err
 			}
-			// TODO: 对比数据量是否激增
+			doubleCheckVal.Data.ExplainAnalysis = append(doubleCheckVal.Data.ExplainAnalysis, *analysisRes)
+		}
+
+		// TODO：是否要加入SELECT COUNT(*)的数据量对比
+
+		//TODO: 对比首次预检检查结果
+		for i, analysis := range doubleCheckVal.Data.ExplainAnalysis {
+			for j, val := range analysis.Explain.Results {
+				fritst := preCheckVal.Data.ExplainAnalysis[i].Explain.Results[j]
+				if val["type"] == fritst["type"] {
+					fmt.Println("debug print::double check ", val["type"])
+				}
+				// TODO: 对比数据量是否激增
+			}
 		}
 	}
 
@@ -698,10 +657,9 @@ func (srv *APITaskService) DoubleCheck(ctx context.Context, redo ReExcute) (*cor
 		BusinessRef: srv.BusinessRef,
 	}, common.DoubleCheckSuccessStatus, common.DoubleCheckingStatus)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	return doubleCheckVal, nil
+	return nil
 }
 
 func (srv *APITaskService) ReCheck() {
@@ -743,11 +701,9 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 		// 获取雪花ID进行链路追踪
 		tkID := srv.getTicketID()
 		srv.UID = tkID
-		// ! 获取首次预检结果 (如果不存在，则不重新解析)
+		// ! 获取预检结果 (如果不存在，则不重做，直接返回报错。)
 		preCheckVal, err := srv.getPreCheckResult(ctx, ReExcute{
 			IsReExcute: false,
-			Deadline:   common.RetryTimeOut,
-			Fn:         srv.ReCheck,
 		})
 		if err != nil {
 			errCh <- err
@@ -867,7 +823,7 @@ func (srv *APITaskService) SaveResult(ctx context.Context, sqlResult *core.SQLRe
 	taskContent, err := srv.getTaskBodyV2(ReExcute{
 		IsReExcute: true,
 		Deadline:   90,
-		Fn:         srv.ReGetTaskBody,
+		Fn:         srv.retryGetTaskBody,
 	})
 	if err != nil {
 		return err
@@ -897,7 +853,7 @@ func (srv *APITaskService) UpdateTicketStats(targetStats string, exceptStats ...
 	}, targetStats, exceptStats...)
 }
 
-// ! 获取预检结果集(支持重新解析)
+// ! 通过TicketID获取预检结果集(支持重新解析)
 func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute) (*core.PreCheckResultGroup, error) {
 	var fristCheckVal *core.PreCheckResultGroup
 	val, exist := core.CheckTaskMap.Get(srv.UID)
@@ -923,6 +879,7 @@ func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute)
 					if !ok {
 						return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
 					}
+					fristCheckVal.IsReDone = true
 					return fristCheckVal, nil
 				case <-timeout.Done(): // TIMEOUT
 					return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout.")

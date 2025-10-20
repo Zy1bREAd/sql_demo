@@ -2,33 +2,23 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"log"
 	"reflect"
 	"regexp"
-	"slices"
 	"sql_demo/internal/clients"
 	"sql_demo/internal/common"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"strconv"
-	"strings"
 
 	"vitess.io/vitess/go/vt/sqlparser"
 )
 
-type SQLForParse struct {
-	Action   string // 代表DML类型
-	Table    string
-	DBName   string
-	SafeStmt string // 经过语法检验的原生SQL
-}
-
 type SQLForParseV2 struct {
 	Action   string // 代表DML类型
 	SafeStmt string // 经过语法检验的原生SQL
+	RawStmt  string // 原生SQL语句
 	// WhereExpr  string
 	HavingExpr string
 	Order      []string
@@ -85,6 +75,23 @@ type UnionParse struct {
 	Right *SQLForParseV2
 }
 
+// 对EXPLAIN执行计划的解析与建议
+type ExplainAnalysisResult struct {
+	DDL               []dbo.SQLResult
+	InformationSchema []dbo.SQLResult
+	Explain           dbo.SQLResult
+	AiAnalysis        string
+	TaskID            string
+}
+
+// 选项式灵活启动需要分析的函数
+type AnalysisFnOpts struct {
+	WithExplain bool
+	WithDDL     bool
+	WithSchema  bool
+	WithAi      bool
+}
+
 // ! 解析拆解SQL语句为结构体
 func ParseV3(ctx context.Context, sqlRaw string) ([]SQLForParseV2, error) {
 	stmtList, err := parseSQLs(sqlRaw)
@@ -108,11 +115,42 @@ func ParseV3(ctx context.Context, sqlRaw string) ([]SQLForParseV2, error) {
 		}
 		stmt.Format(buf)
 		sqlfp.SafeStmt = buf.String()
+		sqlfp.RawStmt = buf.String()
 		buf.Reset()
+
+		// TODO: 自定义规则预检
 
 		result = append(result, sqlfp)
 	}
 	return result, nil
+}
+
+// 将原生字符串解析成Statement
+func parseSQLs(stmts string) ([]sqlparser.Statement, error) {
+	parseRes := make([]sqlparser.Statement, 0)
+	p, err := sqlparser.New(sqlparser.Options{
+		TruncateUILen:  512,
+		TruncateErrLen: 1024,
+	})
+	if err != nil {
+		return nil, utils.GenerateError("NewParserErr", err.Error())
+	}
+
+	token := p.NewStringTokenizer(stmts)
+	// 尝试解析多条SQL语句
+	for {
+		stmt, err := sqlparser.ParseNext(token)
+		if err != nil {
+			// 已读取完所有SQL语句，跳出解析SQL的Loop
+			if err == io.EOF {
+				break
+			}
+			return nil, utils.GenerateError("ParseStmtErr", err.Error())
+		}
+		// 抽象成结构体
+		parseRes = append(parseRes, stmt)
+	}
+	return parseRes, nil
 }
 
 // ! 核心函数：递归解析该Stmt的SQLNode节点
@@ -130,12 +168,8 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 		// Where
 		whereExpr := s.GetWherePredicate()
 		if whereExpr != nil {
-			// // 仅解析Where
-			// whereExpr.Format(buf)
-			// sql.WhereExpr = buf.String()
-			// buf.Reset()
 			// ! 扩展：将Where中的Expr实现深层解析
-			where, err := sql.parseWhere(whereExpr)
+			where, err := sql.parseSQLWhere(whereExpr)
 			if err != nil {
 				return SQLForParseV2{}, err
 			}
@@ -181,7 +215,7 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 			// where.Format(buf)
 			// sql.WhereExpr = buf.String()
 			// buf.Reset()
-			where, err := sql.parseWhere(whereExpr)
+			where, err := sql.parseSQLWhere(whereExpr)
 			if err != nil {
 				return SQLForParseV2{}, err
 			}
@@ -255,34 +289,7 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 	return sql, nil
 }
 
-// 将原生字符串解析成Statement
-func parseSQLs(stmts string) ([]sqlparser.Statement, error) {
-	parseRes := make([]sqlparser.Statement, 0)
-	p, err := sqlparser.New(sqlparser.Options{
-		TruncateUILen:  512,
-		TruncateErrLen: 1024,
-	})
-	if err != nil {
-		return nil, utils.GenerateError("NewParserErr", err.Error())
-	}
-
-	token := p.NewStringTokenizer(stmts)
-	// 尝试解析多条SQL语句
-	for {
-		stmt, err := sqlparser.ParseNext(token)
-		if err != nil {
-			// 已读取完所有SQL语句，跳出解析SQL的Loop
-			if err == io.EOF {
-				break
-			}
-			return nil, utils.GenerateError("ParseStmtErr", err.Error())
-		}
-		// 抽象成结构体
-		parseRes = append(parseRes, stmt)
-	}
-	return parseRes, nil
-}
-
+// 解析Select语句中的Cols列名
 func (s *SQLForParseV2) parseSQLSelectColumns(colsExpr []sqlparser.SelectExpr) []ColParse {
 	colsRes := make([]ColParse, 0, len(colsExpr))
 	for _, col := range colsExpr {
@@ -326,7 +333,7 @@ func (s *SQLForParseV2) parseSQLSelectColumns(colsExpr []sqlparser.SelectExpr) [
 	return colsRes
 }
 
-// 解析Select语句的FROM
+// 解析FROM语句
 func (s *SQLForParseV2) parseSQLFrom(tableExprs []sqlparser.TableExpr) ([]FromParse, bool) {
 	parseList := make([]FromParse, 0, 2)
 	buf := sqlparser.NewTrackedBuffer(nil)
@@ -405,6 +412,7 @@ func (s *SQLForParseV2) parseSQLFrom(tableExprs []sqlparser.TableExpr) ([]FromPa
 	return parseList, true
 }
 
+// 解析要Insert的值
 func (s *SQLForParseV2) parseSQLInsertVals(colVals sqlparser.InsertRows) []ColValsParse {
 	colValsRes := make([]ColValsParse, 0)
 	// 解析Insert的Cols Vals
@@ -467,8 +475,8 @@ func (w *WhereParse) IsEmpty() bool {
 	return w == &WhereParse{}
 }
 
-// Where 个别Expr解析
-func (s *SQLForParseV2) parseWhere(expr sqlparser.Expr) (WhereParse, error) {
+// Where 部分Expr解析
+func (s *SQLForParseV2) parseSQLWhere(expr sqlparser.Expr) (WhereParse, error) {
 	where := WhereParse{}
 	// 获取原值
 	buf := sqlparser.NewTrackedBuffer(nil)
@@ -480,13 +488,13 @@ func (s *SQLForParseV2) parseWhere(expr sqlparser.Expr) (WhereParse, error) {
 	//! 等值作为递归结束条件
 	case *sqlparser.ComparisonExpr:
 		// = 0,> 2,LIKE 9,IN 7
-		leftVal, err := s.parseWhere(w.Left)
+		leftVal, err := s.parseSQLWhere(w.Left)
 		if err != nil {
 			return WhereParse{}, err
 		}
 		where.Left = &leftVal
 
-		rightVal, err := s.parseWhere(w.Right)
+		rightVal, err := s.parseSQLWhere(w.Right)
 		if err != nil {
 			return WhereParse{}, err
 		}
@@ -495,26 +503,26 @@ func (s *SQLForParseV2) parseWhere(expr sqlparser.Expr) (WhereParse, error) {
 
 	case *sqlparser.OrExpr:
 		fmt.Println("Where Or")
-		leftVal, err := s.parseWhere(w.Left)
+		leftVal, err := s.parseSQLWhere(w.Left)
 		if err != nil {
 			return WhereParse{}, err
 		}
 		where.Left = &leftVal
 
-		rightVal, err := s.parseWhere(w.Right)
+		rightVal, err := s.parseSQLWhere(w.Right)
 		if err != nil {
 			return WhereParse{}, err
 		}
 		where.Right = &rightVal
 	case *sqlparser.AndExpr:
 		fmt.Println("Where And")
-		leftVal, err := s.parseWhere(w.Left)
+		leftVal, err := s.parseSQLWhere(w.Left)
 		if err != nil {
 			return WhereParse{}, err
 		}
 		where.Left = &leftVal
 
-		rightVal, err := s.parseWhere(w.Right)
+		rightVal, err := s.parseSQLWhere(w.Right)
 		if err != nil {
 			return WhereParse{}, err
 		}
@@ -522,19 +530,19 @@ func (s *SQLForParseV2) parseWhere(expr sqlparser.Expr) (WhereParse, error) {
 	case *sqlparser.BetweenExpr:
 		fmt.Println("Where Between", w.From, w.To)
 		fmt.Println(reflect.TypeOf(w.From), reflect.TypeOf(w.To), reflect.TypeOf(w.Left))
-		leftVal, err := s.parseWhere(w.Left)
+		leftVal, err := s.parseSQLWhere(w.Left)
 		if err != nil {
 			return WhereParse{}, err
 		}
 		where.Left = &leftVal
 
-		fromVal, err := s.parseWhere(w.From)
+		fromVal, err := s.parseSQLWhere(w.From)
 		if err != nil {
 			return WhereParse{}, err
 		}
 		where.From = &fromVal
 
-		toVal, err := s.parseWhere(w.To)
+		toVal, err := s.parseSQLWhere(w.To)
 		if err != nil {
 			return WhereParse{}, err
 		}
@@ -569,171 +577,6 @@ func (s *SQLForParseV2) parseWhere(expr sqlparser.Expr) (WhereParse, error) {
 	return where, nil
 }
 
-// 校验LIMIT子句约束
-func (s *SQLForParse) validateLimit(limitExprs string) bool {
-	re, err := regexp.Compile(`\s+limit\s+([0-9]+$)`)
-	if err != nil {
-		utils.DebugPrint("RegexpError", err.Error())
-		return false
-	}
-	limitList := re.FindStringSubmatch(limitExprs)
-	// 没有设置LIMIT或者LIMIT大于1000需要设置最大LIMIT值
-	if len(limitList) == 0 {
-		return false
-	} else {
-		limitVal, err := strconv.ParseInt(limitList[1], 10, 64)
-		if err != nil {
-			utils.DebugPrint("StrConvIntError", err.Error())
-			return false
-		}
-		if limitVal > 1000 {
-			return false
-		}
-	}
-	return true
-}
-
-// ! 递归检查是否完整表名（强制约束）
-func (s *SQLForParse) validateFullTableNameV2(tableExprs sqlparser.TableExprs) bool {
-	for _, from := range tableExprs {
-		tempBuf := sqlparser.NewTrackedBuffer(nil)
-		from.Format(tempBuf)
-		currTableName := tempBuf.String()
-
-		switch fr := from.(type) {
-		case *sqlparser.AliasedTableExpr:
-			switch subFr := fr.Expr.(type) {
-			case *sqlparser.TableName:
-				// 终止条件2: 基础TableName类型判断是否完整表名
-				if subFr.Qualifier.IsEmpty() {
-					return false
-				}
-				s.DBName = subFr.Qualifier.String()
-				s.Table = subFr.Name.String()
-			case *sqlparser.DerivedTable:
-				// 子表
-				switch subSelect := subFr.Select.(type) {
-				case *sqlparser.Select:
-					return s.validateFullTableNameV2(subSelect.GetFrom())
-				default:
-					utils.DebugPrint("UnknownSQL", "Unknown AsTableExpr sql parser,Oops")
-				}
-			default:
-				// 此时字符串不能再断言成sqlparser类型了，因此需要加入正则来判断是否完整。
-				// 终止条件1：判断字符串是否为完整的表名
-				if !s.validateTableIsFull(currTableName) {
-					return false
-				}
-				// fmt.Println("当前FROM表名检测为完整状态，因此跳过...", tableExprs)
-			}
-		case *sqlparser.JoinTableExpr:
-			// 左右子表
-			tempList := make(sqlparser.TableExprs, 0)
-			tempList = append(tempList, fr.LeftExpr)
-			if !s.validateFullTableNameV2(tempList) {
-				return false
-			}
-			tempList = nil
-			tempList = append(tempList, fr.RightExpr)
-			if !s.validateFullTableNameV2(tempList) {
-				return false
-			}
-			return true
-		default:
-			utils.DebugPrint("UnknownSQL", "Unknown JoinTableExpr sql parser,Oops")
-		}
-	}
-	return true
-}
-
-// 判断Table表达式是否符合完整的数据库名+表名的格式
-func (s *SQLForParse) validateTableIsFull(tableExprs string) bool {
-	// split 和 正则表达式
-	splitRes := strings.Split(tableExprs, ".")
-	if len(splitRes) == 0 {
-		s.DBName = tableExprs
-		return false
-	}
-	reg, err := regexp.Compile(`([\d\w_]+)\.([\d\w_]+)`)
-	if err != nil {
-		utils.DebugPrint("RegepError", err.Error())
-		return false
-	}
-	findList := reg.FindStringSubmatch(tableExprs)
-	// 等于0相当于确认该Table表达式不是完整的
-	resLen := len(findList)
-	if resLen != 0 {
-		if resLen == 3 {
-			s.DBName = findList[1]
-			s.Table = findList[2]
-		}
-		return true
-	}
-	return false
-
-}
-
-// 解析一个SQL语句（仅能通过select查询语句）
-func parseWithVitess(statement string) (string, error) {
-	// 为原生SQL语句创建token流
-	token := sqlparser.NewTestParser().NewStringTokenizer(statement)
-	// 解析单条SQL语句（如果有多条SQL需要逐个解析处理）
-	stmt, err := sqlparser.ParseNext(token)
-	if err != nil {
-		if err == io.EOF {
-			return "", errors.New("SQLForParse Statement is Null")
-		}
-		log.Println("使用Vitess解析器解析出错: ", err)
-		return "", err
-	}
-	// 专用于select语句的解析函数，获取原生正确的SQL
-	pq := sqlparser.NewParsedQuery(stmt)
-	return pq.Query, nil
-}
-
-// 解析SQL语句(根据DML类型)
-func ParseSQL(statement string, dml string) (string, error) {
-	if strings.Contains(dml, "delete") {
-		return "", utils.GenerateError("IllegalDML", "dml(DELTE) is not allowed")
-	}
-	var parse SQLForParse
-	stmt, err := parseWithVitess(statement)
-	if err != nil {
-		return "", utils.GenerateError("SQLParseError", err.Error())
-	}
-	parse.SafeStmt = stmt + ";"
-	err = parse.validate()
-	if err != nil {
-		return "", err
-	}
-
-	return parse.SafeStmt, nil
-}
-
-func (p *SQLForParse) validate() error {
-	// 不允许SELECT除外的操作
-	p.Action = strings.Split(p.SafeStmt, " ")[0]
-	lowerStr := strings.ToLower(p.Action)
-	if lowerStr != "select" {
-		return utils.GenerateError("SQLForParse Validate Failed", "Only `SELECT` sql query is supported")
-	}
-	// 暂时禁止?符号，疑似注入参数查询
-	if slices.Contains([]byte(p.SafeStmt), 63) {
-		return utils.GenerateError("SQLForParse Validate Failed", "The carrying of question marks is temporarily prohibited")
-	}
-
-	return nil
-}
-
-// 对EXPLAIN执行计划的解析与建议
-type ExplainAnalysisResult struct {
-	DDL               []dbo.SQLResult
-	InformationSchema []dbo.SQLResult
-	Explain           dbo.SQLResult
-	AiAnalysis        string
-	TaskID            string
-}
-
 // 利用表信息、DDL信息和EXPLAIN结果生成Prompt提示词
 func (s *SQLForParseV2) NewExplainPrompt(tableInfo, ddl []string, explain string) string {
 	// 需要处理stmt中的反引号问题
@@ -742,9 +585,17 @@ func (s *SQLForParseV2) NewExplainPrompt(tableInfo, ddl []string, explain string
 		utils.ErrorPrint("RegexpError", err.Error())
 		return ""
 	}
-	regStmt := reg.ReplaceAllString(explain, "")
+	regExplain := reg.ReplaceAllString(explain, "")
 	return fmt.Sprintf(`
-你是一个资深DBA, 你需要结合下面相关信息对EXPLAIN结果进行解析并提供建议.
+你是一个资深DBA, 这是准备要在5.6.20版本的MySQL上执行的SQL语句.
+
+SQL语句:
+%s
+
+你需要结合下面相关信息进行解析并提供建议.
+
+使用JSON格式展示EXPLAIN结果:
+%s
 
 展示核心表信息：
 %v
@@ -752,25 +603,14 @@ func (s *SQLForParseV2) NewExplainPrompt(tableInfo, ddl []string, explain string
 展示表DDL:
 %v
 
-使用JSON格式展示EXPLAIN结果:
-%s
-
-最后你必须遵循严谨准确、简洁、可读性高的前提, 使用以下JSON格式来回答.
+最后你必须遵循严谨准确、简洁、可读性的前提, 使用以下JSON格式来回答.
 {
 	"statement": "原SQL语句",
     "summary": "本次解析的总结概要",
     "findings": "关键发现(target、description以及impact)",
     "recommendation": "如果有,则提出建议并给出SQL修正",
 }
-	`, tableInfo, ddl, regStmt)
-}
-
-// 选项式灵活启动需要分析的函数
-type AnalysisFnOpts struct {
-	WithExplain bool
-	WithDDL     bool
-	WithSchema  bool
-	WithAi      bool
+	`, s.SafeStmt, regExplain, tableInfo, ddl)
 }
 
 // EXPLAIN 解析与建议（单条SQL）
@@ -780,9 +620,7 @@ func (s *SQLForParseV2) ExplainAnalysis(ctx context.Context, envName, DBName, Sr
 		DDL:               make([]dbo.SQLResult, fromLength),
 		InformationSchema: make([]dbo.SQLResult, fromLength),
 		Explain:           dbo.SQLResult{},
-		// 剩下两个使用零值
 	}
-	opts.WithExplain = true // 默认开启
 	// 初始化
 	taskID := utils.GenerateUUIDKey()
 	ddlPrompt := make([]string, fromLength)

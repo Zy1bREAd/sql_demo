@@ -509,7 +509,6 @@ func SQLTaskList(ctx *gin.Context) {
 		services.WithAPITaskUserID(userIdStr),
 	)
 
-	// TODO: 补充搜索条件
 	result, err := apiTask.Get(rdto.Keyword, &pagni)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -1045,8 +1044,8 @@ func CreateEnvInfo(ctx *gin.Context) {
 // @Produce		application/json
 // @Param			page		query		string	false	"页码"
 // @Param			page_size	query		string	false	"页大小"
-// @Success		200	{object}	common.JSONResponse{data=map[string][]QueryDataBaseDTO}
-// @Failure		500	{object}	common.JSONResponse
+// @Success		200			{object}	common.JSONResponse{data=map[string][]QueryDataBaseDTO}
+// @Failure		500			{object}	common.JSONResponse
 // @Router			/sources/list [get]
 // @Security		ApiKeyAuth
 func GetDBConfig(ctx *gin.Context) {
@@ -1149,9 +1148,9 @@ func SearchDBConfig(ctx *gin.Context) {
 // @Description	数据源配置连接测试
 // @Tags			Sources
 // @Produce		application/json
-// @Param			connection_body		body		dbo.ConnectInfo 	true	"连接配置信息"
-// @Success		200	{object}	common.JSONResponse{data=string}
-// @Failure		500	{object}	common.JSONResponse
+// @Param			connection_body	body		dbo.ConnectInfo	true	"连接配置信息"
+// @Success		200				{object}	common.JSONResponse{data=string}
+// @Failure		500				{object}	common.JSONResponse
 // @Router			/sources/connection/test [post]
 // @Security		ApiKeyAuth
 func SourceConnTest(ctx *gin.Context) {

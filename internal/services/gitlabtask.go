@@ -276,6 +276,7 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 	}
 	// 启用AI分析
 	if issCache.Content.IsAiAnalysis {
+		analysisOpts.WithExplain = true
 		analysisOpts.WithAi = true
 		analysisOpts.WithDDL = true
 		analysisOpts.WithSchema = true
@@ -376,8 +377,7 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 	return nil
 }
 
-func (srv *GitLabTaskService) DoubleCheck(ctx context.Context, redo ReExcute) (*core.PreCheckResultGroup, error) {
-	var fristCheckVal *core.PreCheckResultGroup
+func (srv *GitLabTaskService) doubleCheck(ctx context.Context) error {
 	doubleCheckVal := &core.PreCheckResultGroup{
 		Data: &core.PreCheckResult{
 			ParsedSQL:       make([]core.SQLForParseV2, 0),
@@ -391,11 +391,11 @@ func (srv *GitLabTaskService) DoubleCheck(ctx context.Context, redo ReExcute) (*
 	// 获取Issue信息
 	val, exist := core.GitLabIssueMap.Get(srv.UID)
 	if !exist {
-		return nil, utils.GenerateError("GitLabIssueNotExist", "Issue Cache is not exist")
+		return utils.GenerateError("GitLabIssueNotExist", "Issue Cache is not exist")
 	}
 	issCache, ok := val.(*IssuePayload)
 	if !ok {
-		return nil, utils.GenerateError("GitLabIssueInvalid", "Issue Cache type is invalid")
+		return utils.GenerateError("GitLabIssueInvalid", "Issue Cache type is invalid")
 	}
 	srv.ProjectID = issCache.ProjectID
 	srv.IssueIID = issCache.IID
@@ -408,87 +408,48 @@ func (srv *GitLabTaskService) DoubleCheck(ctx context.Context, redo ReExcute) (*
 	}, common.DoubleCheckingStatus, common.ApprovalPassedStatus)
 	if err != nil {
 		srv.NotifyGitLab(err.Error())
-		return nil, err
+		return err
 	}
 
-	// ! 获取首次预检结果(重试版)
-	val, exist = core.CheckTaskMap.Get(srv.UID)
-	if !exist {
-		if redo.IsReExcute {
-			fmt.Println("涉及重做机制：DoubleCheck")
-			// TODO：再次重新解析SQL
-			go redo.Fn()
-			// 同步方式每秒检测是否查询任务完成，来获取结果集
-			ticker := time.NewTicker(time.Duration(time.Second))
-			defer ticker.Stop()
-			// 超时控制
-			timeout, cancel := context.WithTimeout(ctx, time.Duration(redo.Deadline)*time.Second)
-			defer cancel()
+	//! 获取首次预检结果 (如果不存在，则不重新解析)
+	preCheckVal, err := srv.getPreCheckResult(ctx, ReExcute{
+		IsReExcute: true,
+		Deadline:   300,
+		Fn:         srv.ReCheck,
+	})
+	if err != nil {
+		return utils.GenerateError("PreCheckResultError", err.Error())
+	}
+	preCheckVal.IsDoubleCheck = true
 
-		redoLoop:
-			for {
-				select {
-				case <-ticker.C:
-					mapVal, ok := core.CheckTaskMap.Get(srv.UID)
-					if !ok {
-						continue
-					}
-					fristCheckVal, ok = mapVal.(*core.PreCheckResultGroup)
-					if !ok {
-						return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
-					}
-					// 重新预检，再次进入double check
-					err := tk.UpdateTicketStats(dto.TicketDTO{
-						UID:      srv.UID,
-						AuthorID: srv.UserID,
-					}, common.DoubleCheckingStatus, common.PreCheckSuccessStatus)
-					if err != nil {
-						srv.NotifyGitLab(err.Error())
-						return nil, err
-					}
-					break redoLoop
-				case <-timeout.Done(): // TIMEOUT
-					return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout...")
-				}
+	if !preCheckVal.IsReDone {
+		// 仅EXPLAIN解析（用于对比检查）
+		for _, stmt := range preCheckVal.Data.ParsedSQL {
+			analysisRes, err := stmt.ExplainAnalysis(ctx,
+				issCache.Content.Env,
+				issCache.Content.DBName,
+				issCache.Content.Service,
+				core.AnalysisFnOpts{
+					WithExplain: true,
+				},
+			)
+			if err != nil {
+				srv.NotifyGitLab(err.Error())
+				return err
 			}
-		} else {
-			return nil, utils.GenerateError("CheckResultError", "不存在该CheckTask数据，也没有开启重做机制")
+			doubleCheckVal.Data.ExplainAnalysis = append(doubleCheckVal.Data.ExplainAnalysis, *analysisRes)
 		}
 
-	} else {
-		fristCheckVal, ok = val.(*core.PreCheckResultGroup)
-		if !ok {
-			srv.NotifyGitLab("Frist Check Result is not exist")
-			return nil, utils.GenerateError("CheckResultError", "Frist Check Result is not exist")
-		}
-	}
+		// TODO：是否要加入SELECT COUNT(*)的数据量对比
 
-	// 仅EXPLAIN解析（用于对比检查）
-	for _, stmt := range fristCheckVal.Data.ParsedSQL {
-		analysisRes, err := stmt.ExplainAnalysis(ctx,
-			issCache.Content.Env,
-			issCache.Content.DBName,
-			issCache.Content.Service,
-			core.AnalysisFnOpts{
-				WithExplain: true,
-			},
-		)
-		if err != nil {
-			srv.NotifyGitLab(err.Error())
-			return nil, err
-		}
-		doubleCheckVal.Data.ExplainAnalysis = append(doubleCheckVal.Data.ExplainAnalysis, *analysisRes)
-	}
-
-	// TODO：是否要加入SELECT COUNT(*)的数据量对比
-
-	//! 对比首次预检检查结果
-	for i, analysis := range doubleCheckVal.Data.ExplainAnalysis {
-		for j, val := range analysis.Explain.Results {
-			fritst := fristCheckVal.Data.ExplainAnalysis[i].Explain.Results[j]
-			//! (仅Explain type示例)
-			if val["type"] == fritst["type"] {
-				fmt.Println("debug print::double check ", val["type"])
+		//! 对比首次预检检查结果
+		for i, analysis := range doubleCheckVal.Data.ExplainAnalysis {
+			for j, val := range analysis.Explain.Results {
+				fritst := preCheckVal.Data.ExplainAnalysis[i].Explain.Results[j]
+				//! (仅Explain type示例)
+				if val["type"] == fritst["type"] {
+					fmt.Println("debug print::double check ", val["type"])
+				}
 			}
 		}
 	}
@@ -500,10 +461,10 @@ func (srv *GitLabTaskService) DoubleCheck(ctx context.Context, redo ReExcute) (*
 	}, common.DoubleCheckSuccessStatus, common.DoubleCheckingStatus)
 	if err != nil {
 		srv.NotifyGitLab(err.Error())
-		return nil, err
+		return err
 	}
 
-	return doubleCheckVal, nil
+	return nil
 }
 
 // 检查任务重做
@@ -617,11 +578,7 @@ func (srv *GitLabTaskService) online(ctx context.Context) error {
 	ep := event.GetEventProducer()
 
 	//!上线前二次检查
-	_, err := srv.DoubleCheck(ctx, ReExcute{
-		IsReExcute: true,
-		Deadline:   common.RetryTimeOut,
-		Fn:         srv.ReCheck,
-	})
+	err := srv.doubleCheck(ctx)
 	if err != nil {
 		return err
 	}
@@ -1024,6 +981,8 @@ func (srv *GitLabTaskService) getPreCheckResult(ctx context.Context, redo ReExcu
 					if !ok {
 						return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
 					}
+
+					fristCheckVal.IsReDone = true
 					return fristCheckVal, nil
 				case <-timeout.Done(): // TIMEOUT
 					return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout.")

@@ -402,10 +402,9 @@ func (eh *PreCheckEventHandler) Name() string {
 }
 
 func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
+	var tasker services.TaskServicer
 	errCh := make(chan error, 1)
 	ep := event.GetEventProducer()
-	metadata := e.MetaData
-	// discard
 	preCheckRes := &core.PreCheckResultGroup{
 		Data: &core.PreCheckResult{
 			ParsedSQL:       make([]core.SQLForParseV2, 0),
@@ -415,33 +414,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			},
 		},
 	}
-	var tasker services.TaskServicer
 	switch p := e.Payload.(type) {
-	case *services.DoubleCheckEventV2:
-		// 二次检查
-		preCheckRes.TicketID = p.TicketID
-		preCheckRes.IsDoubleCheck = true
-		switch e.MetaData.Source {
-		case "gitlab":
-			go func(parentCtx context.Context) {
-				gitlabSrv := services.NewGitLabTaskService(services.WithGitLabTaskUID(p.TicketID))
-				tasker = gitlabSrv
-				_, err := gitlabSrv.DoubleCheck(parentCtx, services.ReExcute{
-					IsReExcute: true,
-					Deadline:   common.RetryTimeOut,
-					Fn:         gitlabSrv.ReCheck,
-				})
-				if err != nil {
-					errCh <- err
-				}
-				// 表示正常完成（!）
-				errCh <- nil
-			}(ctx)
-		case "api":
-			// TODO: APITaskService的检查
-		default:
-			fmt.Println("???? unknow source")
-		}
 	case *services.FristCheckEventV2:
 		// 预先设置结果基本项数据
 		preCheckRes.TicketID = p.TicketID
@@ -456,6 +429,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				err := gitlabSrv.FristCheck(parentCtx, preCheckRes)
 				if err != nil {
 					errCh <- err
+					return
 				}
 				// 表示正常完成（!）
 				errCh <- nil
@@ -469,6 +443,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 				if err != nil {
 					utils.DebugPrint("PreCheckErr", err.Error())
 					errCh <- err
+					return
 				}
 				errCh <- nil // 表示正常完成（!）
 
@@ -486,7 +461,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			ep.Produce(event.Event{
 				Type:     "save_result",
 				Payload:  preCheckRes,
-				MetaData: metadata,
+				MetaData: e.MetaData,
 			})
 
 			err = tasker.UpdateTicketStats(common.PreCheckFailedStatus)
@@ -495,11 +470,11 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 			return nil
 		}
-		//! 存储展示预检成功的结果详情。
+		//! 存储展示预检结果详情。
 		ep.Produce(event.Event{
 			Type:     "save_result",
 			Payload:  preCheckRes,
-			MetaData: metadata,
+			MetaData: e.MetaData,
 		})
 
 	case <-ctx.Done():
