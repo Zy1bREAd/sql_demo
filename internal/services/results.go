@@ -228,7 +228,6 @@ func (srv *ExportResultService) Prepare() (chan ExportDetails, error) {
 		Type:    "export_result",
 		Payload: exportEvent,
 		MetaData: event.EventMeta{
-			Source:    "gitlab",
 			Operator:  int(srv.Operator),
 			Timestamp: time.Now().Format("20060102150405"),
 		},
@@ -263,9 +262,6 @@ func (srv *ExportResultService) Export(ctx context.Context, ee *ExportEvent) err
 			BasePath: conf.ExportEnv.FilePath,
 			FileName: ee.FileName,
 			Data:     tempResult.Data[ee.OnlyExportIdx].Results,
-		}
-		for k, v := range tempResult.Data {
-			fmt.Println("debug pring result:", k, v, v.Results, v.RowCount, v.ID)
 		}
 		err := csvRes.Convert()
 		if err != nil {

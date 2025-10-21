@@ -19,19 +19,12 @@ import (
 
 var eventOnce sync.Once
 
-// test
-var TestCh chan struct{} = make(chan struct{}, 10)
-
 func InitEventDrive(ctx context.Context, bufferSize int) {
 	ep := event.GetEventProducer()
 	ed := event.GetEventDispatcher()
 	eventOnce.Do(func() {
-		globalEventChannel := make(chan event.Event, bufferSize)
-		// 生产者初始化
-		ep.Init(globalEventChannel)
-
-		// 调度者初始化（事件路由注册）
-		ed.Init(3, globalEventChannel)
+		ep.Init(bufferSize)
+		ed.Init(3, bufferSize)
 		// 调度者的Handler初始化
 		registerMap := map[string]func() event.EventHandler{
 			"sql_query":         NewQueryEventHandler,
@@ -40,8 +33,7 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 			"export_result":     NewExportEventHandler,
 			"file_housekeeping": NewHousekeepingEventHandler,
 			"gitlab_webhook":    NewGitLabEventHandler,
-			// "database_crud":     NewDBEventHandler,
-			"sql_check": NewCheckEventHandler,
+			"sql_check":         NewCheckEventHandler,
 		}
 		for k, handler := range registerMap {
 			err := ed.RegisterHandler(k, handler(), 5)
@@ -117,7 +109,6 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			gitlabSrv := services.NewGitLabTaskService(services.WithGitLabTaskUID(res.TicketID))
 			return gitlabSrv.SaveCheckData(ctx, res)
 		case "api":
-			// TODO: 补全API Task Service接口
 			apiSrv := services.NewAPITaskService(services.WithAPITaskTaskUID(res.TicketID))
 			return apiSrv.SaveCheckData(ctx, res)
 		default:
@@ -134,7 +125,6 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 				utils.ErrorPrint("EventError", err.Error())
 			}
 		case "api":
-			// TODO: 补全API Task Service接口
 			apiSrv := services.NewAPITaskService(services.WithAPITaskTaskUID(res.TicketID),
 				services.WithAPITaskBusinessRef(e.MetaData.TraceID))
 			err := apiSrv.SaveResult(ctx, res)
@@ -219,20 +209,16 @@ func (eh *ExportEventHandler) Work(ctx context.Context, e event.Event) error {
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
-	//TODO: 后期核心处理结果集的代码逻辑块
 	utils.DebugPrint("ExportTask", fmt.Sprintf("Task:%s is Starting...", export.TaskID))
-	switch e.MetaData.Source {
-	case "gitlab":
-		exportSrv := services.NewExportResultService(
-			services.WithExportUserID(uint(e.MetaData.Operator)),
-			services.WithExportIsOnly(export.IsOnly),
-		)
-		err := exportSrv.Export(ctx, export)
-		if err != nil {
-		}
-	case "api":
-		// TODO: APIService 真正导出逻辑
+	exportSrv := services.NewExportResultService(
+		services.WithExportUserID(uint(e.MetaData.Operator)),
+		services.WithExportIsOnly(export.IsOnly),
+	)
+	err := exportSrv.Export(ctx, export)
+	if err != nil {
+		utils.ErrorPrint("EventWorkerErr", err.Error())
 	}
+	utils.DebugPrint("ExportTask", fmt.Sprintf("Task:%s is Completed", export.TaskID))
 	return nil
 }
 

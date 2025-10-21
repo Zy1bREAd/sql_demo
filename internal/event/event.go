@@ -46,8 +46,16 @@ func GetEventProducer() *EventProducer {
 	return eventProducer
 }
 
-func (ep *EventProducer) Init(eventCh chan Event) {
-	ep.eventChan = eventCh
+// 生产者初始化
+func (ep *EventProducer) Init(bufSize int) {
+	var globalEventChannel chan Event
+	if bufSize == 0 {
+		// 设置默认值: 5
+		globalEventChannel = make(chan Event, 5)
+	} else {
+		globalEventChannel = make(chan Event, bufSize)
+	}
+	ep.eventChan = globalEventChannel
 }
 
 // 事件产生核心
@@ -85,8 +93,16 @@ func (ed *EventDispatcher) Stop() {
 	})
 }
 
-func (ed *EventDispatcher) Init(workerNum int, eventCh chan Event) {
-	ed.eventChan = eventCh
+// 事件分发者初始化
+func (ed *EventDispatcher) Init(workerNum, bufSize int) {
+	var globalEventChannel chan Event
+	if bufSize == 0 {
+		// 设置队列大小默认值： 5
+		globalEventChannel = make(chan Event, 5)
+	} else {
+		globalEventChannel = make(chan Event, bufSize)
+	}
+	ed.eventChan = globalEventChannel
 	ed.Processer = workerNum
 	ed.HandlerMap = make(map[string]*EventHandlerWrapper)
 	ed.stopChan = make(chan struct{}, 1)
@@ -163,8 +179,8 @@ func (ed *EventDispatcher) processEvent(e Event) error {
 	case handler.queue <- e:
 		return nil
 	default:
-		utils.DebugPrint("QueueisFull", "队列已满")
-		return utils.GenerateError("QueueFullError", "队列已满，阻塞等待")
+		utils.DebugPrint("HandlerQueueFull", "处理者队列已满")
+		return utils.GenerateError("HandlerQueueFull", "处理者队列已满，阻塞等待")
 	}
 }
 
@@ -186,25 +202,24 @@ func (wrapper *EventHandlerWrapper) Start() {
 
 func (wrapper *EventHandlerWrapper) workLoop() {
 	for {
-		ctx, cancel := context.WithCancel(context.Background()) // 正常取决于Event中的事件超时
 		select {
 		case <-wrapper.stopCh:
-			cancel()
 			utils.DebugPrint("EventHandlerExit", fmt.Sprintf("正常收到信号，关闭 %s 处理", wrapper.handler.Name()))
 			return
 		case event, ok := <-wrapper.queue:
 			if !ok {
-				utils.ErrorPrint("WorkQueueErr", "Worker Queue is Full")
-				cancel()
-				return
+				utils.ErrorPrint("HandlerQueueFull", "Worker Queue is Full")
+				continue
 			}
+			ctx, cancel := context.WithCancel(context.Background()) // 正常取决于Event中的事件超时
 			err := wrapper.handler.Work(ctx, event)
-			cancel() // 显式取消
 			if err != nil {
 				// TODO: 判断错误是否严重不可逆，来决定是否中断Worker
 				utils.ErrorPrint("EventHandlerError", err)
-				continue
+				cancel() // 显式取消
+				return
 			}
+			cancel() // 显式取消
 		}
 	}
 }

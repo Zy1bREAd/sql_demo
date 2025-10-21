@@ -318,7 +318,7 @@ func (srv *APITaskService) online(ctx context.Context) error {
 	srv.UID = tkID
 
 	// 获取Task Body数据v2 重做机制版
-	taskBodyVal, err := srv.getTaskBodyV2(ReExcute{
+	taskBodyVal, err := srv.getTaskBodyV2(ctx, ReExcute{
 		IsReExcute: true,
 		Deadline:   90,
 		Fn:         srv.retryGetTaskBody,
@@ -373,7 +373,7 @@ func (srv *APITaskService) online(ctx context.Context) error {
 }
 
 // 从数据库中获取任务Body(抽象版)
-func (srv *APITaskService) getTaskBodyV2(redo ReExcute) (dto.SQLTaskRequest, error) {
+func (srv *APITaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) (dto.SQLTaskRequest, error) {
 	// 获取Task Body数据
 	var taskBodyVal dto.SQLTaskRequest
 	body, exist := core.APITaskBodyMap.Get(srv.UID)
@@ -384,7 +384,7 @@ func (srv *APITaskService) getTaskBodyV2(redo ReExcute) (dto.SQLTaskRequest, err
 			ticker := time.NewTicker(time.Duration(time.Second))
 			defer ticker.Stop()
 			// 超时控制
-			timeout, cancel := context.WithTimeout(context.Background(), time.Duration(redo.Deadline)*time.Second)
+			timeout, cancel := context.WithTimeout(ctx, time.Duration(redo.Deadline)*time.Second)
 			defer cancel()
 
 		redoLoop:
@@ -445,7 +445,7 @@ func (srv *APITaskService) retryGetTaskBody() {
 
 func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
 	// 获取Task Body数据v2 重做机制版
-	taskBodyVal, err := srv.getTaskBodyV2(ReExcute{
+	taskBodyVal, err := srv.getTaskBodyV2(ctx, ReExcute{
 		IsReExcute: true,
 		Deadline:   90,
 		Fn:         srv.retryGetTaskBody,
@@ -613,7 +613,7 @@ func (srv *APITaskService) doubleCheck(ctx context.Context) error {
 
 	if !preCheckVal.IsReDone {
 		// 获取Task Body数据v2 重做机制版
-		taskBodyVal, err := srv.getTaskBodyV2(ReExcute{
+		taskBodyVal, err := srv.getTaskBodyV2(ctx, ReExcute{
 			IsReExcute: true,
 			Deadline:   90,
 			Fn:         srv.retryGetTaskBody,
@@ -820,7 +820,7 @@ func (srv *APITaskService) SaveResult(ctx context.Context, sqlResult *core.SQLRe
 	if err != nil {
 		return utils.GenerateError("TicketErr", err.Error())
 	}
-	taskContent, err := srv.getTaskBodyV2(ReExcute{
+	taskContent, err := srv.getTaskBodyV2(ctx, ReExcute{
 		IsReExcute: true,
 		Deadline:   90,
 		Fn:         srv.retryGetTaskBody,
@@ -860,7 +860,7 @@ func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute)
 	if !exist {
 		if redo.IsReExcute {
 			fmt.Println("debug print 开启重做...")
-			redo.Fn()
+			go redo.Fn()
 			// 同步方式每秒检测是否查询任务完成，来获取结果集
 			ticker := time.NewTicker(time.Duration(time.Second))
 			defer ticker.Stop()

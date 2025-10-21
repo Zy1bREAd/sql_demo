@@ -175,7 +175,7 @@ func (srv *GitLabTaskService) ParseIssue() (*IssuePayload, error) {
 // func (srv *GitLabTaskService) ReAnalysis(payload *IssuePayload, redo ReExcute) error {
 // }
 // 从数据库中获取任务Body(抽象版)
-func (srv *GitLabTaskService) getTaskBodyV2(redo ReExcute) (*IssuePayload, error) {
+func (srv *GitLabTaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) (*IssuePayload, error) {
 	// 获取Task Body数据
 	var taskBodyVal *IssuePayload
 	body, exist := core.GitLabIssueMap.Get(srv.UID)
@@ -186,7 +186,7 @@ func (srv *GitLabTaskService) getTaskBodyV2(redo ReExcute) (*IssuePayload, error
 			ticker := time.NewTicker(time.Duration(time.Second))
 			defer ticker.Stop()
 			// 超时控制
-			timeout, cancel := context.WithTimeout(context.Background(), time.Duration(redo.Deadline)*time.Second)
+			timeout, cancel := context.WithTimeout(ctx, time.Duration(redo.Deadline)*time.Second)
 			defer cancel()
 
 		redoLoop:
@@ -232,7 +232,7 @@ func (srv *GitLabTaskService) ReGetTaskBody() {
 
 func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
 	// 获取Task Body数据v2(Gitlab) 重做机制版
-	issCache, err := srv.getTaskBodyV2(ReExcute{
+	issCache, err := srv.getTaskBodyV2(ctx, ReExcute{
 		IsReExcute: true,
 		Deadline:   90,
 		Fn:         srv.ReGetTaskBody,
@@ -388,18 +388,6 @@ func (srv *GitLabTaskService) doubleCheck(ctx context.Context) error {
 		},
 	}
 
-	// 获取Issue信息
-	val, exist := core.GitLabIssueMap.Get(srv.UID)
-	if !exist {
-		return utils.GenerateError("GitLabIssueNotExist", "Issue Cache is not exist")
-	}
-	issCache, ok := val.(*IssuePayload)
-	if !ok {
-		return utils.GenerateError("GitLabIssueInvalid", "Issue Cache type is invalid")
-	}
-	srv.ProjectID = issCache.ProjectID
-	srv.IssueIID = issCache.IID
-
 	// 更新Ticket信息(正在处理预检)
 	tk := NewTicketService()
 	err := tk.UpdateTicketStats(dto.TicketDTO{
@@ -423,6 +411,15 @@ func (srv *GitLabTaskService) doubleCheck(ctx context.Context) error {
 	preCheckVal.IsDoubleCheck = true
 
 	if !preCheckVal.IsReDone {
+		// 获取Task Body数据v2(Gitlab) 重做机制版
+		issCache, err := srv.getTaskBodyV2(ctx, ReExcute{
+			IsReExcute: true,
+			Deadline:   90,
+			Fn:         srv.ReGetTaskBody,
+		})
+		if err != nil {
+			return utils.GenerateError("TaskBodyError", err.Error())
+		}
 		// 仅EXPLAIN解析（用于对比检查）
 		for _, stmt := range preCheckVal.Data.ParsedSQL {
 			analysisRes, err := stmt.ExplainAnalysis(ctx,
@@ -561,24 +558,23 @@ func (srv *GitLabTaskService) reject(ctx context.Context) error {
 }
 
 func (srv *GitLabTaskService) online(ctx context.Context) error {
-	// 利用UID获取gitlab issue缓存
-	val, exist := core.GitLabIssueMap.Get(srv.UID)
-	if !exist {
-		// TODO：如果不存在，则重新请求GitLab API进行获取解析
-		// srv.ReAnalysis()
-
-		return utils.GenerateError("CacheNotExist", "gitlab issue cache is not exist")
-	}
-	issCache, ok := val.(*IssuePayload)
-	if !ok {
-		return utils.GenerateError("CacheNotMatch", "gitlab issue cache kind ")
+	// 获取Task Body数据v2(Gitlab) 重做机制版
+	issCache, err := srv.getTaskBodyV2(ctx, ReExcute{
+		IsReExcute: true,
+		Deadline:   90,
+		Fn:         srv.ReGetTaskBody,
+	})
+	if err != nil {
+		return utils.GenerateError("TaskBodyError", err.Error())
 	}
 	sqlt := issCache.Content
 	issue := issCache.Issue
+	srv.ProjectID = issCache.ProjectID
+	srv.IssueIID = issCache.IID
 	ep := event.GetEventProducer()
 
 	//!上线前二次检查
-	err := srv.doubleCheck(ctx)
+	err = srv.doubleCheck(ctx)
 	if err != nil {
 		return err
 	}
