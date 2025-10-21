@@ -103,10 +103,8 @@ func ParseV3(ctx context.Context, sqlRaw string) ([]SQLForParseV2, error) {
 	// 抽象成结构体
 	for _, stmt := range stmtList {
 		// goroutine 资源控制
-		select {
-		case <-ctx.Done():
+		if !common.CheckCtx(ctx) {
 			return nil, utils.GenerateError("GoroutineError", "Goroutine Break Off")
-		default:
 		}
 
 		sqlfp, err := parseStmt(stmt)

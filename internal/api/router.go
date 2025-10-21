@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	_ "sql_demo/docs"
@@ -95,6 +96,11 @@ func InitRouter() {
 			srv.ListenAndServe()
 		}()
 	}
+	// 启用debug pprof
+	go func() {
+		fmt.Println("Listening and serving pprof HTTP on 0.0.0.0:6060")
+		http.ListenAndServe("0.0.0.0:6060", nil)
+	}()
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)

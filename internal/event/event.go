@@ -47,15 +47,8 @@ func GetEventProducer() *EventProducer {
 }
 
 // 生产者初始化
-func (ep *EventProducer) Init(bufSize int) {
-	var globalEventChannel chan Event
-	if bufSize == 0 {
-		// 设置默认值: 5
-		globalEventChannel = make(chan Event, 5)
-	} else {
-		globalEventChannel = make(chan Event, bufSize)
-	}
-	ep.eventChan = globalEventChannel
+func (ep *EventProducer) Init(eventCh chan Event) {
+	ep.eventChan = eventCh
 }
 
 // 事件产生核心
@@ -94,15 +87,8 @@ func (ed *EventDispatcher) Stop() {
 }
 
 // 事件分发者初始化
-func (ed *EventDispatcher) Init(workerNum, bufSize int) {
-	var globalEventChannel chan Event
-	if bufSize == 0 {
-		// 设置队列大小默认值： 5
-		globalEventChannel = make(chan Event, 5)
-	} else {
-		globalEventChannel = make(chan Event, bufSize)
-	}
-	ed.eventChan = globalEventChannel
+func (ed *EventDispatcher) Init(workerNum int, eventCh chan Event) {
+	ed.eventChan = eventCh
 	ed.Processer = workerNum
 	ed.HandlerMap = make(map[string]*EventHandlerWrapper)
 	ed.stopChan = make(chan struct{}, 1)

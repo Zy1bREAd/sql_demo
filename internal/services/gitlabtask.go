@@ -298,6 +298,9 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 			srv.NotifyGitLab(analysisRes.AiAnalysis)
 		}
 	}
+	if !common.CheckCtx(ctx) {
+		return utils.GenerateError("GoroutineError", "Goroutine Break Off")
+	}
 
 	// SOAR 分析（利用系统层面SOAR操作实现，捕获屏幕输出流）
 	if issCache.Content.IsSOAR {

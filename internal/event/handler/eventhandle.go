@@ -25,8 +25,15 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 	ep := event.GetEventProducer()
 	ed := event.GetEventDispatcher()
 	eventOnce.Do(func() {
-		ep.Init(bufferSize)
-		ed.Init(3, bufferSize)
+		var globalEventChannel chan event.Event
+		if bufferSize == 0 {
+			// 设置默认值: 5
+			globalEventChannel = make(chan event.Event, 5)
+		} else {
+			globalEventChannel = make(chan event.Event, bufferSize)
+		}
+		ep.Init(globalEventChannel)
+		ed.Init(3, globalEventChannel)
 		// 调度者的Handler初始化
 		registerMap := map[string]func() event.EventHandler{
 			"sql_query":         NewQueryEventHandler,
