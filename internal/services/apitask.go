@@ -865,7 +865,7 @@ func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute)
 			ticker := time.NewTicker(time.Duration(time.Second))
 			defer ticker.Stop()
 			// 超时控制
-			timeout, cancel := context.WithTimeout(ctx, time.Duration(redo.Deadline))
+			timeout, cancel := context.WithTimeout(ctx, time.Second*time.Duration(redo.Deadline))
 			defer cancel()
 
 			for {
@@ -880,6 +880,11 @@ func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute)
 						return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
 					}
 					fristCheckVal.IsReDone = true
+					// 重新获取后，更改状态
+					err := srv.UpdateTicketStats(common.DoubleCheckingStatus, common.PreCheckSuccessStatus)
+					if err != nil {
+						return nil, utils.GenerateError("DoubleCheckErr", err.Error())
+					}
 					return fristCheckVal, nil
 				case <-timeout.Done(): // TIMEOUT
 					return nil, utils.GenerateError("ReExcuteTask", "re-excute task is timeout.")
