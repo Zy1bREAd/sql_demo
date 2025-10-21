@@ -27,13 +27,12 @@ const (
 	TicketCacheMapDDL  = 86400 // 1 day
 
 	// CleanMap
-	ResultMapCleanFlag     = 0
-	QueryTaskMapCleanFlag  = 1
-	SessionMapCleanFlag    = 2
-	ExportWorkMapCleanFlag = 3
-	CheckTaskMapCleanFlag  = 4
-	// DoubleCheckTaskMapCleanFlag = 5
-	APITaskBodyMapCleanFlag = 6
+	ResultMapCleanFlag      = 0
+	QueryTaskMapCleanFlag   = 1
+	SessionMapCleanFlag     = 2
+	ExportWorkMapCleanFlag  = 3
+	CheckTaskMapCleanFlag   = 4
+	APITaskBodyMapCleanFlag = 5
 
 	// TIMEOUT
 	RetryTimeOut = 300

@@ -144,6 +144,10 @@ func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) *SQLResultGroupV2 {
 
 	for _, task := range qtg.QTasks {
 		// 子任务超时控制
+		if ctx.Err() != nil {
+			rg.Errrr = ctx.Err()
+			return rg
+		}
 		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 		defer cancel()
 		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is working...", task.ID))

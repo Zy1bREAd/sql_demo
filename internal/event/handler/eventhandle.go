@@ -11,6 +11,7 @@ import (
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/services"
+	"strconv"
 
 	// "sql_demo/internal/services"
 	"sql_demo/internal/utils"
@@ -19,6 +20,7 @@ import (
 
 var eventOnce sync.Once
 
+// ! 初始化事件驱动模块
 func InitEventDrive(ctx context.Context, bufferSize int) {
 	ep := event.GetEventProducer()
 	ed := event.GetEventDispatcher()
@@ -64,10 +66,9 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	case *core.QTaskGroupV2:
 		apiSrv := services.NewAPITaskService(
 			services.WithAPITaskBusinessRef(e.MetaData.TraceID),
-			services.WithAPITaskUserID(string(t.UserID)),
+			services.WithAPITaskUserID(strconv.FormatUint(uint64(t.UserID), 10)),
 		)
-		err := apiSrv.Excute(ctx, t)
-		return err
+		return apiSrv.Excute(ctx, t)
 
 	case *core.IssueQTaskV2:
 		// 获取Service层操作对象
@@ -77,12 +78,10 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 			services.WithGitLabTaskUserID(t.QTG.UserID),
 			services.WithGitLabTaskUID(t.QTG.TicketID),
 		)
-		err := gitlabSrv.Excute(ctx, t)
-		return err
+		return gitlabSrv.Excute(ctx, t)
 	default:
 		return utils.GenerateError("UnknownTask", "Task Event Kind is Unknown")
 	}
-
 }
 
 // 消费事件、处理结果
@@ -108,9 +107,11 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			// 核心数据获取，TicketID（一切的前提）
 			gitlabSrv := services.NewGitLabTaskService(services.WithGitLabTaskUID(res.TicketID))
 			return gitlabSrv.SaveCheckData(ctx, res)
+
 		case "api":
 			apiSrv := services.NewAPITaskService(services.WithAPITaskTaskUID(res.TicketID))
 			return apiSrv.SaveCheckData(ctx, res)
+
 		default:
 			utils.DebugPrint("UnknownSource", "未知请求源")
 		}
@@ -120,17 +121,13 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 		case "gitlab":
 			// 核心数据获取，TicketID（一切的前提）
 			gitlabSrv := services.NewGitLabTaskService(services.WithGitLabTaskUID(res.TicketID))
-			err := gitlabSrv.SaveResult(ctx, res)
-			if err != nil {
-				utils.ErrorPrint("EventError", err.Error())
-			}
+			return gitlabSrv.SaveResult(ctx, res)
+
 		case "api":
 			apiSrv := services.NewAPITaskService(services.WithAPITaskTaskUID(res.TicketID),
 				services.WithAPITaskBusinessRef(e.MetaData.TraceID))
-			err := apiSrv.SaveResult(ctx, res)
-			if err != nil {
-				utils.ErrorPrint("EventError", err.Error())
-			}
+			return apiSrv.SaveResult(ctx, res)
+
 		default:
 			utils.DebugPrint("UnknownSource", "未知请求源")
 		}
@@ -151,22 +148,20 @@ func NewCleanEventHandler() event.EventHandler {
 
 	return &CleanEventHandler{
 		cleanTypeMap: map[int]*core.CachesMap{
-			0: core.ResultMap,
-			1: core.QueryTaskMap,
-			2: core.SessionMap,
-			3: core.ExportWorkMap,
-			4: core.CheckTaskMap,
-			5: core.DoubleCheckTaskMap,
-			6: core.APITaskBodyMap,
+			common.ResultMapCleanFlag:      core.ResultMap,
+			common.QueryTaskMapCleanFlag:   core.QueryTaskMap,
+			common.SessionMapCleanFlag:     core.SessionMap,
+			common.ExportWorkMapCleanFlag:  core.ExportWorkMap,
+			common.CheckTaskMapCleanFlag:   core.CheckTaskMap,
+			common.APITaskBodyMapCleanFlag: core.APITaskBodyMap,
 		},
 		cleanTypeInfoMap: map[int]string{
-			0: "ResultMap",
-			1: "QueryTaskMap",
-			2: "SessionMap",
-			3: "ExportWorkMap",
-			4: "CheckTaskMap",
-			5: "DoubleCheckTaskMap",
-			6: "APITaskBodyMap",
+			common.ResultMapCleanFlag:      "ResultMap",
+			common.QueryTaskMapCleanFlag:   "QueryTaskMap",
+			common.SessionMapCleanFlag:     "SessionMap",
+			common.ExportWorkMapCleanFlag:  "ExportWorkMap",
+			common.CheckTaskMapCleanFlag:   "CheckTaskMap",
+			common.APITaskBodyMapCleanFlag: "APITaskBodyMap",
 		},
 	}
 }
@@ -184,7 +179,7 @@ func (eh *CleanEventHandler) Work(ctx context.Context, e event.Event) error {
 	//! 后期核心处理结果集的代码逻辑块
 	mapOperator, ok := eh.cleanTypeMap[body.Kind]
 	if !ok {
-		utils.ErrorPrint("UnknownCleanFlag", "Unknown Clean Task Kind."+string(body.Kind))
+		utils.ErrorPrint("UnknownCleanFlag", "Unknown Clean Task Kind."+strconv.FormatInt(int64(body.Kind), 10))
 		return nil
 	}
 	mapOperator.Del(body.ID)
@@ -261,6 +256,7 @@ func (eg *GitLabEventHandler) Name() string {
 // 区分gitlab事件
 func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 	errCh := make(chan error, 1)
+	defer close(errCh)
 	var commentBody glbapi.GitLabComment
 	body, ok := e.Payload.(*services.GitLabWebhook)
 	if !ok {
@@ -268,30 +264,31 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 	}
 	glab := glbapi.InitGitLabAPI()
 
-	// 审批or驳回or上线 逻辑
-	switch body.Webhook {
-	case services.CommentHandle:
-		payload, ok := body.Payload.(*services.CommentPayload)
-		if !ok {
-			return utils.GenerateError("PayloadErr", "payload is invalid")
-		}
-		commentBody.ProjectID = payload.IssuePayload.Issue.ProjectID
-		commentBody.IssueIID = payload.IssuePayload.Issue.IID
-		// 获取USer真实ID
-		user := dbo.User{
-			GitLabIdentity: payload.IssuePayload.Issue.AuthorID,
-		}
-		userId := user.GetGitLabUserId()
-		// 获取Service层操作对象
-		gitlabSrv := services.NewGitLabTaskService(
-			services.WithGitLabTaskProjectID(commentBody.ProjectID),
-			services.WithGitLabTaskIssueIID(commentBody.IssueIID),
-			services.WithGitLabTaskUserID(userId),
-		)
-		// (关键)通过Issue信息获取Ticket UID
-		tkUID := gitlabSrv.GetTicketUID()
-		gitlabSrv.UID = tkUID
-		go func(context.Context) {
+	go func() {
+		// 审批or驳回or上线 逻辑
+		switch body.Webhook {
+		case services.CommentHandle:
+			payload, ok := body.Payload.(*services.CommentPayload)
+			if !ok {
+				errCh <- utils.GenerateError("PayloadErr", "payload is invalid")
+				return
+			}
+			commentBody.ProjectID = payload.IssuePayload.Issue.ProjectID
+			commentBody.IssueIID = payload.IssuePayload.Issue.IID
+			// 获取USer真实ID
+			user := dbo.User{
+				GitLabIdentity: payload.IssuePayload.Issue.AuthorID,
+			}
+			userId := user.GetGitLabUserId()
+			// 获取Service层操作对象
+			gitlabSrv := services.NewGitLabTaskService(
+				services.WithGitLabTaskProjectID(commentBody.ProjectID),
+				services.WithGitLabTaskIssueIID(commentBody.IssueIID),
+				services.WithGitLabTaskUserID(userId),
+			)
+			// (关键)通过Issue信息获取Ticket UID
+			tkUID := gitlabSrv.GetTicketUID()
+			gitlabSrv.UID = tkUID
 
 			switch payload.Action {
 			case services.CommentOnlineExcute: //! 执行上线
@@ -335,22 +332,21 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			default:
 				errCh <- utils.GenerateError("CommentActionErr", "comment action is unknow type")
 			}
-		}(ctx)
-	case services.IssueHandle: //! 创建 Issue
-		payload, ok := body.Payload.(*services.IssuePayload)
-		if !ok {
-			return utils.GenerateError("PayloadErr", "payload is invalid")
-		}
-		commentBody.ProjectID = payload.Issue.ProjectID
-		commentBody.IssueIID = payload.Issue.IID
-		//! Gitlab创建SQLTask和Ticket
-		go func(context.Context) {
+		case services.IssueHandle: //! 创建 Issue
+			payload, ok := body.Payload.(*services.IssuePayload)
+			if !ok {
+				errCh <- utils.GenerateError("PayloadErr", "payload is invalid")
+				return
+			}
+			commentBody.ProjectID = payload.Issue.ProjectID
+			commentBody.IssueIID = payload.Issue.IID
+			//! Gitlab创建SQLTask和Ticket
 			gitlabTask := services.NewGitLabTaskService()
 			// TODO: 后续增加上下文ctx，超时控制
 			_, err := gitlabTask.Create(payload)
 			errCh <- err
-		}(ctx)
-	}
+		}
+	}()
 
 	select {
 	case err := <-errCh:
@@ -390,6 +386,7 @@ func (eh *PreCheckEventHandler) Name() string {
 func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 	var tasker services.TaskServicer
 	errCh := make(chan error, 1)
+	defer close(errCh)
 	ep := event.GetEventProducer()
 	preCheckRes := &core.PreCheckResultGroup{
 		Data: &core.PreCheckResult{
@@ -400,44 +397,46 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 			},
 		},
 	}
-	switch p := e.Payload.(type) {
-	case *services.FristCheckEventV2:
-		// 预先设置结果基本项数据
-		preCheckRes.TicketID = p.TicketID
-		switch e.MetaData.Source {
-		case "gitlab":
-			go func(parentCtx context.Context) {
-				gitlabSrv := services.NewGitLabTaskService(services.WithGitLabTaskUID(p.TicketID),
-					services.WithGitLabTaskProjectID(e.MetaData.ProjectID),
-					services.WithGitLabTaskIssueIID(e.MetaData.IssueIID),
-				)
-				tasker = gitlabSrv
-				err := gitlabSrv.FristCheck(parentCtx, preCheckRes)
-				if err != nil {
-					errCh <- err
-					return
-				}
-				// 表示正常完成（!）
-				errCh <- nil
-			}(ctx)
+	go func() {
+		switch p := e.Payload.(type) {
+		case *services.FristCheckEventV2:
+			// 预先设置结果基本项数据
+			preCheckRes.TicketID = p.TicketID
+			switch e.MetaData.Source {
+			case "gitlab":
+				go func(parentCtx context.Context) {
+					gitlabSrv := services.NewGitLabTaskService(services.WithGitLabTaskUID(p.TicketID),
+						services.WithGitLabTaskProjectID(e.MetaData.ProjectID),
+						services.WithGitLabTaskIssueIID(e.MetaData.IssueIID),
+					)
+					tasker = gitlabSrv
+					err := gitlabSrv.FristCheck(parentCtx, preCheckRes)
+					if err != nil {
+						errCh <- err
+						return
+					}
+					// 表示正常完成（!）
+					errCh <- nil
+				}(ctx)
 
-		case "api":
-			go func(parentCtx context.Context) {
-				apiSrv := services.NewAPITaskService(services.WithAPITaskTaskUID(p.TicketID), services.WithAPITaskBusinessRef(p.Ref))
-				tasker = apiSrv
-				err := apiSrv.FristCheck(parentCtx, preCheckRes)
-				if err != nil {
-					utils.DebugPrint("PreCheckErr", err.Error())
-					errCh <- err
-					return
-				}
-				errCh <- nil // 表示正常完成（!）
+			case "api":
+				go func(parentCtx context.Context) {
+					apiSrv := services.NewAPITaskService(services.WithAPITaskTaskUID(p.TicketID), services.WithAPITaskBusinessRef(p.Ref))
+					tasker = apiSrv
+					err := apiSrv.FristCheck(parentCtx, preCheckRes)
+					if err != nil {
+						utils.DebugPrint("PreCheckErr", err.Error())
+						errCh <- err
+						return
+					}
+					errCh <- nil // 表示正常完成（!）
 
-			}(ctx)
-		default:
-			utils.DebugPrint("UnknownSource", "未知请求源")
+				}(ctx)
+			default:
+				utils.DebugPrint("UnknownSource", "未知请求源")
+			}
 		}
-	}
+	}()
 
 	// 统一错误处理
 	select {

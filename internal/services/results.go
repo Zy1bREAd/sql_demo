@@ -44,7 +44,7 @@ func (srv *TempResultService) GetData(ctx context.Context, cond dto.TempResultDT
 	//! 查找并获取结果集
 	val, exist := core.ResultMap.Get(findRes.TicketID)
 	if !exist {
-		// TODO: 支持不存在时重做
+		// 不要什么都重做，这里需要手动执行重做。
 		return nil, utils.GenerateError("CacheNotExist", "Result Data Cache is not exist")
 	}
 	resultVal, ok := val.(*core.SQLResultGroupV2)
