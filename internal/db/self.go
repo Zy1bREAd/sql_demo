@@ -2,6 +2,7 @@
 package dbo
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -50,7 +51,7 @@ func connect(dsn string, maxIdle, maxConn int) error {
 		return nil
 	}
 	// 健康检查决定连接成败
-	return selfDB.healthCheck()
+	return selfDB.HealthCheck(context.Background())
 }
 
 // 初始化自身数据库连接配置
@@ -83,12 +84,12 @@ func (db *SelfDatabase) Close() {
 	dber.Close()
 }
 
-func (db *SelfDatabase) healthCheck() error {
+func (db *SelfDatabase) HealthCheck(ctx context.Context) error {
 	temp, err := db.conn.DB()
 	if err != nil {
 		return err
 	}
-	return temp.Ping()
+	return temp.PingContext(ctx)
 }
 
 func (db *SelfDatabase) autoMigrator() error {

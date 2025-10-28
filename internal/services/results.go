@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	dto "sql_demo/internal/api/dto"
+	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
@@ -42,7 +43,9 @@ func (srv *TempResultService) GetData(ctx context.Context, cond dto.TempResultDT
 	srv.isExpried = findRes.IsExpired()
 
 	//! 查找并获取结果集
-	val, exist := core.ResultMap.Get(findRes.TicketID)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.ResultPrefix, findRes.TicketID)
+	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		// 不要什么都重做，这里需要手动执行重做。
 		return nil, utils.GenerateError("CacheNotExist", "Result Data Cache is not exist")

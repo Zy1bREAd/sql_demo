@@ -6,6 +6,7 @@ import (
 	api "sql_demo/internal/api"
 	"sql_demo/internal/auth"
 	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	event "sql_demo/internal/event/handler"
 	"sql_demo/internal/utils"
@@ -34,6 +35,8 @@ import (
 // @externalDocs.url			https://swagger.io/resources/open-api/
 func main() {
 	// 开启文件日志记录
+	core.InitKVCache()
+	defer core.CloseKVCache()
 	conf.InitAppConfig()
 	file := utils.StartFileLogging()
 	defer file.Close()

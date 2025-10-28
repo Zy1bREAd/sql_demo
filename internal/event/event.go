@@ -194,7 +194,7 @@ func (wrapper *EventHandlerWrapper) workLoop() {
 			return
 		case event, ok := <-wrapper.queue:
 			if !ok {
-				utils.ErrorPrint("HandlerQueueFull", "Worker Queue is Full")
+				utils.ErrorPrint("HandlerQueueErr", "The Message is invalid")
 				continue
 			}
 			ctx, cancel := context.WithCancel(context.Background()) // 正常取决于Event中的事件超时

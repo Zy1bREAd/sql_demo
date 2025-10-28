@@ -585,28 +585,28 @@ func (s *SQLForParseV2) NewExplainPrompt(tableInfo, ddl []string, explain string
 	}
 	regExplain := reg.ReplaceAllString(explain, "")
 	return fmt.Sprintf(`
-你是一个资深DBA, 这是准备要在5.6.20版本的MySQL上执行的SQL语句.
+你是一位资深DBA和运维专家, 这是准备要在5.6.20版本的MySQL上执行的SQL语句.
 
-SQL语句:
+原SQL语句:
 %s
 
-你需要结合下面相关信息进行解析并提供建议.
+你需要结合下面相关信息对原SQL语句进行解析并提供建议.
 
 使用JSON格式展示EXPLAIN结果:
 %s
 
-展示核心表信息：
+相关核心表信息：
 %v
 
-展示表DDL:
+相关表DDL:
 %v
 
 最后你必须遵循严谨准确、简洁、可读性的前提, 使用以下JSON格式来回答.
 {
 	"statement": "原SQL语句",
-    "summary": "本次解析的总结概要",
-    "findings": "关键发现(target、description以及impact)",
-    "recommendation": "如果有,则提出建议并给出SQL修正",
+	"summary": "本次解析的总结概要",
+	"findings": "关键发现(target、description以及impact)",
+	"recommendation": "如果有,则提出建议并给出SQL修正(数组的方式)",
 }
 	`, s.SafeStmt, regExplain, tableInfo, ddl)
 }

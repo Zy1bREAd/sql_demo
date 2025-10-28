@@ -38,7 +38,6 @@ func InitEventDrive(ctx context.Context, bufferSize int) {
 		registerMap := map[string]func() event.EventHandler{
 			"sql_query":         NewQueryEventHandler,
 			"save_result":       NewResultEventHandler,
-			"clean_task":        NewCleanEventHandler,
 			"export_result":     NewExportEventHandler,
 			"file_housekeeping": NewHousekeepingEventHandler,
 			"gitlab_webhook":    NewGitLabEventHandler,
@@ -146,53 +145,53 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 	return nil
 }
 
-type CleanEventHandler struct {
-	cleanTypeMap     map[int]*core.CachesMap
-	cleanTypeInfoMap map[int]string
-}
+// type CleanEventHandler struct {
+// 	cleanTypeMap     map[int]*core.CachesMap
+// 	cleanTypeInfoMap map[int]string
+// }
 
-func NewCleanEventHandler() event.EventHandler {
+// func NewCleanEventHandler() event.EventHandler {
 
-	return &CleanEventHandler{
-		cleanTypeMap: map[int]*core.CachesMap{
-			common.ResultMapCleanFlag:      core.ResultMap,
-			common.QueryTaskMapCleanFlag:   core.QueryTaskMap,
-			common.SessionMapCleanFlag:     core.SessionMap,
-			common.ExportWorkMapCleanFlag:  core.ExportWorkMap,
-			common.CheckTaskMapCleanFlag:   core.CheckTaskMap,
-			common.APITaskBodyMapCleanFlag: core.APITaskBodyMap,
-		},
-		cleanTypeInfoMap: map[int]string{
-			common.ResultMapCleanFlag:      "ResultMap",
-			common.QueryTaskMapCleanFlag:   "QueryTaskMap",
-			common.SessionMapCleanFlag:     "SessionMap",
-			common.ExportWorkMapCleanFlag:  "ExportWorkMap",
-			common.CheckTaskMapCleanFlag:   "CheckTaskMap",
-			common.APITaskBodyMapCleanFlag: "APITaskBodyMap",
-		},
-	}
-}
+// 	return &CleanEventHandler{
+// 		cleanTypeMap: map[int]*core.CachesMap{
+// 			common.ResultMapCleanFlag:      core.ResultMap,
+// 			common.QueryTaskMapCleanFlag:   core.QueryTaskMap,
+// 			common.SessionMapCleanFlag:     core.SessionMap,
+// 			common.ExportWorkMapCleanFlag:  core.ExportWorkMap,
+// 			common.CheckTaskMapCleanFlag:   core.CheckTaskMap,
+// 			common.APITaskBodyMapCleanFlag: core.APITaskBodyMap,
+// 		},
+// 		cleanTypeInfoMap: map[int]string{
+// 			common.ResultMapCleanFlag:      "ResultMap",
+// 			common.QueryTaskMapCleanFlag:   "QueryTaskMap",
+// 			common.SessionMapCleanFlag:     "SessionMap",
+// 			common.ExportWorkMapCleanFlag:  "ExportWorkMap",
+// 			common.CheckTaskMapCleanFlag:   "CheckTaskMap",
+// 			common.APITaskBodyMapCleanFlag: "APITaskBodyMap",
+// 		},
+// 	}
+// }
 
-func (eh *CleanEventHandler) Name() string {
-	return "清理事件处理者"
-}
+// func (eh *CleanEventHandler) Name() string {
+// 	return "清理事件处理者"
+// }
 
-func (eh *CleanEventHandler) Work(ctx context.Context, e event.Event) error {
-	body, ok := e.Payload.(core.CleanTask)
-	if !ok {
-		return utils.GenerateError("TypeError", "event payload type is incrroect")
-	}
-	utils.DebugPrint("清理结果事件消费", body.ID)
-	//! 后期核心处理结果集的代码逻辑块
-	mapOperator, ok := eh.cleanTypeMap[body.Kind]
-	if !ok {
-		utils.ErrorPrint("UnknownCleanFlag", "Unknown Clean Task Kind."+strconv.FormatInt(int64(body.Kind), 10))
-		return nil
-	}
-	mapOperator.Del(body.ID)
-	log.Printf("type=%v taskID=%d Cleaned Up", eh.cleanTypeInfoMap[body.Kind], body.ID)
-	return nil
-}
+// func (eh *CleanEventHandler) Work(ctx context.Context, e event.Event) error {
+// 	body, ok := e.Payload.(core.CleanTask)
+// 	if !ok {
+// 		return utils.GenerateError("TypeError", "event payload type is incrroect")
+// 	}
+// 	utils.DebugPrint("清理结果事件消费", body.ID)
+// 	//! 后期核心处理结果集的代码逻辑块
+// 	mapOperator, ok := eh.cleanTypeMap[body.Kind]
+// 	if !ok {
+// 		utils.ErrorPrint("UnknownCleanFlag", "Unknown Clean Task Kind."+strconv.FormatInt(int64(body.Kind), 10))
+// 		return nil
+// 	}
+// 	mapOperator.Del(body.ID)
+// 	log.Printf("type=%v taskID=%d Cleaned Up", eh.cleanTypeInfoMap[body.Kind], body.ID)
+// 	return nil
+// }
 
 // 结果导出者
 type ExportEventHandler struct {

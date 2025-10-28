@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	dto "sql_demo/internal/api/dto"
-	clients "sql_demo/internal/clients/gitlab"
 	glbapi "sql_demo/internal/clients/gitlab"
 	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/common"
@@ -86,6 +85,16 @@ func (srv *GitLabTaskService) Create(payload *IssuePayload) (*dto.TicketDTO, err
 		ProjectID:      payload.Issue.ProjectID,
 		IssueIID:       payload.Issue.IID,
 		Source:         common.GitLabSourceFlag,
+		TaskContent: dto.SQLTaskRequest{
+			Env:          payload.Content.Env,
+			Service:      payload.Content.Service,
+			DBName:       payload.Content.DBName,
+			Statement:    payload.Content.Statement,
+			LongTime:     payload.Content.LongTime,
+			IsExport:     payload.Content.IsExport,
+			IsSOAR:       payload.Content.IsSOAR,
+			IsAiAnalysis: payload.Content.IsAiAnalysis,
+		},
 	}
 	tkID, err := tk.CreateOrUpdate(tkData)
 	if err != nil {
@@ -98,8 +107,10 @@ func (srv *GitLabTaskService) Create(payload *IssuePayload) (*dto.TicketDTO, err
 		Content: payload.Content,
 		Issue:   payload.Issue,
 	}
-	core.GitLabIssueMap.Set(tkData.UID, issCache, common.TicketCacheMapDDL, common.GitLabTaskType)
-
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.GitLabIssuePreifx, tkData.UID)
+	c.RistCache.SetWithTTL(cKey, issCache, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
+	c.RistCache.Wait()
 	//  创建SQLTask的审计日志
 	taskBody, err := json.Marshal(issCache)
 	if err != nil {
@@ -138,14 +149,13 @@ func (srv *GitLabTaskService) Create(payload *IssuePayload) (*dto.TicketDTO, err
 			IssueIID:  payload.Issue.IID,
 		},
 	})
-
 	return &tkData, nil
 }
 
 // 通过ProjectID和IssueIID来解析Issue
 func (srv *GitLabTaskService) ParseIssue() (*IssuePayload, error) {
 	// 解析指定Issue
-	glab := clients.InitGitLabAPI()
+	glab := glbapi.InitGitLabAPI()
 	iss, err := glab.IssueView(srv.ProjectID, srv.IssueIID)
 	if err != nil {
 		return nil, utils.GenerateError("ParseIssueErr", err.Error())
@@ -156,7 +166,7 @@ func (srv *GitLabTaskService) ParseIssue() (*IssuePayload, error) {
 	}
 
 	// 解析Issue详情
-	descBytes, err := clients.ParseIssueDesc(iss.Description)
+	descBytes, err := glbapi.ParseIssueDesc(iss.Description)
 	if err != nil {
 		utils.DebugPrint("ParseIssueErr", err.Error())
 		return nil, err
@@ -171,14 +181,13 @@ func (srv *GitLabTaskService) ParseIssue() (*IssuePayload, error) {
 	}, nil
 }
 
-// TODO: 重新分析
-// func (srv *GitLabTaskService) ReAnalysis(payload *IssuePayload, redo ReExcute) error {
-// }
 // 从数据库中获取任务Body(抽象版)
 func (srv *GitLabTaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) (*IssuePayload, error) {
 	// 获取Task Body数据
 	var taskBodyVal *IssuePayload
-	body, exist := core.GitLabIssueMap.Get(srv.UID)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.GitLabIssuePreifx, srv.UID)
+	body, exist := c.RistCache.Get(cKey)
 	if !exist {
 		if redo.IsReExcute {
 			// TODO: 补充超时控制context
@@ -193,8 +202,8 @@ func (srv *GitLabTaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) 
 			for {
 				select {
 				case <-ticker.C:
-					mapVal, ok := core.APITaskBodyMap.Get(srv.UID)
-					if !ok {
+					mapVal, exist := c.RistCache.Get(cKey)
+					if !exist {
 						continue
 					}
 					tempTaskBody, ok := mapVal.(*IssuePayload)
@@ -226,11 +235,16 @@ func (srv *GitLabTaskService) ReGetTaskBody() {
 	if err != nil {
 		utils.ErrorPrint("ReDoError", err.Error())
 	}
-	// !存储在Sync.Map中
-	core.GitLabIssueMap.Set(srv.UID, tempPayload, common.DefaultCacheMapDDL, common.APITaskBodyMapCleanFlag)
+	// 存储缓存系统中
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.GitLabIssuePreifx, srv.UID)
+	c.RistCache.SetWithTTL(cKey, tempPayload, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
+	// c.RistCache.Wait()
 }
 
 func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
+	// 通知
+	srv.NotifyGitLab("Start Pre-Checking\n")
 	// 获取Task Body数据v2(Gitlab) 重做机制版
 	issCache, err := srv.getTaskBodyV2(ctx, ReExcute{
 		IsReExcute: true,
@@ -259,7 +273,6 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 	if err != nil {
 		srv.NotifyGitLab(err.Error())
 		return err
-
 	}
 
 	//TODO: 增强SQL解析
@@ -295,7 +308,13 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 		resultGroup.Data.ExplainAnalysis = append(resultGroup.Data.ExplainAnalysis, *analysisRes)
 		// 输出到gitlab中
 		if issCache.Content.IsAiAnalysis {
-			srv.NotifyGitLab(analysisRes.AiAnalysis)
+			go func() {
+				if strings.HasPrefix(analysisRes.AiAnalysis, "```") {
+					srv.NotifyGitLab(analysisRes.AiAnalysis)
+				} else {
+					srv.NotifyGitLab("```json:\n" + analysisRes.AiAnalysis + "\n```")
+				}
+			}()
 		}
 	}
 	if !common.CheckCtx(ctx) {
@@ -316,6 +335,10 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 			return err
 		}
 		resultGroup.Data.Soar.Results = soarResult
+		// 输出到gitlab中
+		if issCache.Content.IsAiAnalysis {
+			srv.NotifyGitLab("```json:" + string(soarResult) + "```")
+		}
 	}
 
 	// !自定义规则解析
@@ -398,7 +421,6 @@ func (srv *GitLabTaskService) doubleCheck(ctx context.Context) error {
 		AuthorID: srv.UserID,
 	}, common.DoubleCheckingStatus, common.ApprovalPassedStatus)
 	if err != nil {
-		srv.NotifyGitLab(err.Error())
 		return err
 	}
 
@@ -532,12 +554,6 @@ func (srv *GitLabTaskService) approval(ctx context.Context) error {
 	err := tk.UpdateTicketStats(dto.TicketDTO{
 		SourceRef: sourceRef,
 	}, common.ApprovalPassedStatus, expectStatus...)
-	//! Gitlab评论方式通知更新情况
-	// _ = glab.CommentCreate(glbapi.GitLabComment{
-	// 	ProjectID: commentBody.ProjectID,
-	// 	IssueIID:  commentBody.IssueIID,
-	// 	Message:   "审批成功, 等待上线...",
-	// })
 	return err
 }
 
@@ -577,9 +593,16 @@ func (srv *GitLabTaskService) online(ctx context.Context) error {
 	ep := event.GetEventProducer()
 
 	//!上线前二次检查
-	err = srv.doubleCheck(ctx)
-	if err != nil {
-		return err
+	c := core.GetKVCache()
+	approvalKey := fmt.Sprintf("approved:%d", srv.UID)
+	execCount, exist := c.RistCache.Get(approvalKey)
+	// if execCount == 0 && exist && sqlt.Action != "select" {
+	if execCount == 0 || !exist {
+		err = srv.doubleCheck(ctx)
+		if err != nil {
+			return err
+		}
+		srv.NotifyGitLab("Double-Check Task is completed")
 	}
 
 	// （更新）Ticket记录,检查是否有修改痕迹
@@ -591,7 +614,7 @@ func (srv *GitLabTaskService) online(ctx context.Context) error {
 	})
 	err = tk.UpdateTicketStats(dto.TicketDTO{
 		SourceRef: sourceRef,
-	}, common.OnlinePassedStatus, common.DoubleCheckSuccessStatus)
+	}, common.OnlinePassedStatus, common.DoubleCheckSuccessStatus, common.CompletedStatus)
 	if err != nil {
 		return err
 	}
@@ -657,7 +680,7 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *core.IssueQTas
 		})
 		err := tk.UpdateTicketStats(dto.TicketDTO{
 			SourceRef: sourceRef,
-		}, common.PendingStatus, common.OnlinePassedStatus)
+		}, common.ProcessingStatus, common.OnlinePassedStatus)
 		if err != nil {
 			errCh <- err
 			return
@@ -675,13 +698,14 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *core.IssueQTas
 		}
 
 		//！ 构造任务组V3
-		core.QueryTaskMap.Set(srv.UID, issQTG, common.DefaultCacheMapDDL, common.QueryTaskMapCleanFlag)
+		c := core.GetKVCache()
+		cKey := fmt.Sprintf("%s:%d", common.SQLTaskPrefix, srv.UID)
+		c.RistCache.SetWithTTL(cKey, issQTG, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
-		updateMsg := fmt.Sprintf("TaskGID=%s is start work...", issQTG.QTG.GID)
 		err = glab.CommentCreate(glbapi.GitLabComment{
 			ProjectID: issQTG.IssProjectID,
 			IssueIID:  issQTG.IssIID,
-			Message:   updateMsg,
+			Message:   "SQL-Task is start work...",
 		})
 		if err != nil {
 			errCh <- err
@@ -815,14 +839,22 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *core.SQ
 		}
 	}
 	//! 后期核心处理结果集的代码逻辑块
-	core.ResultMap.Set(srv.UID, sqlResult, common.DefaultCacheMapDDL, common.ResultMapCleanFlag)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.ResultPrefix, srv.UID)
+	c.RistCache.SetWithTTL(cKey, sqlResult, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
+
+	// 增加执行次数计数器
+	approvalKey := fmt.Sprintf("approved:%d", srv.UID)
+	err = c.AddCountVal(approvalKey, 1)
+	if err != nil {
+		return err
+	}
 	// （更新）Ticket记录, Issue评论情况更新
 
-	updateMsg := fmt.Sprintf("TaskGID=%s is completed", sqlResult.GID)
 	err = glab.CommentCreate(glbapi.GitLabComment{
 		ProjectID: uint(tk.ProjectID),
 		IssueIID:  uint(tk.IssueID),
-		Message:   updateMsg,
+		Message:   "SQL-Task is completed",
 	})
 	if err != nil {
 		utils.ErrorPrint("GitlabCommentErr", err.Error())
@@ -862,8 +894,9 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *core.SQ
 	}
 
 	// 获取任务组信息
-	val, exist := core.QueryTaskMap.Get(tk.UID)
-	if !exist {
+	cKey = fmt.Sprintf("%s:%d", common.SQLTaskPrefix, tk.UID)
+	val, ok := c.RistCache.Get(cKey)
+	if !ok {
 		return utils.GenerateError("CacheNotExist", "gitlab issue cache is not exist")
 	}
 	IssueVal, ok := val.(*core.IssueQTaskV2)
@@ -919,13 +952,20 @@ func (srv *GitLabTaskService) UpdateTicketStats(targetStats string, exceptStats 
 // 存储预检数据
 func (srv *GitLabTaskService) SaveCheckData(ctx context.Context, preCheckVal *core.PreCheckResultGroup) error {
 	//! 存储预检任务信息
-	core.CheckTaskMap.Set(srv.UID, preCheckVal, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
+	c.RistCache.SetWithTTL(cKey, preCheckVal, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
-	val, exist := core.GitLabIssueMap.Get(srv.UID)
+	// 存储免审批缓存项
+	approvalKey := fmt.Sprintf("approved:%d", srv.UID)
+	c.RistCache.SetWithTTL(approvalKey, 0, common.SmallItemCost, common.FreeApprovalDDL*time.Second)
+
+	cKey = fmt.Sprintf("%s:%d", common.GitLabIssuePreifx, srv.UID)
+	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		return utils.GenerateError("CachesNotExist", "Gitlab Issue Cache is not exist")
 	}
-	v, ok := val.(*IssuePayload)
+	issue, ok := val.(*IssuePayload)
 	if !ok {
 		return utils.GenerateError("CachesNotMatch", "Gitlab Issue Cache Kind is not match")
 	}
@@ -944,8 +984,8 @@ func (srv *GitLabTaskService) SaveCheckData(ctx context.Context, preCheckVal *co
 		updateMsg = fmt.Sprintf("TicketID=%d \n%s Task is Success\n", preCheckVal.TicketID, title)
 	}
 	err := glab.CommentCreate(glbapi.GitLabComment{
-		ProjectID: v.ProjectID,
-		IssueIID:  v.Issue.IID,
+		ProjectID: issue.ProjectID,
+		IssueIID:  issue.Issue.IID,
 		Message:   updateMsg,
 	})
 	if err != nil {
@@ -957,7 +997,9 @@ func (srv *GitLabTaskService) SaveCheckData(ctx context.Context, preCheckVal *co
 // ! 获取预检结果集(支持重新解析)
 func (srv *GitLabTaskService) getPreCheckResult(ctx context.Context, redo ReExcute) (*core.PreCheckResultGroup, error) {
 	var fristCheckVal *core.PreCheckResultGroup
-	val, exist := core.CheckTaskMap.Get(srv.UID)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
+	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		if redo.IsReExcute {
 			fmt.Println("debug print 开启重做...")
@@ -972,7 +1014,7 @@ func (srv *GitLabTaskService) getPreCheckResult(ctx context.Context, redo ReExcu
 			for {
 				select {
 				case <-ticker.C:
-					mapVal, ok := core.CheckTaskMap.Get(srv.UID)
+					mapVal, ok := c.RistCache.Get(cKey)
 					if !ok {
 						continue
 					}

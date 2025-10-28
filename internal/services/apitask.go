@@ -90,8 +90,10 @@ func (srv *APITaskService) Create(data dto.SQLTaskRequest) (*dto.TicketDTO, erro
 		return nil, err
 	}
 	tkData.UID = tkID
-	// !临时存储(不能使用UID，因为每次UID都会变动，需要使用businessRef来标识一组完整事件)
-	core.APITaskBodyMap.Set(tkData.UID, data, common.DefaultCacheMapDDL, common.APITaskBodyMapCleanFlag)
+	// !临时存储
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.APITaskBodyPrefix, tkData.UID)
+	c.RistCache.SetWithTTL(cKey, data, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
 	// 创建SQLTask的审计日志
 	taskBody, err := json.Marshal(data)
@@ -220,7 +222,13 @@ func (srv *APITaskService) getTicketID() int64 {
 
 // ! 存储预检任务信息
 func (srv *APITaskService) SaveCheckData(ctx context.Context, preCheckVal *core.PreCheckResultGroup) error {
-	core.CheckTaskMap.Set(srv.UID, preCheckVal, common.DefaultCacheMapDDL, common.CheckTaskMapCleanFlag)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
+	c.RistCache.SetWithTTL(cKey, preCheckVal, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
+
+	// 存储免审批缓存项
+	approvalKey := fmt.Sprintf("approved:%d", srv.UID)
+	c.RistCache.SetWithTTL(approvalKey, 0, common.SmallItemCost, common.FreeApprovalDDL*time.Second)
 	return nil
 }
 
@@ -229,7 +237,9 @@ func (srv *APITaskService) GetCheckData() (*core.PreCheckResultGroup, error) {
 	//获取雪花ID
 	tkID := srv.getTicketID()
 	srv.UID = tkID
-	val, exist := core.CheckTaskMap.Get(tkID)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
+	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		return nil, utils.GenerateError("CheckDataError", "Check Data is not exist")
 	}
@@ -245,7 +255,10 @@ func (srv *APITaskService) GetResultData() (*core.SQLResultGroupV2, error) {
 	//获取雪花ID
 	tkID := srv.getTicketID()
 	srv.UID = tkID
-	val, exist := core.ResultMap.Get(tkID)
+
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.ResultPrefix, srv.UID)
+	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		return nil, utils.GenerateError("ResultDataError", "SQLTask Result Data is not exist")
 	}
@@ -328,14 +341,21 @@ func (srv *APITaskService) online(ctx context.Context) error {
 	}
 
 	//! 上线前二次检查
-	err = srv.doubleCheck(ctx)
-	if err != nil {
-		return err
+	c := core.GetKVCache()
+	approvalKey := fmt.Sprintf("approved:%d", srv.UID)
+	execCount, exist := c.RistCache.Get(approvalKey)
+	// if execCount == 0 && exist && sqlt.Action != "select" {
+	if execCount == 0 || !exist {
+		err = srv.doubleCheck(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	//! 上线前检查是否有修改痕迹(判断状态)
 	expectStatus := []string{
 		common.DoubleCheckSuccessStatus,
+		common.CompletedStatus,
 	}
 	err = tk.UpdateTicketStats(
 		dto.TicketDTO{
@@ -376,8 +396,10 @@ func (srv *APITaskService) online(ctx context.Context) error {
 func (srv *APITaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) (dto.SQLTaskRequest, error) {
 	// 获取Task Body数据
 	var taskBodyVal dto.SQLTaskRequest
-	body, exist := core.APITaskBodyMap.Get(srv.UID)
-	if !exist {
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.APITaskBodyPrefix, srv.UID)
+	body, ok := c.RistCache.Get(cKey)
+	if !ok {
 		if redo.IsReExcute {
 			// TODO: 补充超时控制context
 			go redo.Fn()
@@ -391,7 +413,7 @@ func (srv *APITaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) (dt
 			for {
 				select {
 				case <-ticker.C:
-					mapVal, ok := core.APITaskBodyMap.Get(srv.UID)
+					mapVal, ok := c.RistCache.Get(cKey)
 					if !ok {
 						continue
 					}
@@ -439,8 +461,10 @@ func (srv *APITaskService) retryGetTaskBody() {
 		IsSOAR:       res.TaskContent.IsSOAR,
 		IsAiAnalysis: res.TaskContent.IsAiAnalysis,
 	}
-	// !存储在Sync.Map中
-	core.APITaskBodyMap.Set(srv.UID, taskBodyData, common.DefaultCacheMapDDL, common.APITaskBodyMapCleanFlag)
+	// 临时存储缓存
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.APITaskBodyPrefix, srv.UID)
+	c.RistCache.SetWithTTL(cKey, taskBodyData, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 }
 
 func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
@@ -692,7 +716,7 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 		tk := NewTicketService()
 		err := tk.UpdateTicketStats(dto.TicketDTO{
 			BusinessRef: srv.BusinessRef,
-		}, common.PendingStatus, common.OnlinePassedStatus)
+		}, common.ProcessingStatus, common.OnlinePassedStatus)
 		if err != nil {
 			errCh <- err
 			return
@@ -711,7 +735,9 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 		}
 
 		//! 构造任务组V3
-		core.QueryTaskMap.Set(srv.UID, qtg, common.DefaultCacheMapDDL, common.QueryTaskMapCleanFlag)
+		c := core.GetKVCache()
+		cKey := fmt.Sprintf("%s:%d", common.SQLTaskPrefix, srv.UID)
+		c.RistCache.SetWithTTL(cKey, qtg, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
 		taskGroup := make([]*core.SQLTask, 0)
 		var maxDeadline int
@@ -811,12 +837,21 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 func (srv *APITaskService) SaveResult(ctx context.Context, sqlResult *core.SQLResultGroupV2) error {
 	tk := NewTicketService()
 	//! 后期核心处理结果集的代码逻辑块
-	core.ResultMap.Set(srv.UID, sqlResult, common.DefaultCacheMapDDL, common.ResultMapCleanFlag)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.ResultPrefix, srv.UID)
+	c.RistCache.SetWithTTL(cKey, sqlResult, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
+
+	// 增加执行次数计数器
+	approvalKey := fmt.Sprintf("approved:%d", srv.UID)
+	err := c.AddCountVal(approvalKey, 1)
+	if err != nil {
+		return err
+	}
 
 	// Ticket状态：成功
-	err := tk.UpdateTicketStats(dto.TicketDTO{
+	err = tk.UpdateTicketStats(dto.TicketDTO{
 		BusinessRef: srv.BusinessRef,
-	}, common.CompletedStatus, common.PendingStatus)
+	}, common.CompletedStatus, common.ProcessingStatus)
 	if err != nil {
 		return utils.GenerateError("TicketErr", err.Error())
 	}
@@ -856,7 +891,9 @@ func (srv *APITaskService) UpdateTicketStats(targetStats string, exceptStats ...
 // ! 通过TicketID获取预检结果集(支持重新解析)
 func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute) (*core.PreCheckResultGroup, error) {
 	var fristCheckVal *core.PreCheckResultGroup
-	val, exist := core.CheckTaskMap.Get(srv.UID)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
+	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		if redo.IsReExcute {
 			fmt.Println("debug print 开启重做...")
@@ -871,7 +908,7 @@ func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute)
 			for {
 				select {
 				case <-ticker.C:
-					mapVal, ok := core.CheckTaskMap.Get(srv.UID)
+					mapVal, ok := c.RistCache.Get(cKey)
 					if !ok {
 						continue
 					}

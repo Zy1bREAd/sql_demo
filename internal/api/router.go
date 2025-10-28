@@ -170,6 +170,9 @@ func InitBaseRoutes() {
 
 		// ai chat
 		rgAuth.GET("/chat", AiChat)
+
+		// health-check
+		rgPublic.GET("/health", HealthCheck)
 	})
 }
 
@@ -627,13 +630,15 @@ func SSOCallBack(ctx *gin.Context) {
 		common.DefaultResp(ctx, http.StatusBadRequest, nil, "Missing state parameter")
 		return
 	}
-	_, exist := core.SessionMap.Get(reqState)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%s", common.SessionPrefix, reqState)
+	_, exist := c.RistCache.Get(cKey)
 	if !exist {
 		common.DefaultResp(ctx, http.StatusBadRequest, nil, "Invaild state parameter")
 		return
 	}
 	// 清理缓存
-	core.SessionMap.Del(reqState)
+	defer c.RistCache.Del(cKey)
 
 	// 获取授权码
 	oa2 := auth.GetOAuthConfig()
@@ -1077,7 +1082,7 @@ func GetDBConfig(ctx *gin.Context) {
 	common.SuccessResp(ctx, result, "get db all data success", common.WithPagination(pagni))
 }
 
-type HealthCheck struct {
+type HealthCheckDTO struct {
 	Env     string `json:"env_name"`
 	Service string `json:"service"`
 	Status  int    `json:"status"`
@@ -1094,13 +1099,13 @@ type HealthCheck struct {
 // @Security		ApiKeyAuth
 func HealthCheckSources(ctx *gin.Context) {
 	pool := dbo.GetDBPoolManager()
-	result := make([]HealthCheck, 0)
+	result := make([]HealthCheckDTO, 0)
 	for env, services := range pool.Pool {
 		for srv, dbIst := range services {
 			if dbIst == nil {
 				continue
 			}
-			result = append(result, HealthCheck{
+			result = append(result, HealthCheckDTO{
 				Env:     env,
 				Service: srv,
 				Status:  dbIst.StatusCode,
@@ -1406,4 +1411,16 @@ func getUserIDByJWT(ctx *gin.Context) (string, error) {
 		return "", utils.GenerateError("NoPermission", "Convert UserID Type is Failed")
 	}
 	return userIDVal, nil
+}
+
+// 程序健康检查入口
+func HealthCheck(ctx *gin.Context) {
+	timeOutCtx, cancel := context.WithTimeout(ctx, time.Second*60)
+	defer cancel()
+	self := dbo.HaveSelfDB()
+	err := self.HealthCheck(timeOutCtx)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, "[DataBaseError]"+err.Error())
+		return
+	}
 }

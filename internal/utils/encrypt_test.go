@@ -35,3 +35,7 @@ func TestDecryptAES256(t *testing.T) {
 	}
 	fmt.Println("result is ", res, string(want))
 }
+
+func TestStudyFn(t *testing.T) {
+	StudyFn()
+}

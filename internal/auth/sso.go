@@ -3,11 +3,13 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
 	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 )
@@ -62,6 +64,9 @@ func SetState() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	core.SessionMap.Set(state, struct{}{}, common.DefaultCacheMapDDL, common.SessionMapCleanFlag)
+	c := core.GetKVCache()
+	cKey := fmt.Sprintf("%s:%s", common.SessionPrefix, state)
+	c.RistCache.SetWithTTL(cKey, struct{}{}, common.SmallItemCost, common.DefaultCacheMapDDL*time.Second)
+	c.RistCache.Wait()
 	return state, nil
 }
