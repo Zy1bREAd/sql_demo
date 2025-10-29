@@ -13,12 +13,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 数据遮罩配置
-type DataMaskConfig struct {
-	RuleConfig map[string]RuleConfig `yaml:"data-mask"`
-	// valid      bool                  // 判断结构体是否有效
-}
-
 type RuleConfig struct {
 	IllegalFields []string    `yaml:"illegal_fields"`
 	Mode          string      `yaml:"mode"`
@@ -32,14 +26,17 @@ type RangeConfig struct {
 	End   int `yaml:"end"`
 }
 
-func initDataMaskConfig(filePath string) (*DataMaskConfig, error) {
-	var dmConf DataMaskConfig
+// 数据遮罩配置
+type MaskRules map[string]RuleConfig
+
+func initDataMaskConfig(filePath string) (*MaskRules, error) {
+	var dmConf MaskRules
 	f, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, utils.GenerateError("LoadIn Failed", err.Error())
 	}
 	err = yaml.Unmarshal(f, &dmConf)
-	utils.DebugPrint("DataMaskRule", dmConf.RuleConfig)
+	utils.DebugPrint("DataMaskRule", dmConf)
 	if err != nil {
 		return nil, utils.GenerateError("LoadIn Failed", err.Error())
 	}
@@ -117,10 +114,10 @@ func (p *PartialDesensitizer) Mask(col string, fieldVal []byte) (string, error) 
 	return string(fieldVal), nil
 }
 
-// 数据遮罩处理
+// !数据遮罩核心处理
 func DataMaskHandle(col string, fieldVal *sql.RawBytes) string {
 	appConf := GetAppConf()
-	mode := appConf.GetBaseConfig().DataMaskMode
+	mode := appConf.GetBaseConfig().DataMask.Mode
 	// 根据你选择的mask模式返回接口实例，使用接口方法区执行dataMask操作。
 	er := getDesensitizer(mode)
 	if er == nil {
@@ -134,11 +131,12 @@ func DataMaskHandle(col string, fieldVal *sql.RawBytes) string {
 	return maskVal
 }
 
+// 按需加载数据遮罩配置
 func matchRuleConfig(mode string) []RuleConfig {
 	appConf := GetAppConf()
 	dmConf := appConf.GetDataMaskConfig()
 	ruleList := []RuleConfig{}
-	for _, ruleConfig := range dmConf.RuleConfig {
+	for _, ruleConfig := range *dmConf {
 		if mode == ruleConfig.Mode {
 			ruleList = append(ruleList, ruleConfig)
 		}

@@ -63,10 +63,10 @@ func InitSelfDB() *SelfDatabase {
 		case strings.ToLower(driver) == "mysql":
 			err := connect(conf.DSN, conf.IdleTime, conf.MaxConn)
 			if err != nil {
-				panic(utils.GenerateError("????", err.Error()))
+				panic(utils.GenerateError("DBConnectErr", err.Error()))
 			}
 		default:
-			panic(utils.GenerateError("DB Driver Not Found", "driver not found"))
+			panic(utils.GenerateError("DBConnectErr", "db driver is not found"))
 		}
 	}
 

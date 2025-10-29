@@ -1,8 +1,10 @@
 package conf
 
 import (
+	"fmt"
 	"os"
 	"sql_demo/internal/utils"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -10,15 +12,21 @@ import (
 
 // Application环境变量配置
 type BaseConfig struct {
-	DBEnv        map[string]DBConfigMySQL `yaml:"db"`
-	DataMaskMode string                   `yaml:"data_mask"`
-	WebSrvEnv    WebServerConfig          `yaml:"web"`
-	SSOEnv       SSOConfig                `yaml:"sso"`
-	ExportEnv    ExportConfig             `yaml:"export"`
-	GitLabEnv    GitLabConfig             `yaml:"gitlab"`
-	WeixinEnv    WeixinConfig             `yaml:"weixin"`
-	ApprovalMap  map[string]uint          `yaml:"approval_list"`
-	AIEnv        AIConfig                 `yaml:"ai"`
+	DBEnv       map[string]DBConfigMySQL `yaml:"db"`
+	DataMask    DataMaskConfig           `yaml:"data_mask"`
+	WebSrvEnv   WebServerConfig          `yaml:"web"`
+	SSOEnv      SSOConfig                `yaml:"sso"`
+	ExportEnv   ExportConfig             `yaml:"export"`
+	GitLabEnv   GitLabConfig             `yaml:"gitlab"`
+	WeixinEnv   WeixinConfig             `yaml:"weixin"`
+	ApprovalMap map[string]uint          `yaml:"approval_list"`
+	AIEnv       AIConfig                 `yaml:"ai"`
+}
+
+type DataMaskConfig struct {
+	Mode     string `yaml:"mode" default:"none"`
+	FileName string `yaml:"file_name" default:"data_mask.conf"`
+	FilePath string `yaml:"file_path" default:"./confg/rule/"`
 }
 
 type DBConfigMySQL struct {
@@ -99,12 +107,41 @@ var initOnce sync.Once
 var appConf *AppConfig
 
 type AppConfig struct {
-	baseConfig     *BaseConfig
-	dataMaskConfig *DataMaskConfig
+	base    *BaseConfig
+	dasMask *MaskRules
+}
+
+// 设置默认值
+func (b *BaseConfig) setDefaultVal() {
+	// 数据遮罩
+	b.DataMask = DataMaskConfig{
+		Mode:     "none",
+		FileName: "data_mask.yaml",
+		FilePath: "./config/rule",
+	}
+
+	b.WebSrvEnv = WebServerConfig{
+		Addr:     "localhost",
+		Port:     "21899",
+		HostName: "localhost",
+		TLSEnv: WebTLSConfig{
+			Enabled: false,
+			Port:    "22899",
+			Key:     "./config/tls/ssl.key",
+			Cert:    "./config/tls/ssl.crt",
+		},
+	}
+
+	b.ExportEnv = ExportConfig{
+		FilePath:     "./tmp",
+		HouseKeeping: 100,
+	}
 }
 
 func initBaseConfig(filePath string) (*BaseConfig, error) {
 	var baseConf BaseConfig
+	baseConf.setDefaultVal()
+
 	f, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, utils.GenerateError("InitConfError", err.Error())
@@ -119,35 +156,42 @@ func initBaseConfig(filePath string) (*BaseConfig, error) {
 // 集中初始化环境变量+其他配置
 func InitAppConfig() {
 	initOnce.Do(func() {
-		// 读取环境变量配置App
+		// ! 基础配置
 		baseConf, err := initBaseConfig("/opt/oceanwang/golang/sql_demo/config/env.yaml")
 		if err != nil {
 			panic(utils.GenerateError("InitDMError", err.Error()))
 		}
 		// 读取数据遮罩配置
-		dmConf, err := initDataMaskConfig("/opt/oceanwang/golang/sql_demo/config/data_mask_rule.yaml")
+		var dmConfPath string
+		if strings.HasSuffix(baseConf.DataMask.FilePath, "/") {
+			dmConfPath = baseConf.DataMask.FilePath + baseConf.DataMask.FileName
+		} else {
+			dmConfPath = baseConf.DataMask.FilePath + "/" + baseConf.DataMask.FileName
+		}
+		fmt.Println("debug print mask config path", dmConfPath)
+		dmConf, err := initDataMaskConfig(dmConfPath)
 		if err != nil {
 			panic(utils.GenerateError("InitDMError", err.Error()))
 		}
 
 		appConf = &AppConfig{
-			baseConfig:     baseConf,
-			dataMaskConfig: dmConf,
+			base:    baseConf,
+			dasMask: dmConf,
 		}
 	})
 }
 
 func GetAppConf() *AppConfig {
 	if appConf == nil {
-		panic(utils.GenerateError("AppConfigNotExist", "app config is not exist"))
+		panic(utils.GenerateError("AppConfInitErr", "app config is not init"))
 	}
 	return appConf
 }
 
 func (c *AppConfig) GetBaseConfig() *BaseConfig {
-	return c.baseConfig
+	return c.base
 }
 
-func (c *AppConfig) GetDataMaskConfig() *DataMaskConfig {
-	return c.dataMaskConfig
+func (c *AppConfig) GetDataMaskConfig() *MaskRules {
+	return c.dasMask
 }

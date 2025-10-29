@@ -34,26 +34,25 @@ import (
 // @externalDocs.description	OpenAPI
 // @externalDocs.url			https://swagger.io/resources/open-api/
 func main() {
+	// 针对请求-工作-处理结果的context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		utils.DebugPrint("PrintGoroutineNumber1", runtime.NumGoroutine())
+		cancel()
+	}()
 	// 开启文件日志记录
-	core.InitKVCache()
-	defer core.CloseKVCache()
 	conf.InitAppConfig()
 	file := utils.StartFileLogging()
 	defer file.Close()
+	core.InitKVCache()
+	defer core.CloseKVCache()
 	// 连接本地应用的DB存储数据
 	self := dbo.InitSelfDB()
 	defer self.Close()
 	// 初始化多数据库池子的实例
 	dbo.LoadInDB(false)
 
-	// 针对请求-工作-处理结果的context
-	ctx, cancel := context.WithCancel(context.Background())
-	// defer cancel()
-	defer func() {
-		utils.DebugPrint("PrintGoroutineNumber1", runtime.NumGoroutine())
-		cancel()
-	}()
-	// 初始化Gin以及路由( 从yaml file env中读取配置加载Server )
+	// 初始化Gin以及路由
 	event.InitEventDrive(ctx, 100)
 	auth.InitOAuth2()
 	api.InitRouter()
