@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	api "sql_demo/internal/api"
 	"sql_demo/internal/auth"
@@ -37,7 +38,8 @@ func main() {
 	// 针对请求-工作-处理结果的context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
-		utils.DebugPrint("PrintGoroutineNumber1", runtime.NumGoroutine())
+		utils.DebugPrint("PrintGoroutineNumber3", runtime.NumGoroutine())
+		fmt.Println("PrintGoroutineNumber2", runtime.NumGoroutine())
 		cancel()
 	}()
 	// 开启文件日志记录
@@ -51,6 +53,7 @@ func main() {
 	defer self.Close()
 	// 初始化多数据库池子的实例
 	dbo.LoadInDB(false)
+	core.InitCasbin()
 
 	// 初始化Gin以及路由
 	event.InitEventDrive(ctx, 100)

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,7 +11,6 @@ import (
 	"os/signal"
 	_ "sql_demo/docs"
 	dto "sql_demo/internal/api/dto"
-	"sql_demo/internal/auth"
 	api "sql_demo/internal/clients"
 	glbapi "sql_demo/internal/clients/gitlab"
 	"sql_demo/internal/common"
@@ -29,7 +27,6 @@ import (
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"gorm.io/gorm"
 )
 
 // 定义路由注册函数
@@ -123,9 +120,9 @@ func InitBaseRoutes() {
 		// 注册、登录认证
 		// rgPublic.POST("/register", userCreate)
 		// rgPublic.POST("/login", userLogin)
-		rgPublic.POST("/sso/login", userSSOLogin)
-		rgPublic.GET("/sso/callback", SSOCallBack)
-		rgAuth.GET("/users/register", RegisterUsersByGitLab)
+		rgPublic.POST("/sso/login", ssoLogin)
+		rgPublic.GET("/sso/callback", ssoCallback)
+		rgAuth.GET("/users/sync", SyncUsersByGitLab)
 
 		// 结果展示、导出与下载
 		rgAuth.GET("/result/temp-view/:identifier", getTicketTempResults)
@@ -161,6 +158,18 @@ func InitBaseRoutes() {
 		rgAuth.POST("/sources/connection/test", SourceConnTest)
 		rgAuth.GET("/sources/search", SearchDBConfig)
 		rgAuth.GET("/sources/health-check", HealthCheckSources)
+
+		// Policy管理
+		rgAuth.POST("/policy/create", CreatePolicy)
+		rgAuth.GET("/policy/list", GetPolicy)
+		rgAuth.PUT("/policy/update", UpdatePolicyForSub)
+		rgAuth.DELETE("/policy/delete", DeletedPolicyForSub)
+
+		// Grouping Policy管理
+		rgAuth.POST("/grouping/create", CreateGroupingRole)
+		rgAuth.GET("/grouping/list", GetGrouping)
+		rgAuth.PUT("/grouping/update", UpdateGroupingForSub)
+		rgAuth.DELETE("/grouping/delete", DeletedGroupingForSub)
 
 		// 审计日志
 		rgAuth.POST("/audit/record/list", GetAuditRecord)
@@ -605,16 +614,13 @@ func CommentCallBack(ctx *gin.Context) {
 // }
 
 // 处理gitlab SSO登录
-func userSSOLogin(ctx *gin.Context) {
-	oa2 := auth.GetOAuthConfig()
-	state, err := auth.SetState()
+func ssoLogin(ctx *gin.Context) {
+	usrSrv := services.NewUserService()
+	authURL, state, err := usrSrv.SSOLogin()
 	if err != nil {
-		common.DefaultResp(ctx, common.RespFailed, nil, utils.GenerateError("NoStateValue", err.Error()).Error())
+		common.DefaultResp(ctx, http.StatusBadRequest, nil, err.Error())
 		return
 	}
-	authURL := oa2.AuthCodeURL(state)
-	log.Println("构造后的auth url:", authURL)
-	// ctx.Redirect(http.StatusFound, authURL)
 	// 构造authURL，由前端去跳转。
 	common.SuccessResp(ctx, map[string]any{
 		"redirect_url": authURL,
@@ -623,69 +629,27 @@ func userSSOLogin(ctx *gin.Context) {
 }
 
 // 身份提供商回调验证函数（用于Token置换）
-func SSOCallBack(ctx *gin.Context) {
+func ssoCallback(ctx *gin.Context) {
 	// 防御CSRF攻击（确保请求state参数一致）
 	reqState := ctx.Request.URL.Query().Get("state")
 	if reqState == "" {
 		common.DefaultResp(ctx, http.StatusBadRequest, nil, "Missing state parameter")
 		return
 	}
-	c := core.GetKVCache()
-	cKey := fmt.Sprintf("%s:%s", common.SessionPrefix, reqState)
-	_, exist := c.RistCache.Get(cKey)
-	if !exist {
-		common.DefaultResp(ctx, http.StatusBadRequest, nil, "Invaild state parameter")
+	reqCode := ctx.Request.URL.Query().Get("code")
+	if reqCode == "" {
+		common.DefaultResp(ctx, http.StatusBadRequest, nil, "Missing code parameter")
 		return
 	}
-	// 清理缓存
-	defer c.RistCache.Del(cKey)
-
-	// 获取授权码
-	oa2 := auth.GetOAuthConfig()
-	code := ctx.Request.URL.Query().Get("code")
-	token, err := oa2.Exchange(context.Background(), code)
-	if err != nil {
-		common.ErrorResp(ctx, "Failed to exchange token:"+err.Error())
-		return
-	}
-
-	// 通过获取身份提供商的token中的用户信息，构造我们application的token
-	oauthConf := auth.GetOAuthConfig()
-	client := oauthConf.Client(context.Background(), token)
-	appConf := conf.GetAppConf().GetBaseConfig()
-	resp, err := client.Get(appConf.SSOEnv.ClientAPI)
-	if err != nil {
-		common.ErrorResp(ctx, "Failed to get user info:"+err.Error())
-		return
-	}
-	defer resp.Body.Close()
-
-	var oauthUser auth.GitLabUser
-	err = json.NewDecoder(resp.Body).Decode(&oauthUser)
-	if err != nil {
-		common.ErrorResp(ctx, "decode user info is failed, "+err.Error())
-		return
-	}
-	// 完成数据库相关的逻辑
-	var user dbo.User
-	userId, err := user.SSOLogin(dbo.User{
-		ID:       oauthUser.ID,
-		Name:     oauthUser.Name,
-		UserName: oauthUser.UserName,
-		Email:    oauthUser.Email,
-	})
-	if err != nil {
-		common.ErrorResp(ctx, "sso login failed, "+err.Error())
-		return
-	}
-	// log.Println(gitlabUserInfo)
-	appToken, err := utils.GenerateJWT(userId, oauthUser.Name, oauthUser.Email)
+	usrSrv := services.NewUserService()
+	guser, err := usrSrv.SSOCallBack(reqState, reqCode)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
 	}
 	common.SuccessResp(ctx, gin.H{
-		"user_token": appToken,
-		"user":       oauthUser.Name,
+		"user_token": guser.Token,
+		"user":       guser.Name,
 		"role":       "...",
 	}, "sso login success")
 }
@@ -741,7 +705,7 @@ func ResultExport(ctx *gin.Context) {
 	exportSrv := services.NewExportResultService(
 		services.WithExportIsOnly(isOnlyBool),
 		services.WithExportTaskID(taskIdVal),
-		services.WithExportUserID(utils.StrToUint(userID)), // TODO: 需要转换使用本应用中的UserID
+		services.WithExportUserID(userID),
 		services.WithExportResultIndex(reqBody.ResultIdx),
 	)
 	// 生产【导出结果集】事件
@@ -843,12 +807,12 @@ func DownloadFile(ctx *gin.Context) {
 		return
 	}
 	// 获取 UserId
-	userIDStr, err := getUserIDByJWT(ctx)
+	userID, err := getUserIDByJWT(ctx)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
 	}
 
-	downloadSrv := services.NewDownloadService(utils.StrToUint(userIDStr))
+	downloadSrv := services.NewDownloadService(userID)
 	filePath, err := downloadSrv.Download(taskId)
 	if err != nil {
 		common.ErrorResp(ctx, err.Error())
@@ -878,7 +842,7 @@ func getTicketTempResults(ctx *gin.Context) {
 		return
 	}
 	// 获取临时数据集
-	tempResSrv := services.NewTempResultService(utils.StrToUint(userID))
+	tempResSrv := services.NewTempResultService(userID)
 	data, err := tempResSrv.GetData(ctx, dto.TempResultDTO{
 		UUKey: uuKey,
 	}, true)
@@ -906,68 +870,16 @@ func getTicketTempResults(ctx *gin.Context) {
 }
 
 // 用于手动将GitLab User注册进来User
-func RegisterUsersByGitLab(ctx *gin.Context) {
+func SyncUsersByGitLab(ctx *gin.Context) {
 	// 校验管理员操作
-	val, exist := ctx.Get("user_id")
-	if !exist {
-		common.DefaultResp(ctx, common.IllegalRequest, nil, "User is not exist")
-		return
-	}
-	userID, ok := val.(uint)
-	if !ok {
-		common.DefaultResp(ctx, common.RespFailed, nil, "UserId type is incrroect")
-		return
-	}
-	validUser := dbo.User{
-		ID: userID,
-	}
-	if !validUser.IsAdminUser() {
-		common.DefaultResp(ctx, common.NoPermissionRequest, nil, "the user is no permission")
-		return
-	}
-	api := glbapi.InitGitLabAPI()
-	users, err := api.UserList()
+	// getUserIDByJWT(ctx)
+	usrSrv := services.NewUserService()
+	err := usrSrv.SyncGitLabUsers()
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	for _, gu := range users {
-		// 跳过不活跃的用户
-		if gu.State != "active" {
-			continue
-		}
-		var u dbo.User
-		dbConn := dbo.HaveSelfDB().GetConn()
-		res := dbConn.Where("git_lab_identity = ?", gu.ID).First(&u)
-		if res.Error != nil {
-			// 不存在即创建用户
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				u := dbo.User{
-					Name:           gu.Name,
-					UserName:       gu.Username,
-					GitLabIdentity: gu.ID,
-					Email:          gu.Email,
-					UserType:       dbo.GITLABUSER,
-				}
-				dbConn.Create(&u)
-				continue
-			}
-		}
-		// 存在即更新
-		err = dbConn.Model(&u).Updates(dbo.User{
-			ID:             u.ID,
-			Name:           gu.Name,
-			UserName:       gu.Username,
-			GitLabIdentity: gu.ID,
-			Email:          gu.Email,
-			UserType:       2,
-		}).Error
-		if err != nil {
-			utils.DebugPrint("UpdateGitLabUser", "update gitlab user is failed")
-			continue
-		}
-	}
-	common.SuccessResp(ctx, users, "success")
+	common.SuccessResp(ctx, nil, "sync gitlab user success")
 }
 
 // 创建数据库连接信息
@@ -1423,4 +1335,135 @@ func HealthCheck(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, "[DataBaseError]"+err.Error())
 		return
 	}
+}
+
+func CreatePolicy(ctx *gin.Context) {
+	var p dto.CasbinDTO
+	err := ctx.ShouldBindBodyWithJSON(&p)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	permission := core.GetCasbin()
+	ok, err := permission.AddPolicy(p.Sub, p.Obj, p.Act)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, ok, "Create Policy")
+}
+
+func CreateGroupingRole(ctx *gin.Context) {
+	var p dto.CasbinDTO
+	err := ctx.ShouldBindBodyWithJSON(&p)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	permission := core.GetCasbin()
+	if len(p.Grp) != 2 {
+		common.DefaultResp(ctx, common.RespFailed, nil, "Grouping Role is illegal")
+		return
+	}
+	if p.Grp[0] == "" || p.Grp[1] == "" {
+		common.DefaultResp(ctx, common.RespFailed, nil, "Grouping Role is invalid")
+		return
+	}
+	ok, err := permission.AddGroupingPolicy(p.Grp[0], p.Grp[1])
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, ok, "Create Grouping")
+}
+
+func GetPolicy(ctx *gin.Context) {
+	pSub := ctx.Query("p_sub")
+	permission := core.GetCasbin()
+	var res [][]string
+	var err error
+	if pSub == "" {
+		res, err = permission.GetPolicy()
+	} else {
+		res, err = permission.GetFilteredPolicy(0, pSub)
+	}
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, res, "Get Policy")
+}
+
+func GetGrouping(ctx *gin.Context) {
+	gSub := ctx.Query("g_sub")
+	permission := core.GetCasbin()
+	var res [][]string
+	var err error
+	if gSub == "" {
+		res, err = permission.GetGroupingPolicy()
+	} else {
+		res, err = permission.GetFilteredGroupingPolicy(0, gSub)
+	}
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, res, "Get Grouping")
+}
+
+func UpdatePolicyForSub(ctx *gin.Context) {
+	pSub := ctx.Query("p_sub")
+	var p dto.CasbinDTO
+	err := ctx.ShouldBindBodyWithJSON(&p)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	permission := core.GetCasbin()
+	updatePolicy := [][]string{{p.Sub, p.Obj, p.Act}}
+	ok, err := permission.UpdateFilteredPolicies(updatePolicy, 0, pSub)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, ok, "Updated Policy")
+}
+
+func DeletedPolicyForSub(ctx *gin.Context) {
+	pSub := ctx.Query("p_sub")
+	permission := core.GetCasbin()
+	ok, err := permission.RemoveFilteredPolicy(0, pSub)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, ok, "Deleted Policy")
+}
+
+func UpdateGroupingForSub(ctx *gin.Context) {
+	gSub := ctx.Query("g_sub")
+	var p dto.CasbinDTO
+	err := ctx.ShouldBindBodyWithJSON(&p)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	permission := core.GetCasbin()
+	ok, err := permission.UpdateFilteredPolicies([][]string{p.Grp}, 0, gSub)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, ok, "Updated Grouping")
+}
+
+func DeletedGroupingForSub(ctx *gin.Context) {
+	gSub := ctx.Query("g_sub")
+	permission := core.GetCasbin()
+	ok, err := permission.RemoveFilteredGroupingPolicy(0, gSub)
+	if err != nil {
+		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
+		return
+	}
+	common.SuccessResp(ctx, ok, "Deleted Grouping")
 }

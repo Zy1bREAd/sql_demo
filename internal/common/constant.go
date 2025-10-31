@@ -1,5 +1,15 @@
 package common
 
+const (
+	DefaultUser = 0
+	GitLabUser  = 2
+
+	// User Role
+	AdministratorRole = 10
+	DeveloperRole     = 1
+	GuestRole         = 0
+)
+
 // 任务类型
 const (
 	APITaskType    = 1

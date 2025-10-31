@@ -92,7 +92,7 @@ func StartFileLogging() *os.File {
 		panic(err)
 	}
 	// 同时写入日志文件和屏幕
-	multiWriter := io.MultiWriter(logFile, os.Stdout)
+	multiWriter := io.MultiWriter(os.Stdout, logFile)
 	log.SetOutput(multiWriter)
 	return logFile
 }

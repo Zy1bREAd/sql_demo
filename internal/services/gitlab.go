@@ -8,6 +8,7 @@ import (
 	clients "sql_demo/internal/clients/gitlab"
 	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
 	"strings"
@@ -213,14 +214,13 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	// 同意申请
 	glab := clients.InitGitLabAPI()
 	// 检查审批人是否合法
-	approvalUserMap := conf.GetAppConf().GetBaseConfig().ApprovalMap
-	approverID, exist := approvalUserMap[c.User.Name]
-	if !exist {
-		return utils.GenerateError("ApprovalUserNotExist", "该用户不是审批人")
+	permission := core.GetCasbin()
+	ok, err := permission.Enforce(c.User.Username, "sql-task", "approval")
+	if err != nil {
+		return utils.GenerateError("CasbinError", err.Error())
 	}
-	if c.User.ID != approverID {
-		// error: 不相同的userid
-		return utils.GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
+	if !ok {
+		return utils.GenerateError("ApprovalError", "permission denied")
 	}
 	// 确认签派给SQL Handle User
 	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
@@ -266,19 +266,18 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 }
 
 func (c *CommentWebhook) handleApprovalRejected(reason string) error {
-	// 检查审批人是否合法
-	approvalUserMap := conf.GetAppConf().GetBaseConfig().ApprovalMap
-	v, exist := approvalUserMap[c.User.Name]
-	if !exist {
-		return utils.GenerateError("ApprovalUserNotExist", "该用户不是审批人")
-	}
-	if v != c.User.ID {
-		// error: 不相同的userid
-		return utils.GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
-	}
 	glab := clients.InitGitLabAPI()
+	// 检查审批人是否合法
+	permission := core.GetCasbin()
+	ok, err := permission.Enforce(c.User.Username, "sql-task", "approval")
+	if err != nil {
+		return utils.GenerateError("CasbinError", err.Error())
+	}
+	if !ok {
+		return utils.GenerateError("ApprovalError", "permission denied")
+	}
 	// 驳回
-	err := glab.CommentCreate(clients.GitLabComment{
+	err = glab.CommentCreate(clients.GitLabComment{
 		ProjectID: c.Project.ID,
 		IssueIID:  c.Issue.IID,
 		Message:   "【审批不通过】驳回该SQL执行, 原因:" + reason,
@@ -322,17 +321,14 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 }
 
 func (c *CommentWebhook) handleOnlineExcute() error {
-	// 同意申请
-	glab := clients.InitGitLabAPI()
 	// 检查审批人是否合法
-	approvalUserMap := conf.GetAppConf().GetBaseConfig().ApprovalMap
-	approverID, exist := approvalUserMap[c.User.Name]
-	if !exist {
-		return utils.GenerateError("ApprovalUserNotExist", "该用户不是审批人")
+	permission := core.GetCasbin()
+	ok, err := permission.Enforce(c.User.Username, "sql-task", "approval")
+	if err != nil {
+		return utils.GenerateError("CasbinError", err.Error())
 	}
-	if c.User.ID != approverID {
-		// error: 不相同的userid
-		return utils.GenerateError("ApprovalUserNotMatch", "审批人疑是伪造用户")
+	if !ok {
+		return utils.GenerateError("ApprovalError", "permission denied")
 	}
 	// 确认签派给SQL Handle User
 	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
@@ -340,28 +336,12 @@ func (c *CommentWebhook) handleOnlineExcute() error {
 		robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
 		return utils.GenerateError("AssigneerNotMatch", robotMsg)
 	}
-	gitlabSrv := NewGitLabTaskService(WithGitLabTaskProjectID(c.Project.ID),
+	gitlabSrv := NewGitLabTaskService(
+		WithGitLabTaskProjectID(c.Project.ID),
 		WithGitLabTaskIssueIID(c.Issue.IID),
-		WithGitLabTaskUserID(c.User.ID),
 	)
-	gitlabSrv.ParseIssue()
 	// 解析指定Issue
-	iss, err := glab.IssueView(c.Project.ID, c.Issue.IID)
-	if err != nil {
-		return utils.GenerateError("ParseIssueErr", err.Error())
-	}
-	// 检查issue状态是否关闭
-	if strings.ToLower(iss.State) == "closed" {
-		return utils.GenerateError("IssueClosed", "Issue已关闭")
-	}
-
-	// 解析Issue详情
-	descBytes, err := clients.ParseIssueDesc(iss.Description)
-	if err != nil {
-		utils.DebugPrint("ParseError", err.Error())
-		return err
-	}
-	issContent, err := ParseTaskContent(descBytes)
+	issPayload, err := gitlabSrv.ParseIssue()
 	if err != nil {
 		return err
 	}
@@ -375,7 +355,7 @@ func (c *CommentWebhook) handleOnlineExcute() error {
 				Action: CommentOnlineExcute,
 				IssuePayload: &IssuePayload{
 					Issue:   &c.Issue,
-					Content: issContent,
+					Content: issPayload.Content,
 				},
 			},
 		},

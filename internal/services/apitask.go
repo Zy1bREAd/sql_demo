@@ -32,8 +32,8 @@ type APIOption func(*APITaskService)
 // API调用
 type APITaskService struct {
 	BusinessRef string
+	UserID      string
 	UID         int64
-	UserID      uint
 }
 
 func NewAPITaskService(opts ...APIOption) *APITaskService {
@@ -46,7 +46,7 @@ func NewAPITaskService(opts ...APIOption) *APITaskService {
 
 func WithAPITaskUserID(userID string) APIOption {
 	return func(as *APITaskService) {
-		as.UserID = utils.StrToUint(userID)
+		as.UserID = userID
 	}
 }
 
@@ -70,7 +70,7 @@ func (srv *APITaskService) Create(data dto.SQLTaskRequest) (*dto.TicketDTO, erro
 	UUID := utils.GenerateUUIDKey()
 	userID := srv.UserID
 	// {业务域}:{来源}:{UUID}:user:{主体id}
-	sourceRef := fmt.Sprintf("%s:%s:%s:user:%d", busniessDomain, "api", UUID, userID)
+	sourceRef := fmt.Sprintf("%s:%s:%s:user:%s", busniessDomain, "api", UUID, userID)
 	// 仅UUID
 	businessRef := UUID
 	// {动作}:{UUID}
@@ -124,7 +124,7 @@ func (srv *APITaskService) Create(data dto.SQLTaskRequest) (*dto.TicketDTO, erro
 		},
 		MetaData: event.EventMeta{
 			Source:    "api",
-			Operator:  int(srv.UserID),
+			Operator:  srv.UserID,
 			Timestamp: time.Now().Format("20060102150405"),
 			// ! 额外增加追溯唯一标识
 			TraceID: businessRef,
@@ -174,7 +174,7 @@ func (srv *APITaskService) Update(data dto.SQLTaskRequest) error {
 		},
 		MetaData: event.EventMeta{
 			Source:    "api",
-			Operator:  int(srv.UserID),
+			Operator:  srv.UserID,
 			Timestamp: time.Now().Format("20060102150405"),
 			// ! 额外增加追溯唯一标识
 			TraceID: srv.BusinessRef,
@@ -384,7 +384,7 @@ func (srv *APITaskService) online(ctx context.Context) error {
 		},
 		MetaData: event.EventMeta{
 			Source:    "api",
-			Operator:  int(srv.UserID),
+			Operator:  srv.UserID,
 			Timestamp: time.Now().Format("20060102150405"),
 			TraceID:   srv.BusinessRef,
 		},
@@ -700,7 +700,7 @@ func (srv *APITaskService) ReCheck() {
 		},
 		MetaData: event.EventMeta{
 			Source:    "api",
-			Operator:  int(srv.UserID),
+			Operator:  srv.UserID,
 			Timestamp: time.Now().Format("20060102150405"),
 			TraceID:   srv.BusinessRef,
 		},
@@ -776,7 +776,7 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 			Payload: resultGroup,
 			MetaData: event.EventMeta{
 				Source:    "api",
-				Operator:  int(srv.UserID),
+				Operator:  srv.UserID,
 				Timestamp: time.Now().Format("20060102150405"),
 				TraceID:   srv.BusinessRef,
 			},
@@ -821,7 +821,7 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 				},
 				MetaData: event.EventMeta{
 					Source:    "api",
-					Operator:  int(srv.UserID),
+					Operator:  srv.UserID,
 					Timestamp: time.Now().Format("20060102150405"),
 					TraceID:   srv.BusinessRef,
 				},

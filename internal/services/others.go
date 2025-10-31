@@ -92,7 +92,7 @@ func (audit *AuditRecordService) Insert(data dto.AuditRecordDTO) error {
 }
 
 // 【本质还是插入】查找此前的审计日志，并更新事件类型后插入新记录。
-func (audit *AuditRecordService) Update(cond dto.AuditRecordDTO, eventKind string, userID uint, payload string) error {
+func (audit *AuditRecordService) Update(cond dto.AuditRecordDTO, eventKind, userID, payload string) error {
 	condORM := audit.toORMData(cond)
 	// 获取Issue详情(使用taskId和UserId来查找对应的issue)
 	var auditRes dbo.AuditRecordV2

@@ -15,6 +15,7 @@ type UserClaim struct {
 	OrignalClaims jwt.RegisteredClaims
 	Email         string `json:"email"`
 	UserID        string `json:"user_id"`
+	UserKind      uint   `json:"user_kind"`
 }
 
 func (uc UserClaim) GetAudience() (jwt.ClaimStrings, error) {
@@ -45,9 +46,7 @@ func (uc UserClaim) GetSubject() (string, error) {
 // 	return GenerateSalt()
 // }
 
-func GenerateJWT(id uint, name, email string) (string, error) {
-	// 转换id类型
-	idStr := strconv.FormatUint(uint64(id), 10)
+func GenerateJWT(uid, name, email string, kind uint) (string, error) {
 	userclaim := &UserClaim{
 		OrignalClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(48 * time.Hour)), // default=3h
@@ -55,12 +54,11 @@ func GenerateJWT(id uint, name, email string) (string, error) {
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    name,
 		},
-		Email:  email,
-		UserID: idStr,
+		Email:    email,
+		UserID:   uid,
+		UserKind: kind,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, userclaim)
-	// 使用随机uuid来签名jwt
-	// secretKey := generateSecret()
 	tokenStr, err := token.SignedString([]byte(secretKey))
 	if err != nil {
 		return "", GenerateError("GenerateJWTFailed", err.Error())
@@ -85,31 +83,6 @@ func ParseJWT(tokenStr string) (*UserClaim, error) {
 		return tokenClaim, nil
 	}
 	return nil, GenerateError("InvalidJWTClaim", "this is a invalid jwt claim")
-}
-
-// 验证JWT token
-func ValidateJWTToken(tokenStr string) (bool, error) {
-	tokenClaim, err := ParseJWT(tokenStr)
-	if err != nil {
-		return false, err
-	}
-	// 对自定义字段进行校验
-	_, err = strconv.ParseUint(tokenClaim.UserID, 10, 32)
-	if err != nil {
-		return false, GenerateError("StringToUintError", err.Error())
-	}
-	// convId := uint(id)
-	// var user User
-	// result := selfDB.conn.Where(&User{ID: convId, Email: tokenClaim.Email}).First(&user)
-	// if result.Error != nil {
-	// 	return false, GenerateError("ValidateJWTFailed", result.Error.Error())
-	// }
-	// if result.RowsAffected == 0 {
-	// 	// 无法找到该用户则校验失败（断定为用户伪造的jwt）
-	// 	return false, GenerateError("ValidateJWTFailed", "not found user")
-	// }
-
-	return true, nil
 }
 
 // string转换uint的方法

@@ -63,11 +63,13 @@ type Comment struct {
 
 // Issue创建者用户和GitLab Robot
 type GUser struct {
-	ID       uint   `json:"id"`
-	Username string `json:"username"` // 理解为账号名
-	Name     string `json:"name"`
-	State    string `json:"state"`
-	Email    string `json:"email"`
+	ID          uint   `json:"id"`
+	Username    string `json:"username"` // 理解为账号名（唯一性）
+	Name        string `json:"name"`
+	State       string `json:"state"`
+	Email       string `json:"email"`
+	LastLoginAt string `json:"last_sign_in_at"`
+	IsAdmin     bool   `json:"is_admin"`
 }
 
 type Project struct {

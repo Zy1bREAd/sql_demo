@@ -34,8 +34,8 @@ type CheckEvent interface {
 type FristCheckEvent struct {
 	SourceRef string
 	Source    string
+	UserID    string
 	TicketID  int64
-	UserID    uint
 }
 
 type DoubleCheckEvent struct {
@@ -49,8 +49,8 @@ type QTaskGroupV2 struct {
 	IsSoarAnalysis bool
 	IsExport       bool
 	IsLongTime     bool
-	UserID         uint // 关联执行用户id
-	Deadline       int  //整个任务组的超时时间，默认: (用户SQL条数*用户定义的时间)+用户定义的时间
+	UserID         string // 关联执行用户id
+	Deadline       int    //整个任务组的超时时间，默认: (用户SQL条数*用户定义的时间)+用户定义的时间
 	TicketID       int64
 	GID            string // 任务组ID（一个TaskID对应一个Ticket）
 	DML            string

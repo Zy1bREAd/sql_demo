@@ -24,10 +24,10 @@ type GitLabOption func(*GitLabTaskService)
 // GitLab 调用
 type GitLabTaskService struct {
 	SourceRef string
+	UserID    string
 	UID       int64
 	IssueIID  uint
 	ProjectID uint
-	UserID    uint
 }
 
 func NewGitLabTaskService(opts ...GitLabOption) *GitLabTaskService {
@@ -44,7 +44,7 @@ func WithGitLabTaskUID(uid int64) GitLabOption {
 	}
 }
 
-func WithGitLabTaskUserID(userID uint) GitLabOption {
+func WithGitLabTaskUserID(userID string) GitLabOption {
 	return func(as *GitLabTaskService) {
 		as.UserID = userID
 	}
@@ -63,17 +63,15 @@ func WithGitLabTaskIssueIID(issueIID uint) GitLabOption {
 }
 
 // GitLab调用创建SQLTask和Ticket
-func (srv *GitLabTaskService) Create(payload *IssuePayload) (*dto.TicketDTO, error) {
+func (srv *GitLabTaskService) IssueHandle(payload *IssuePayload) (*dto.TicketDTO, error) {
 	// 获取用户真实ID
-	user := dbo.User{
-		GitLabIdentity: payload.Issue.AuthorID,
-	}
-	userID := user.GetGitLabUserId()
+	usrSrv := NewUserService()
+	userID := usrSrv.GetIDByIdentify(payload.Issue.AuthorID)
 	// 创建Ticket(需要根据客户端来主动构造business_ref)信息
 	tk := NewTicketService()
 	busniessDomain := "sql-task"
 	// {业务域}:{来源}:{项目ID}:{议题IID}:user:{主体id}
-	sourceRef := fmt.Sprintf("%s:%s:%d:%d:user:%d", busniessDomain, "gitlab", payload.Issue.ProjectID, payload.Issue.IID, userID)
+	sourceRef := fmt.Sprintf("%s:%s:%d:%d:user:%s", busniessDomain, "gitlab", payload.Issue.ProjectID, payload.Issue.IID, userID)
 	// 幂等性键等同于sourceRef
 	IdempKey := sourceRef
 
@@ -142,7 +140,7 @@ func (srv *GitLabTaskService) Create(payload *IssuePayload) (*dto.TicketDTO, err
 		},
 		MetaData: event.EventMeta{
 			Source:    "gitlab",
-			Operator:  int(userID),
+			Operator:  userID,
 			Timestamp: time.Now().Format("20060102150405"),
 			// ! 临时额外增加
 			ProjectID: payload.Issue.ProjectID,
@@ -492,8 +490,7 @@ func (srv *GitLabTaskService) doubleCheck(ctx context.Context) error {
 // 检查任务重做
 func (srv *GitLabTaskService) ReCheck() {
 	ep := event.GetEventProducer()
-	updateMsg := fmt.Sprintf("TicketID=%d Pre-Check Task is Re-Excute...", srv.UID)
-	srv.NotifyGitLab(updateMsg)
+	srv.NotifyGitLab("Pre-Check Task is Re-Excute...")
 
 	ep.Produce(event.Event{
 		Type: "sql_check",
@@ -503,7 +500,7 @@ func (srv *GitLabTaskService) ReCheck() {
 		},
 		MetaData: event.EventMeta{
 			Source:    "gitlab",
-			Operator:  int(srv.UserID),
+			Operator:  srv.UserID,
 			Timestamp: time.Now().Format("20060102150405"),
 		},
 	})
@@ -644,7 +641,7 @@ func (srv *GitLabTaskService) online(ctx context.Context) error {
 		},
 		MetaData: event.EventMeta{
 			Source:    "gitlab",
-			Operator:  int(srv.UserID),
+			Operator:  srv.UserID,
 			Timestamp: time.Now().Format("20060102150405"),
 		},
 	})
@@ -749,7 +746,7 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *core.IssueQTas
 			Payload: resultGroup,
 			MetaData: event.EventMeta{
 				Source:    "gitlab",
-				Operator:  int(srv.UserID),
+				Operator:  srv.UserID,
 				Timestamp: time.Now().Format("20060102150405"),
 			},
 		})
@@ -795,7 +792,7 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *core.IssueQTas
 				},
 				MetaData: event.EventMeta{
 					Source:    "gitlab",
-					Operator:  int(srv.UserID),
+					Operator:  srv.UserID,
 					Timestamp: time.Now().Format("20060102150405"),
 				},
 			})
@@ -863,7 +860,7 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *core.SQ
 	// 遍历每条SQL的细致Error
 	for _, result := range sqlResult.Data {
 		if result.Errrrr != nil {
-			errMsg := fmt.Sprintf("TicketID=%s\n- IID=%s\n- TaskError=%s", sqlResult.GID, result.ID, result.ErrMsg)
+			errMsg := fmt.Sprintf("- IID=%s\n- TaskError=%s", result.ID, result.ErrMsg)
 			err := glab.CommentCreate(glbapi.GitLabComment{
 				ProjectID: uint(tk.ProjectID),
 				IssueIID:  uint(tk.IssueID),
@@ -976,12 +973,12 @@ func (srv *GitLabTaskService) SaveCheckData(ctx context.Context, preCheckVal *co
 	if preCheckVal.IsDoubleCheck {
 		title = "Double-Check"
 	} else {
-		title = "Frist-Check"
+		title = "Pre-Check"
 	}
 	if preCheckVal.Errrr != nil {
-		updateMsg = fmt.Sprintf("TicketID=%d \n%s Task is Failed\n- %s", preCheckVal.TicketID, title, preCheckVal.ErrMsg)
+		updateMsg = fmt.Sprintf("%s Task is Failed\n- %s", title, preCheckVal.ErrMsg)
 	} else {
-		updateMsg = fmt.Sprintf("TicketID=%d \n%s Task is Success\n", preCheckVal.TicketID, title)
+		updateMsg = fmt.Sprintf("%s Task is Success\n", title)
 	}
 	err := glab.CommentCreate(glbapi.GitLabComment{
 		ProjectID: issue.ProjectID,
@@ -1071,6 +1068,7 @@ func (srv *GitLabTaskService) NotifyGitLab(msg string) {
 	// GitLab Issue Comment
 	glab := glbapi.InitGitLabAPI()
 	retryErr := glab.Retry(3, func() error {
+		fmt.Println("debug print issue info 2", srv.ProjectID, srv.IssueIID)
 		return glab.CommentCreate(glbapi.GitLabComment{
 			ProjectID: srv.ProjectID,
 			IssueIID:  srv.IssueIID,

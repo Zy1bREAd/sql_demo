@@ -6,31 +6,22 @@ import (
 	"gorm.io/gorm"
 )
 
-const (
-	DEFAULTUSER = 0
-	GITLABUSER  = 2
-
-	// User Role
-	AdministratorRole = 0
-	DeveloperRole     = 1
-	GuestRole         = 2
-)
-
 type User struct {
-	ID             uint      `gorm:"primaryKey"`
-	UserType       uint      `gorm:"type:smallint;not null"` // 0=Default User; 2=GitLab User
-	GitLabIdentity uint      `gorm:"uniqueIndex"`            // Gitlab User的身份标识
-	Name           string    `gorm:"type:varchar(255);not null"`
+	ID             string    `gorm:"type:varchar(32);uniqueIndex"`
+	Name           string    `gorm:"type:varchar(255);not null;index:idx_usr"`
 	UserName       string    `gorm:"type:varchar(255);"`
+	Kind           uint      `gorm:"type:smallint;not null;index:idx_usr"` // 0=Default User; 2=GitLab User
+	Status         string    `gorm:"type:varchar(255);"`
+	GitLabIdentity uint      `gorm:"uniqueIndex"`                 // Gitlab User的身份标识
+	IsActive       bool      `gorm:"type:smallint;default:false"` // false-禁用 true-启用
+	IsAdmin        bool      `gorm:"type:smallint;default:false"`
 	Password       string    `gorm:"type:varchar(255);not null"`
 	Email          string    `gorm:"type:varchar(255);"`
-	Role           int       `gorm:"type:smallint;default:2;"`
-	CreateAt       time.Time `gorm:"autoCreateTime"`
-
-	// 权限？
+	CreatedAt      time.Time `gorm:"autoCreateTime"`
+	UpdatedAt      time.Time `gorm:""`
 
 	// 关联
-	QueryAuditLogs []AuditRecordV2 `gorm:"foreignKey:UserID"`
+	// QueryAuditLogs []AuditRecordV2 `gorm:"foreignKey:UserID"`
 }
 
 type AuditRecordV2 struct {
@@ -38,15 +29,15 @@ type AuditRecordV2 struct {
 	// 关联Ticket表
 	// TicketID int64  `gorm:""` // 相当于链路ID
 	// Ticket   Ticket `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:TicketID;references:UID"`
+	TicketID  int64     `gorm:"index"`
 	TaskID    string    `gorm:"type:varchar(255);index"`
+	TaskKind  int       `gorm:"type:smallint"`
 	EventType string    `gorm:"type:varchar(64);not null"`
 	Payload   string    `gorm:""` // 记录审计的载体，以JSON格式
-	TaskKind  int       `gorm:"type:smallint"`
-	TicketID  int64     `gorm:"index"`
 	CreateAt  time.Time `gorm:"type:datetime(0);autoCreateTime"`
 	// 关联User表
-	User   User `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;constraintName:fk_audit_record_user_v2"`
-	UserID uint
+	User   User `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:UserID;references:ID"`
+	UserID string
 
 	// 关联GitLab
 	ProjectID uint `gorm:"type:int"`
@@ -58,7 +49,7 @@ type AuditRecordV2 struct {
 }
 
 func (audit *AuditRecordV2) TableName() string {
-	return "audit_logs_v3"
+	return "audit_logs"
 }
 
 type TempResult struct {
@@ -130,7 +121,7 @@ func (temp *QueryDataBase) TableName() string {
 
 // 工单表（主要是完成Ticket的状态流转）
 type Ticket struct {
-	UID            int64       `gorm:"index;not null;uniqueIndex"` // 雪花ID
+	UID            int64       `gorm:"not null;uniqueIndex;"` // 雪花ID
 	TaskID         string      `gorm:"type:varchar(64)"`
 	Status         string      `gorm:"type:varchar(64);not null;index"`
 	Source         int         `gorm:"type:smallint(1);index:idx_gitlab_ticket;"` // 用于标识Ticket的来源。normal:1     gitlab:2
@@ -139,8 +130,8 @@ type Ticket struct {
 	IdemoptencyKey string      `gorm:"type:varchar(64);index"`
 	TaskContent    TaskContent `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:TaskContentID;references:ID"` //! 关联API Task Content
 	TaskContentID  uint
-	AuthorID       uint   `gorm:"not null"` // 表示该Ticket所属者
-	UserForKey     User   `gorm:"not null;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:AuthorID;references:ID"`
+	AuthorID       string // 表示该Ticket所属者
+	UserForKey     User   `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;foreignKey:AuthorID;references:ID"`
 	ProjectID      int    `gorm:"index:idx_gitlab_ticket;"`
 	IssueID        int    `gorm:"index:idx_gitlab_ticket;"`
 	Link           string `gorm:"type:varchar(255)"`
@@ -168,3 +159,15 @@ type TaskContent struct {
 func (t *TaskContent) TableName() string {
 	return "t_task_content"
 }
+
+// // 审批相关规则
+// type Roles struct {
+// 	gorm.Model
+// 	Name        string `gorm:"type:varchar(255);not null;uniqueIndex"`
+// 	Priority    int    `gorm:""`
+// 	Description string `gorm:""`
+// }
+
+// func (t *Roles) TableName() string {
+// 	return "t_roles"
+// }

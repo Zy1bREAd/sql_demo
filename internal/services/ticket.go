@@ -79,7 +79,7 @@ func (tk *TicketService) Create(data dto.TicketDTO) (int64, error) {
 	return data.UID, tk.DAO.Create(ticketORM)
 }
 
-// 不存在时创建记录，存在则更新 （并返回TicketID）
+// 自动判断是否创建还是更新数据库记录
 func (tk *TicketService) CreateOrUpdate(data dto.TicketDTO) (int64, error) {
 	// 内建生成雪花ID
 	data.UID = utils.GenerateSnowKey()
@@ -92,6 +92,13 @@ func (tk *TicketService) CreateOrUpdate(data dto.TicketDTO) (int64, error) {
 	if !tk.DAO.IsExist(condORM) {
 		// 创建
 		return data.UID, tk.DAO.Create(dataORM)
+	}
+	err := tk.UpdateTaskContent(dto.TicketDTO{
+		SourceRef:      data.SourceRef,
+		IdemoptencyKey: data.IdemoptencyKey,
+	}, data.TaskContent)
+	if err != nil {
+		return 0, err
 	}
 	return tk.DAO.Update(condORM, &dbo.Ticket{
 		Status:    common.EditedStatus, // 修改为Edited状态
@@ -220,7 +227,7 @@ func (tk *TicketService) StatusCount() (map[string]int, error) {
 // 检查事件payload
 type FristCheckEventV2 struct {
 	Ref      string // SourceRef 或 BusinessRef
+	UserID   string
 	Source   int
 	TicketID int64
-	UserID   uint
 }

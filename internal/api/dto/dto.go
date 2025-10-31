@@ -46,9 +46,9 @@ func (dto QueryEnvDTO) Validate() error {
 type AuditRecordDTO struct {
 	ProjectID uint   `json:"project_id"`
 	IssueID   uint   `json:"issue_id"`
-	UserID    uint   `json:"user_id"`
 	TaskType  int    `json:"task_type"`
 	TicketID  int64  `json:"ticket_id"`
+	UserID    string `json:"user_id"`
 	TaskID    string `json:"task_id"`
 	UserName  string `json:"username"`
 	EventType string `json:"event_type"`
@@ -69,7 +69,7 @@ type TicketDTO struct {
 	IdemoptencyKey string         `json:"idem_key"`
 	UID            int64          `json:"uid"`       // 雪花ID
 	Source         int            `json:"source"`    // 用于标识Ticket的来源。
-	AuthorID       uint           `json:"author_id"` // 表示该Ticket所属者
+	AuthorID       string         `json:"author_id"` // 表示该Ticket所属者
 	ProjectID      uint           `json:"project_id"`
 	IssueIID       uint           `json:"issue_iid"`
 }
@@ -202,4 +202,26 @@ type PagniationDTO struct {
 type SearchRequest struct {
 	PagniationDTO
 	Keyword string `form:"keyword" binding:"required"`
+}
+
+type CasbinDTO struct {
+	Sub string   `json:"sub"`
+	Obj string   `json:"obj"`
+	Act string   `json:"act"`
+	Grp []string `json:"grp"` // Sub和Role的映射关系
+}
+
+// SSO登录
+type SSOLoginDTO struct {
+	Token   string `json:"access_token"`
+	UserDTO `json:"user"`
+}
+
+type UserDTO struct {
+	UID      string `json:"uid"`
+	Name     string `json:"name"`
+	UserName string `json:"user_name"`
+	Email    string `json:"email"`
+	Status   string `json:"status"`
+	Kind     uint   `json:"kind"`
 }

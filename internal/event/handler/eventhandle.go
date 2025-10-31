@@ -11,7 +11,6 @@ import (
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/services"
-	"strconv"
 
 	// "sql_demo/internal/services"
 	"sql_demo/internal/utils"
@@ -72,7 +71,7 @@ func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	case *core.QTaskGroupV2:
 		apiSrv := services.NewAPITaskService(
 			services.WithAPITaskBusinessRef(e.MetaData.TraceID),
-			services.WithAPITaskUserID(strconv.FormatUint(uint64(t.UserID), 10)),
+			services.WithAPITaskUserID(t.UserID),
 		)
 		return apiSrv.Excute(ctx, t)
 
@@ -212,7 +211,7 @@ func (eh *ExportEventHandler) Work(ctx context.Context, e event.Event) error {
 	}
 	utils.DebugPrint("ExportTask", fmt.Sprintf("Task:%s is Starting...", export.TaskID))
 	exportSrv := services.NewExportResultService(
-		services.WithExportUserID(uint(e.MetaData.Operator)),
+		services.WithExportUserID(e.MetaData.Operator),
 		services.WithExportIsOnly(export.IsOnly),
 	)
 	err := exportSrv.Export(ctx, export)
@@ -281,16 +280,14 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			}
 			commentBody.ProjectID = payload.IssuePayload.Issue.ProjectID
 			commentBody.IssueIID = payload.IssuePayload.Issue.IID
-			// 获取USer真实ID
-			user := dbo.User{
-				GitLabIdentity: payload.IssuePayload.Issue.AuthorID,
-			}
-			userId := user.GetGitLabUserId()
+			usrSrv := services.NewUserService()
+			userID := usrSrv.GetIDByIdentify(payload.IssuePayload.Issue.AuthorID)
+
 			// 获取Service层操作对象
 			gitlabSrv := services.NewGitLabTaskService(
 				services.WithGitLabTaskProjectID(commentBody.ProjectID),
 				services.WithGitLabTaskIssueIID(commentBody.IssueIID),
-				services.WithGitLabTaskUserID(userId),
+				services.WithGitLabTaskUserID(userID),
 			)
 			// (关键)通过Issue信息获取Ticket UID
 			tkUID := gitlabSrv.GetTicketUID()
@@ -349,7 +346,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 			//! Gitlab创建SQLTask和Ticket
 			gitlabTask := services.NewGitLabTaskService()
 			// TODO: 后续增加上下文ctx，超时控制
-			_, err := gitlabTask.Create(payload)
+			_, err := gitlabTask.IssueHandle(payload)
 			errCh <- err
 		}
 	}()
@@ -359,6 +356,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		if err != nil {
 			// 统一错误处理
 			retryErr := glab.Retry(3, func() error {
+				fmt.Println("debug pirnt issue info", commentBody.ProjectID, commentBody.IssueIID)
 				return glab.CommentCreate(glbapi.GitLabComment{
 					ProjectID: commentBody.ProjectID,
 					IssueIID:  commentBody.IssueIID,

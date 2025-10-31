@@ -22,7 +22,7 @@ type EventMeta struct {
 	Source    string `json:"source"`
 	Timestamp string `json:"timestamp"`
 	TraceID   string `json:"trace_id"`
-	Operator  int    `json:"operator"`
+	Operator  string `json:"operator"`
 	ProjectID uint   `json:"project_id"`
 	IssueIID  uint   `json:"issue_iid"`
 }

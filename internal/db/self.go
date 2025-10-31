@@ -100,33 +100,57 @@ func (db *SelfDatabase) autoMigrator() error {
 	return db.conn.AutoMigrate(&User{}, &TempResult{}, &AuditRecordV2{}, &QueryDataBase{}, &QueryEnv{}, &Ticket{}, &TaskContent{})
 }
 
-// 创建用户逻辑
-func (usr *User) Create() error {
+// 仅创建用户逻辑
+func (usr *User) Create(data *User) error {
 	// 事务开启
 	dbConn := HaveSelfDB().GetConn()
-	result := dbConn.Where("email = ?", usr.Email).First(&usr)
-	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		// 注册用户：用户是否被注册
-		return utils.GenerateError("UserExist", "user has been registerd")
-	}
 	tx := dbConn.Begin()
-	// 创建User(避免明文传入)
-	salt := utils.GenerateSalt()
-	user := &User{
-		Name:     usr.Name,
-		Email:    usr.Email,
-		Password: utils.EncryptWithSaltMd5(salt, usr.Password),
-		CreateAt: time.Now(),
-	}
-	if err := tx.Create(user).Error; err != nil {
+	if err := tx.Create(&data).Error; err != nil {
 		tx.Rollback()
-		errMsg := fmt.Sprintln("create user is failed, ", err.Error())
-		return utils.GenerateError("Insert Failed", errMsg)
+		return utils.GenerateError("UserCreateErr", err.Error())
 	}
-
-	//提交事务
 	tx.Commit()
 	return nil
+}
+
+// 用户更新
+func (usr *User) Updates(cond, data *User) error {
+	dbConn := HaveSelfDB().GetConn()
+	// 事务开启
+	tx := dbConn.Begin()
+	if err := tx.Model(&User{}).Where(&cond).Updates(&data).Error; err != nil {
+		tx.Rollback()
+		return utils.GenerateError("UserUpdateErr", err.Error())
+	}
+	tx.Commit()
+	return nil
+}
+
+// 用户更新
+func (usr *User) CreateOrUpdate(data *User) error {
+	dbConn := HaveSelfDB().GetConn()
+	var findRes User
+	res := dbConn.Model(&User{}).Where("name = ?", data.Name).Where("kind = ?", data.Kind).Last(&findRes)
+	if res.Error != nil && !errors.Is(res.Error, gorm.ErrRecordNotFound) {
+		return utils.GenerateError("UserCreateOrUpdateErr", res.Error.Error())
+	}
+	if findRes.ID == "" {
+		return usr.Create(data)
+	}
+	return usr.Updates(&User{
+		ID: findRes.ID,
+	}, data)
+}
+
+func (usr *User) FindOne(cond *User) (*User, error) {
+	dbConn := HaveSelfDB().GetConn()
+	// 查找用户
+	var findRes User
+	res := dbConn.Model(&User{}).Where(&cond).Last(&findRes)
+	if res.Error != nil {
+		return nil, utils.GenerateError("UserFindErr", res.Error.Error())
+	}
+	return &findRes, nil
 }
 
 // 登录(Basic)
@@ -151,99 +175,47 @@ func (usr *User) BasicLogin(inputPwd string) error {
 	return nil
 }
 
-// 登录（SSO gitlab）,最终返回用户id
-func (usr *User) SSOLogin(cond User) (uint, error) {
+// SSO登录：判断是否存在用户，更新用户信息，返回ID
+func (usr *User) SSOLogin(data *User) (string, error) {
 	dbConn := HaveSelfDB().GetConn()
-	result := dbConn.Model(cond).First(&usr)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			// 首次注册进入DB
-			newSSOUser := &User{
-				Name:           usr.Name,
-				Email:          usr.Email,
-				UserType:       GITLABUSER,
-				GitLabIdentity: usr.ID,
-				CreateAt:       time.Now(),
-			}
-			tx := selfDB.conn.Begin()
-			if err := tx.Create(newSSOUser).Error; err != nil {
-				tx.Rollback()
-				errMsg := fmt.Sprintln("create sso user is failed, ", err.Error())
-				return 0, utils.GenerateError("SSOUserError", errMsg)
-			}
-			//提交事务
-			tx.Commit()
-		}
-		return 0, result.Error
+	var user User
+	res := dbConn.Model(&User{}).Where("name = ?", data.Name).Where("kind = ?", data.Kind).First(&user)
+	if res.Error != nil {
+		return "", utils.GenerateError("SSOLoginErr", res.Error.Error())
 	}
-	// 用户登录日志插槽
-	return usr.ID, nil
+	// 更新信息
+	tx := dbConn.Begin()
+	// !使用map来精准控制布尔值类型必须更新，其余类型字段非零值可跳过更新（沿用旧数据）
+	updatesMap := map[string]any{
+		"IsAdmin":  user.IsAdmin,
+		"IsActive": user.IsActive,
+	}
+	baseTx := tx.Model(&User{}).Where("id = ?", user.ID)
+	res = baseTx.Updates(&data)
+	if res.Error != nil {
+		baseTx.Rollback()
+		return "", utils.GenerateError("SSOLoginErr", res.Error.Error())
+	}
+	res = baseTx.Select("IsAdmin", "IsActive").Updates(updatesMap)
+	if res.Error != nil {
+		baseTx.Rollback()
+		return "", utils.GenerateError("SSOLoginErr", res.Error.Error())
+	}
+
+	baseTx.Commit()
+	return user.ID, nil
 }
 
 // 通过UserID判断
-func (usr *User) IsAdminUser() bool {
+func (usr *User) IsAdminUser(cond *User) bool {
 	var resultUser User
 	dbConn := HaveSelfDB().GetConn()
-	res := dbConn.Where(User{
-		ID: usr.ID,
-	}).Last(&resultUser)
+	res := dbConn.Where(&cond).Last(&resultUser)
 	if res.Error != nil {
 		return false
 	}
-	if res.RowsAffected != 1 {
-		return false
-	}
-	if resultUser.Role != AdministratorRole {
-		return false
-	}
-	return true
+	return resultUser.IsAdmin
 }
-
-func (usr *User) GetGitLabUserId() uint {
-	res := selfDB.conn.Where("git_lab_identity = ?", usr.GitLabIdentity).First(&usr)
-	if res.Error != nil {
-		utils.DebugPrint("DBAPIError", "get user id is failed")
-		return 0
-	}
-	return usr.ID
-}
-
-// // User DTO
-// type UserAuditRecord struct {
-// 	// 查询的环境
-// 	Env          string    `json:"env"`
-// 	SQLStatement string    `json:"statement"`
-// 	DBName       string    `json:"db_name"`
-// 	ExcuteTime   time.Time `json:"excute_time"`
-// }
-
-// func GetAuditRecordByUserID(userId string) ([]UserAuditRecord, error) {
-// 	auditRecords := []AuditRecordV2{}
-// 	res := selfDB.conn.Where("user_id = ?", userId).Order(
-// 		clause.OrderByColumn{
-// 			Column: clause.Column{
-// 				Name: "time_stamp", // 按照时间戳排序获取前10条
-// 			},
-// 			Desc: true,
-// 		}).Limit(10).Find(&auditRecords)
-// 	if res.Error != nil {
-// 		utils.DebugPrint("AuditRecordError", res.Error.Error())
-// 		return nil, errors.New("<DBQueryFailed>" + res.Error.Error())
-// 	}
-// 	if res.RowsAffected == 0 {
-// 		utils.DebugPrint("AuditRecordError", "audit records is null")
-// 		return []UserAuditRecord{}, nil
-// 	}
-// 	// Convert DTO Object
-// 	userRecords := make([]UserAuditRecord, 0, 10)
-// 	// for _, record := range auditRecords {
-// 	// 	userRecords = append(userRecords, UserAuditRecord{
-// 	// 		// DBName: record.,?
-// 	// 	})
-// 	// }
-// 	// DebugPrint("resultRows", auditRecords)
-// 	return userRecords, nil
-// }
 
 // 存储临时结果链接
 func SaveTempResult(ticketID int64, uukey string, expireTime uint, allowExport bool) error {
@@ -1038,3 +1010,50 @@ func (tmp *TempResult) Update(cond, data *TempResult) error {
 	tx.Commit()
 	return nil
 }
+
+// func (roles *Roles) Insert(data *Roles) error {
+// 	dbConn := HaveSelfDB().GetConn()
+// 	tx := dbConn.Begin()
+// 	res := tx.Create(&data)
+// 	if res.Error != nil {
+// 		tx.Rollback()
+// 		return res.Error
+// 	}
+// 	if res.RowsAffected != 1 {
+// 		tx.Rollback()
+// 		return utils.GenerateError("CreateError", "Roles data is insert failed")
+// 	}
+// 	tx.Commit()
+// 	return nil
+// }
+
+// // 批量更新
+// func (tmp *Roles) Update(cond, data *Roles) error {
+// 	dbConn := HaveSelfDB().GetConn()
+// 	tx := dbConn.Begin()
+// 	res := tx.Model(&TempResult{}).Where(&cond).Updates(&data)
+// 	if res.Error != nil {
+// 		tx.Rollback()
+// 		return res.Error
+// 	}
+// 	if res.RowsAffected != 1 {
+// 		tx.Rollback()
+// 		return utils.GenerateError("CreateError", "Roles data is update failed")
+// 	}
+// 	tx.Commit()
+// 	return nil
+// }
+
+// // 查找数据
+// func (tmp *Roles) FindOne(cond *Roles) (*Roles, error) {
+// 	var findRes Roles
+// 	dbConn := HaveSelfDB().GetConn()
+// 	tx := dbConn.Where(&cond).Last(&findRes)
+// 	if tx.Error != nil {
+// 		return nil, tx.Error
+// 	}
+// 	if tx.RowsAffected != 1 {
+// 		return nil, utils.GenerateError("RowsError", "RowsAffected is not match")
+// 	}
+// 	return &findRes, nil
+// }

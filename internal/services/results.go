@@ -19,12 +19,12 @@ import (
 // 临时结果集
 type TempResultService struct {
 	DAO       dbo.TempResult
-	Operator  uint // 操作者的用户ID
+	Operator  string // 操作者的用户ID
 	isExport  bool
 	isExpried bool
 }
 
-func NewTempResultService(userID uint) *TempResultService {
+func NewTempResultService(userID string) *TempResultService {
 	return &TempResultService{
 		Operator: userID,
 		DAO:      dbo.TempResult{},
@@ -152,9 +152,9 @@ type ExportDetails struct {
 // ! 导出结果
 type ExportResultService struct {
 	DAO       dbo.TempResult
+	Operator  string // 操作者的用户ID
 	TaskID    string
 	ResultIdx int
-	Operator  uint // 操作者的用户ID
 	IsOnly    bool // 仅导出
 }
 
@@ -172,7 +172,7 @@ func WithExportTaskID(taskID string) ExportOption {
 	}
 }
 
-func WithExportUserID(userID uint) ExportOption {
+func WithExportUserID(userID string) ExportOption {
 	return func(as *ExportResultService) {
 		as.Operator = userID
 	}
@@ -231,7 +231,7 @@ func (srv *ExportResultService) Prepare() (chan ExportDetails, error) {
 		Type:    "export_result",
 		Payload: exportEvent,
 		MetaData: event.EventMeta{
-			Operator:  int(srv.Operator),
+			Operator:  srv.Operator,
 			Timestamp: time.Now().Format("20060102150405"),
 		},
 	})
@@ -315,10 +315,10 @@ func (srv *ExportResultService) Export(ctx context.Context, ee *ExportEvent) err
 
 // ! 下载逻辑
 type DownloadService struct {
-	Operator uint // 操作者的用户ID
+	Operator string // 操作者的用户ID
 }
 
-func NewDownloadService(userID uint) *DownloadService {
+func NewDownloadService(userID string) *DownloadService {
 	return &DownloadService{
 		Operator: userID,
 	}
