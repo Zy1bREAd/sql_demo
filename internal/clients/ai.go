@@ -26,7 +26,7 @@ var (
 
 func NewAIClient() (AIClient, error) {
 	once.Do(func() {
-		aiCfg := conf.GetAppConf().GetBaseConfig().AIEnv
+		aiCfg := conf.GetAppConf().BaseConfig().AIEnv
 		aiClient.Client = openai.NewClient(
 			option.WithAPIKey(aiCfg.SecretKey),
 			option.WithBaseURL(aiCfg.URL),

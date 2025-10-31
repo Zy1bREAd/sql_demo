@@ -8,7 +8,6 @@ import (
 	"slices"
 	dto "sql_demo/internal/api/dto"
 	"sql_demo/internal/common"
-	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
@@ -91,7 +90,7 @@ func (srv *APITaskService) Create(data dto.SQLTaskRequest) (*dto.TicketDTO, erro
 	}
 	tkData.UID = tkID
 	// !临时存储
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.APITaskBodyPrefix, tkData.UID)
 	c.RistCache.SetWithTTL(cKey, data, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
@@ -221,8 +220,8 @@ func (srv *APITaskService) getTicketID() int64 {
 }
 
 // ! 存储预检任务信息
-func (srv *APITaskService) SaveCheckData(ctx context.Context, preCheckVal *core.PreCheckResultGroup) error {
-	c := core.GetKVCache()
+func (srv *APITaskService) SaveCheckData(ctx context.Context, preCheckVal *PreCheckResultGroup) error {
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
 	c.RistCache.SetWithTTL(cKey, preCheckVal, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
@@ -233,17 +232,17 @@ func (srv *APITaskService) SaveCheckData(ctx context.Context, preCheckVal *core.
 }
 
 // 获取预检数据
-func (srv *APITaskService) GetCheckData() (*core.PreCheckResultGroup, error) {
+func (srv *APITaskService) GetCheckData() (*PreCheckResultGroup, error) {
 	//获取雪花ID
 	tkID := srv.getTicketID()
 	srv.UID = tkID
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
 	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		return nil, utils.GenerateError("CheckDataError", "Check Data is not exist")
 	}
-	preCheckVal, ok := val.(*core.PreCheckResultGroup)
+	preCheckVal, ok := val.(*PreCheckResultGroup)
 	if !ok {
 		return nil, utils.GenerateError("CheckDataError", "Check Data assert failed")
 	}
@@ -251,18 +250,18 @@ func (srv *APITaskService) GetCheckData() (*core.PreCheckResultGroup, error) {
 }
 
 // 获取结果集数据
-func (srv *APITaskService) GetResultData() (*core.SQLResultGroupV2, error) {
+func (srv *APITaskService) GetResultData() (*SQLResultGroupV2, error) {
 	//获取雪花ID
 	tkID := srv.getTicketID()
 	srv.UID = tkID
 
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.ResultPrefix, srv.UID)
 	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		return nil, utils.GenerateError("ResultDataError", "SQLTask Result Data is not exist")
 	}
-	resultVal, ok := val.(*core.SQLResultGroupV2)
+	resultVal, ok := val.(*SQLResultGroupV2)
 	if !ok {
 		return nil, utils.GenerateError("ResultDataError", "SQLTask Result Data assert failed")
 	}
@@ -341,7 +340,7 @@ func (srv *APITaskService) online(ctx context.Context) error {
 	}
 
 	//! 上线前二次检查
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	approvalKey := fmt.Sprintf("approved:%d", srv.UID)
 	execCount, exist := c.RistCache.Get(approvalKey)
 	// if execCount == 0 && exist && sqlt.Action != "select" {
@@ -369,7 +368,7 @@ func (srv *APITaskService) online(ctx context.Context) error {
 	//! 发起执行SQL_QUERY的事件
 	ep.Produce(event.Event{
 		Type: "sql_query",
-		Payload: &core.QTaskGroupV2{
+		Payload: &QTaskGroupV2{
 			TicketID:       srv.UID,
 			GID:            utils.GenerateUUIDKey(), //! 全局任务ID
 			UserID:         srv.UserID,
@@ -396,7 +395,7 @@ func (srv *APITaskService) online(ctx context.Context) error {
 func (srv *APITaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) (dto.SQLTaskRequest, error) {
 	// 获取Task Body数据
 	var taskBodyVal dto.SQLTaskRequest
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.APITaskBodyPrefix, srv.UID)
 	body, ok := c.RistCache.Get(cKey)
 	if !ok {
@@ -462,12 +461,12 @@ func (srv *APITaskService) retryGetTaskBody() {
 		IsAiAnalysis: res.TaskContent.IsAiAnalysis,
 	}
 	// 临时存储缓存
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.APITaskBodyPrefix, srv.UID)
 	c.RistCache.SetWithTTL(cKey, taskBodyData, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 }
 
-func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
+func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *PreCheckResultGroup) error {
 	// 获取Task Body数据v2 重做机制版
 	taskBodyVal, err := srv.getTaskBodyV2(ctx, ReExcute{
 		IsReExcute: true,
@@ -495,14 +494,14 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 	}
 
 	// 解析SQL
-	parseStmts, err := core.ParseV3(ctx, taskBodyVal.Statement)
+	parseStmts, err := ParseV3(ctx, taskBodyVal.Statement)
 	if err != nil {
 		return err
 	}
 	resultGroup.Data.ParsedSQL = parseStmts
 
 	// EXPLAIN 解析与建议
-	var analysisOpts core.AnalysisFnOpts = core.AnalysisFnOpts{
+	var analysisOpts AnalysisFnOpts = AnalysisFnOpts{
 		WithExplain: true,
 	}
 	// 启用AI分析
@@ -528,11 +527,11 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 
 	// SOAR 分析（利用系统层面SOAR操作实现，捕获屏幕输出流）
 	if taskBodyVal.IsSOAR {
-		soar := core.NewSoarAnalyzer(
-			core.WithReportFormat("json"),
-			core.WithSQLContent(taskBodyVal.Statement),
-			core.WithCommandPath("/opt"),
-			core.WithCommand("soar.linux-amd64_v11"),
+		soar := NewSoarAnalyzer(
+			WithReportFormat("json"),
+			WithSQLContent(taskBodyVal.Statement),
+			WithCommandPath("/opt"),
+			WithCommand("soar.linux-amd64_v11"),
 		)
 		soarResult, err := soar.Analysis()
 		if err != nil {
@@ -552,10 +551,10 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 	illegalTables := ist.ExcludeTableList()
 	recuErrCh := make(chan error, 1)
 	// 递归版
-	var recu func([]core.FromParse)
+	var recu func([]FromParse)
 	for _, stmt := range parseStmts {
 		stmtVal := stmt //! 避免闭包循环引用问题
-		recu = func(froms []core.FromParse) {
+		recu = func(froms []FromParse) {
 			// goroutine 资源控制
 			select {
 			case <-ctx.Done():
@@ -606,11 +605,11 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *core.Pre
 
 // 上线前双重检查(支持重做)，返回任务内容
 func (srv *APITaskService) doubleCheck(ctx context.Context) error {
-	doubleCheckVal := &core.PreCheckResultGroup{
-		Data: &core.PreCheckResult{
-			ParsedSQL:       make([]core.SQLForParseV2, 0),
-			ExplainAnalysis: make([]core.ExplainAnalysisResult, 0),
-			Soar: core.SoarCheck{
+	doubleCheckVal := &PreCheckResultGroup{
+		Data: &PreCheckResult{
+			ParsedSQL:       make([]SQLForParseV2, 0),
+			ExplainAnalysis: make([]ExplainAnalysisResult, 0),
+			Soar: SoarCheck{
 				Results: make([]byte, 0),
 			},
 		},
@@ -652,7 +651,7 @@ func (srv *APITaskService) doubleCheck(ctx context.Context) error {
 				taskBodyVal.Env,
 				taskBodyVal.DBName,
 				taskBodyVal.Service,
-				core.AnalysisFnOpts{
+				AnalysisFnOpts{
 					WithExplain: true,
 				},
 			)
@@ -708,7 +707,7 @@ func (srv *APITaskService) ReCheck() {
 }
 
 // ! 执行任务
-func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) error {
+func (srv *APITaskService) Excute(ctx context.Context, qtg *QTaskGroupV2) error {
 	errCh := make(chan error, 1)
 	ep := event.GetEventProducer()
 	go func() {
@@ -735,11 +734,11 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 		}
 
 		//! 构造任务组V3
-		c := core.GetKVCache()
+		c := common.GetKVCache()
 		cKey := fmt.Sprintf("%s:%d", common.SQLTaskPrefix, srv.UID)
 		c.RistCache.SetWithTTL(cKey, qtg, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
-		taskGroup := make([]*core.SQLTask, 0)
+		taskGroup := make([]*SQLTask, 0)
 		var maxDeadline int
 		// 分别定义每个SQL语句的超时时间，SELECT和其他DML的不同超时时间
 		for _, s := range preCheckVal.Data.ParsedSQL {
@@ -757,7 +756,7 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 					ddl = common.OtherDDL
 				}
 			}
-			qTask := core.SQLTask{
+			qTask := SQLTask{
 				ID:        utils.GenerateUUIDKey(),
 				ParsedSQL: s,
 				Deadline:  ddl,
@@ -813,7 +812,7 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 			// 传递携带错误信息的结果集
 			ep.Produce(event.Event{
 				Type: "save_result",
-				Payload: &core.SQLResultGroupV2{
+				Payload: &SQLResultGroupV2{
 					Data:     nil,
 					Errrr:    err,
 					GID:      qtg.GID,
@@ -834,10 +833,10 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *core.QTaskGroupV2) e
 }
 
 // 存储结果集
-func (srv *APITaskService) SaveResult(ctx context.Context, sqlResult *core.SQLResultGroupV2) error {
+func (srv *APITaskService) SaveResult(ctx context.Context, sqlResult *SQLResultGroupV2) error {
 	tk := NewTicketService()
 	//! 后期核心处理结果集的代码逻辑块
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.ResultPrefix, srv.UID)
 	c.RistCache.SetWithTTL(cKey, sqlResult, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
@@ -889,9 +888,9 @@ func (srv *APITaskService) UpdateTicketStats(targetStats string, exceptStats ...
 }
 
 // ! 通过TicketID获取预检结果集(支持重新解析)
-func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute) (*core.PreCheckResultGroup, error) {
-	var fristCheckVal *core.PreCheckResultGroup
-	c := core.GetKVCache()
+func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute) (*PreCheckResultGroup, error) {
+	var fristCheckVal *PreCheckResultGroup
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
 	val, exist := c.RistCache.Get(cKey)
 	if !exist {
@@ -912,7 +911,7 @@ func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute)
 					if !ok {
 						continue
 					}
-					fristCheckVal, ok = mapVal.(*core.PreCheckResultGroup)
+					fristCheckVal, ok = mapVal.(*PreCheckResultGroup)
 					if !ok {
 						return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
 					}
@@ -932,7 +931,7 @@ func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute)
 		}
 
 	}
-	fristCheckVal, ok := val.(*core.PreCheckResultGroup)
+	fristCheckVal, ok := val.(*PreCheckResultGroup)
 	if !ok {
 		return nil, utils.GenerateError("CheckResultError", "Frist Check Resul type is invalid")
 	}

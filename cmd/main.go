@@ -6,6 +6,7 @@ import (
 	"runtime"
 	api "sql_demo/internal/api"
 	"sql_demo/internal/auth"
+	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
 	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
@@ -35,6 +36,8 @@ import (
 // @externalDocs.description	OpenAPI
 // @externalDocs.url			https://swagger.io/resources/open-api/
 func main() {
+	core.InitSimplyLogger()
+	defer core.CloseLogger()
 	// 针对请求-工作-处理结果的context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
@@ -46,14 +49,14 @@ func main() {
 	conf.InitAppConfig()
 	file := utils.StartFileLogging()
 	defer file.Close()
-	core.InitKVCache()
-	defer core.CloseKVCache()
+	common.InitKVCache()
+	defer common.CloseKVCache()
 	// 连接本地应用的DB存储数据
 	self := dbo.InitSelfDB()
 	defer self.Close()
 	// 初始化多数据库池子的实例
 	dbo.LoadInDB(false)
-	core.InitCasbin()
+	auth.InitCasbin()
 
 	// 初始化Gin以及路由
 	event.InitEventDrive(ctx, 100)

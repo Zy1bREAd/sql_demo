@@ -1,54 +1,23 @@
-package conf
+package services
 
 import (
 	"database/sql"
-	"log"
-	"os"
 	"regexp"
-	"sql_demo/internal/utils"
+	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	"strings"
 
 	"slices"
 
-	"gopkg.in/yaml.v3"
+	"go.uber.org/zap"
 )
-
-type RuleConfig struct {
-	IllegalFields []string    `yaml:"illegal_fields"`
-	Mode          string      `yaml:"mode"`
-	Regex         bool        `yaml:"regex"`
-	MaskValue     string      `yaml:"mask_value"`
-	MatchRange    RangeConfig `yaml:"range"`
-}
-
-type RangeConfig struct {
-	Start int `yaml:"start"`
-	End   int `yaml:"end"`
-}
-
-// 数据遮罩配置
-type MaskRules map[string]RuleConfig
-
-func initDataMaskConfig(filePath string) (*MaskRules, error) {
-	var dmConf MaskRules
-	f, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, utils.GenerateError("LoadIn Failed", err.Error())
-	}
-	err = yaml.Unmarshal(f, &dmConf)
-	utils.DebugPrint("DataMaskRule", dmConf)
-	if err != nil {
-		return nil, utils.GenerateError("LoadIn Failed", err.Error())
-	}
-	return &dmConf, nil
-}
 
 type Desensitizer interface {
 	Mask(col string, fieldVal []byte) (string, error)
 }
 
 type FullDesensitizer struct {
-	Rules RuleConfig
+	Rules conf.RuleConfig
 }
 
 // 全加密模式（顺序：精准匹配 -> 正则匹配）
@@ -61,7 +30,8 @@ func (f *FullDesensitizer) Mask(col string, fieldVal []byte) (string, error) {
 		for _, illegalRegex := range rule.IllegalFields {
 			re, err := regexp.Compile(illegalRegex)
 			if err != nil {
-				log.Println("Regex Pattern is invalid")
+				logger := core.GetLogger()
+				logger.Error("Regex Pattern is invalid")
 				return "", err
 			}
 			if re.MatchString(col) {
@@ -74,7 +44,7 @@ func (f *FullDesensitizer) Mask(col string, fieldVal []byte) (string, error) {
 }
 
 type PartialDesensitizer struct {
-	Rules []RuleConfig
+	Rules []conf.RuleConfig
 }
 
 // 部分加密模式
@@ -93,7 +63,8 @@ func (p *PartialDesensitizer) Mask(col string, fieldVal []byte) (string, error) 
 			for _, illegalRegex := range rule.IllegalFields {
 				re, err := regexp.Compile(illegalRegex)
 				if err != nil {
-					log.Println("Regex Pattern is invalid")
+					logger := core.GetLogger()
+					logger.Error("Regex Pattern is invalid")
 					return "", err
 				}
 				if re.MatchString(col) {
@@ -116,8 +87,8 @@ func (p *PartialDesensitizer) Mask(col string, fieldVal []byte) (string, error) 
 
 // !数据遮罩核心处理
 func DataMaskHandle(col string, fieldVal *sql.RawBytes) string {
-	appConf := GetAppConf()
-	mode := appConf.GetBaseConfig().DataMask.Mode
+	appConf := conf.GetAppConf()
+	mode := appConf.BaseConfig().DataMask.Mode
 	// 根据你选择的mask模式返回接口实例，使用接口方法区执行dataMask操作。
 	er := getDesensitizer(mode)
 	if er == nil {
@@ -126,16 +97,17 @@ func DataMaskHandle(col string, fieldVal *sql.RawBytes) string {
 	}
 	maskVal, err := er.Mask(col, *fieldVal)
 	if err != nil {
-		log.Println("数据脱敏操作有问题", err.Error())
+		logger := core.GetLogger()
+		logger.Error("DataMaskErr", zap.String("details", err.Error()))
 	}
 	return maskVal
 }
 
 // 按需加载数据遮罩配置
-func matchRuleConfig(mode string) []RuleConfig {
-	appConf := GetAppConf()
-	dmConf := appConf.GetDataMaskConfig()
-	ruleList := []RuleConfig{}
+func matchRuleConfig(mode string) []conf.RuleConfig {
+	appConf := conf.GetAppConf()
+	dmConf := appConf.DataMaskConfig()
+	ruleList := []conf.RuleConfig{}
 	for _, ruleConfig := range *dmConf {
 		if mode == ruleConfig.Mode {
 			ruleList = append(ruleList, ruleConfig)
@@ -153,11 +125,12 @@ func getDesensitizer(mode string) Desensitizer {
 		if len(rules) > 0 {
 			return &FullDesensitizer{Rules: rules[0]}
 		}
-		return &FullDesensitizer{Rules: RuleConfig{}}
+		return &FullDesensitizer{Rules: conf.RuleConfig{}}
 	case lowerStr == "partial":
 		return &PartialDesensitizer{Rules: rules}
 	default:
-		log.Println("数据遮罩模式为 none")
+		logger := core.GetLogger()
+		logger.Error("UnknownMask", zap.String("details", "unknown data mask type"))
 		return nil
 	}
 }

@@ -1,9 +1,8 @@
-package core
+package services
 
 import (
 	"context"
 	"fmt"
-	"sql_demo/internal/conf"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"time"
@@ -114,24 +113,6 @@ func (ce *DoubleCheckEvent) UpdateTicketStats(targetStats string, exceptStats ..
 	return tk.ValidateAndUpdateStatus(&condTicket, targetStats, exceptStats...)
 }
 
-// 任务组：创建审计日日志
-// func (tg *QTaskGroupV2) CreateAuditReocrd(eventName string) error {
-// 	jsonBytes, err := json.Marshal(tg.QTasks)
-// 	if err != nil {
-// 		utils.ErrorPrint("AuditRecordV2", err.Error())
-// 	}
-// 	audit := dbo.AuditRecordV2{
-// 		TicketID: tg.TicketID,
-// 		TaskID:   tg.GID,
-// 		UserID:   tg.UserID,
-// 		Payload:  string(jsonBytes),
-// 		TaskKind: common.IssueQTaskType,
-// 	}
-// 	// 日志审计插入v2
-// 	err = audit.InsertOne(eventName)
-// 	return err
-// }
-
 // 多SQL执行(可Query可Excute), 遇到错误立即退出后续执行
 func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) *SQLResultGroupV2 {
 	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is working...", qtg.GID))
@@ -173,7 +154,7 @@ func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) *SQLResultGroupV2 {
 		}
 		// 主要分查询和执行，核心通过解析SQL语句的类型来实现对应的逻辑
 		if task.ParsedSQL.Action == "select" {
-			result = op.Query(timeoutCtx, task.ParsedSQL.SafeStmt, task.ID, conf.DataMaskHandle)
+			result = op.Query(timeoutCtx, task.ParsedSQL.SafeStmt, task.ID, DataMaskHandle)
 		} else {
 			result = op.Excute(timeoutCtx, task.ParsedSQL.SafeStmt, task.ID)
 		}

@@ -62,7 +62,7 @@ func NotAuthResp(ctx *gin.Context, msg string) {
 }
 
 func FormatPrint(title, msg string) string {
-	return fmt.Sprintf("[%s] - %s", title, msg)
+	return fmt.Sprintf("[%s] %s", title, msg)
 }
 
 // 校验响应体

@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	_ "sql_demo/docs"
 	dto "sql_demo/internal/api/dto"
+	"sql_demo/internal/auth"
 	api "sql_demo/internal/clients"
 	glbapi "sql_demo/internal/clients/gitlab"
 	"sql_demo/internal/common"
@@ -27,6 +27,7 @@ import (
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"go.uber.org/zap"
 )
 
 // 定义路由注册函数
@@ -39,7 +40,6 @@ var fnRoutes []FnRegisterRoute
 func RegisterRoute(fn FnRegisterRoute) {
 	// 如果注册函数为nil，则跳过；反之加入路由注册表中
 	if fn == nil {
-		log.Println("FnRegisterRoute 不需要注册")
 		return
 	}
 	fnRoutes = append(fnRoutes, fn)
@@ -66,21 +66,23 @@ func InitRouter() {
 	}
 
 	// 优雅关闭：监听信号量的context，等待信号量出现进行cancel()；传入gin server进行关闭。
-	conf := conf.GetAppConf().GetBaseConfig()
+	conf := conf.GetAppConf().BaseConfig()
 	srv := &http.Server{
 		// Addr:    address,
 		Handler: r,
 	}
+	logger := core.GetLogger()
+
 	// 判断是否同时启动HTTP + HTTPS
 	if conf.WebSrvEnv.TLSEnv.Enabled {
 		srv.Addr = conf.WebSrvEnv.Addr + ":" + conf.WebSrvEnv.TLSEnv.Port
 		go func() {
-			fmt.Printf("Listening and serving HTTPS on %s\n", conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.TLSEnv.Port)
+			logger.Info("Listening and serving HTTPS on " + srv.Addr)
 			srv.ListenAndServeTLS(conf.WebSrvEnv.TLSEnv.Cert, conf.WebSrvEnv.TLSEnv.Key)
 		}()
 		// 将HTTP重定向到HTTPS
 		go func() {
-			fmt.Printf("Listening and serving HTTP on %s\n", conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.Port)
+			logger.Info("Listening and serving HTTP on " + srv.Addr)
 			http.ListenAndServe(conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.Port, http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
 					http.Redirect(w, r, "https://"+r.Host+r.RequestURI, http.StatusMovedPermanently)
@@ -88,14 +90,14 @@ func InitRouter() {
 		}()
 	} else {
 		go func() {
-			fmt.Printf("Listening and serving HTTP on %s\n", conf.WebSrvEnv.Addr+":"+conf.WebSrvEnv.Port)
 			srv.Addr = conf.WebSrvEnv.Addr + ":" + conf.WebSrvEnv.Port
+			logger.Info("Listening and serving HTTP on " + srv.Addr)
 			srv.ListenAndServe()
 		}()
 	}
 	// 启用debug pprof
 	go func() {
-		fmt.Println("Listening and serving pprof HTTP on 0.0.0.0:6060")
+		logger.Info("Listening and serving pprof HTTP on 0.0.0.0:6060")
 		http.ListenAndServe("0.0.0.0:6060", nil)
 	}()
 
@@ -109,7 +111,8 @@ func InitRouter() {
 	if err := srv.Shutdown(ctx); err != nil {
 		panic(utils.GenerateError("ShutDonwFailed", err.Error()))
 	} else {
-		utils.DebugPrint("ServerIsClosed", "Gin Server is closed,Bye Bye")
+		logger := core.GetLogger()
+		logger.Info("ServerClosed", zap.String("details", "Gin Server is closed,Bye Bye"))
 	}
 
 }
@@ -214,7 +217,7 @@ func authMiddleware() gin.HandlerFunc {
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token is invalid,please check"})
 			return
 		}
-		userClaim, err := utils.ParseJWT(tokenList[1])
+		userClaim, err := auth.ParseJWT(tokenList[1])
 		if err != nil {
 			// common.ErrorResp(ctx, err.Error())
 			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
@@ -222,6 +225,7 @@ func authMiddleware() gin.HandlerFunc {
 		}
 		ctx.Set("user_id", userClaim.UserID)
 		ctx.Set("user_email", userClaim.Email)
+		ctx.Set("user_kind", userClaim.UserKind)
 		ctx.Next()
 	}
 }
@@ -368,7 +372,8 @@ func SQLTaskDelete(ctx *gin.Context) {
 // @Security		ApiKeyAuth
 func SQLTaskBatchDelete(ctx *gin.Context) {
 	// userIdStr := ctx.GetString("user_id")
-	fmt.Println("批量删除,暂不实现")
+	logger := core.GetLogger()
+	logger.Warn("暂不支持批量删除")
 	// 返回sourceRef以及idempKey
 	common.SuccessResp(ctx, nil, "批量删除,暂不实现")
 }
@@ -397,16 +402,12 @@ func getPreCheckData(ctx *gin.Context) {
 	common.SuccessResp(ctx, preCheckData, "Get Success")
 }
 
-type SQLResultGroupDTO struct {
-	*core.SQLResultGroupV2
-}
-
 // @Summary		获取任务数据集
 // @Description	获取任务数据集详情
 // @Tags			SQLTask
 // @Produce		json
 // @Param			business_ref	query		string	true	"busniess ref"
-// @Success		200				{object}	common.JSONResponse{data=SQLResultGroupDTO}
+// @Success		200				{object}	common.JSONResponse{data=SQLResultGroupV2}
 // @Failure		500				{object}	common.JSONResponse
 // @Router			/result/details [get]
 // @Security		ApiKeyAuth
@@ -430,9 +431,7 @@ func getTaskResultData(ctx *gin.Context) {
 		common.ErrorResp(ctx, err.Error())
 		return
 	}
-	common.SuccessResp(ctx, SQLResultGroupDTO{
-		taskResData,
-	}, "Get Result Success")
+	common.SuccessResp(ctx, taskResData, "Get Result Success")
 }
 
 // 获取数据集(外链形式进行简单展示)
@@ -719,6 +718,7 @@ func ResultExport(ctx *gin.Context) {
 	// 指定超时时间内，等待【导出结果集】事件的消费完成...
 	timeCtx, cancel := context.WithTimeout(ctx, common.DefaultCacheMapDDL*time.Second)
 	defer cancel()
+	logger := core.GetLogger()
 
 	// 清理资源
 	select {
@@ -771,7 +771,7 @@ func ResultExport(ctx *gin.Context) {
 			Data:  string(bytesData),
 		}
 		utils.SSEMsgOnSend(ctx, &sseContent)
-		utils.DebugPrint("ExportSuccess", downloadURL+" is Exported.")
+		logger.Info("ExportSuccess", zap.String("details", downloadURL+" is Exported."))
 
 		defer func() {
 			// 发送完毕关闭连接
@@ -784,7 +784,7 @@ func ResultExport(ctx *gin.Context) {
 		}()
 		return
 	case <-timeCtx.Done():
-		utils.ErrorPrint("SSETimeOut", "SSE Connection is timeout")
+		logger.Error("SSETimeOut", zap.String("details", "SSE Connection is timeout"))
 		return
 	}
 }
@@ -1344,7 +1344,7 @@ func CreatePolicy(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	ok, err := permission.AddPolicy(p.Sub, p.Obj, p.Act)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -1360,7 +1360,7 @@ func CreateGroupingRole(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	if len(p.Grp) != 2 {
 		common.DefaultResp(ctx, common.RespFailed, nil, "Grouping Role is illegal")
 		return
@@ -1379,7 +1379,7 @@ func CreateGroupingRole(ctx *gin.Context) {
 
 func GetPolicy(ctx *gin.Context) {
 	pSub := ctx.Query("p_sub")
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	var res [][]string
 	var err error
 	if pSub == "" {
@@ -1396,7 +1396,7 @@ func GetPolicy(ctx *gin.Context) {
 
 func GetGrouping(ctx *gin.Context) {
 	gSub := ctx.Query("g_sub")
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	var res [][]string
 	var err error
 	if gSub == "" {
@@ -1419,7 +1419,7 @@ func UpdatePolicyForSub(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	updatePolicy := [][]string{{p.Sub, p.Obj, p.Act}}
 	ok, err := permission.UpdateFilteredPolicies(updatePolicy, 0, pSub)
 	if err != nil {
@@ -1431,7 +1431,7 @@ func UpdatePolicyForSub(ctx *gin.Context) {
 
 func DeletedPolicyForSub(ctx *gin.Context) {
 	pSub := ctx.Query("p_sub")
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	ok, err := permission.RemoveFilteredPolicy(0, pSub)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -1448,7 +1448,7 @@ func UpdateGroupingForSub(ctx *gin.Context) {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
 		return
 	}
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	ok, err := permission.UpdateFilteredPolicies([][]string{p.Grp}, 0, gSub)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())
@@ -1459,7 +1459,7 @@ func UpdateGroupingForSub(ctx *gin.Context) {
 
 func DeletedGroupingForSub(ctx *gin.Context) {
 	gSub := ctx.Query("g_sub")
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	ok, err := permission.RemoveFilteredGroupingPolicy(0, gSub)
 	if err != nil {
 		common.DefaultResp(ctx, common.RespFailed, nil, err.Error())

@@ -1,4 +1,4 @@
-package core
+package auth
 
 import (
 	"sync"
@@ -20,7 +20,7 @@ func InitCasbin() {
 		if err != nil {
 			panic(err)
 		}
-		enforcer, err := casbin.NewEnforcer("config/rbac_model.conf", adapter)
+		enforcer, err := casbin.NewEnforcer("./configs/rbac_model.conf", adapter)
 		if err != nil {
 			panic(err)
 		}

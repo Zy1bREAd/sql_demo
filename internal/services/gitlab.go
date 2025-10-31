@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"slices"
 	dto "sql_demo/internal/api/dto"
+	"sql_demo/internal/auth"
 	clients "sql_demo/internal/clients/gitlab"
 	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/conf"
-	"sql_demo/internal/core"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
 	"strings"
@@ -90,7 +90,7 @@ type CommentContent struct {
 
 // 关于Callback的请求预检
 func PreCheckCallback(ctx *gin.Context, gitlabEvent string) error {
-	baseConf := conf.GetAppConf().GetBaseConfig()
+	baseConf := conf.GetAppConf().BaseConfig()
 	// 校验请求，避免伪造
 	event := ctx.GetHeader("X-Gitlab-Event")
 
@@ -162,8 +162,8 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 	// 编辑更新一个Issue
 	case "update":
 		desc, exist := i.Changes["description"]
+		// 仅针对Issue详情内容修改的检测
 		if exist {
-			// 仅针对Issue详情内容修改的检测
 			if _, ok := desc.Current.(string); ok {
 				// 解析Issue详情内容
 				descBytes, err := clients.ParseIssueDesc(i.ObjectAttr.Description)
@@ -214,7 +214,7 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	// 同意申请
 	glab := clients.InitGitLabAPI()
 	// 检查审批人是否合法
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	ok, err := permission.Enforce(c.User.Username, "sql-task", "approval")
 	if err != nil {
 		return utils.GenerateError("CasbinError", err.Error())
@@ -223,7 +223,7 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 		return utils.GenerateError("ApprovalError", "permission denied")
 	}
 	// 确认签派给SQL Handle User
-	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
+	gitlabConfig := conf.GetAppConf().BaseConfig().GitLabEnv
 	if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
 		robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
 		return utils.GenerateError("AssigneerNotMatch", robotMsg)
@@ -268,7 +268,7 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 	glab := clients.InitGitLabAPI()
 	// 检查审批人是否合法
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	ok, err := permission.Enforce(c.User.Username, "sql-task", "approval")
 	if err != nil {
 		return utils.GenerateError("CasbinError", err.Error())
@@ -322,7 +322,7 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 
 func (c *CommentWebhook) handleOnlineExcute() error {
 	// 检查审批人是否合法
-	permission := core.GetCasbin()
+	permission := auth.GetCasbin()
 	ok, err := permission.Enforce(c.User.Username, "sql-task", "approval")
 	if err != nil {
 		return utils.GenerateError("CasbinError", err.Error())
@@ -331,7 +331,7 @@ func (c *CommentWebhook) handleOnlineExcute() error {
 		return utils.GenerateError("ApprovalError", "permission denied")
 	}
 	// 确认签派给SQL Handle User
-	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
+	gitlabConfig := conf.GetAppConf().BaseConfig().GitLabEnv
 	if !slices.Contains(c.Issue.Assigneers, gitlabConfig.RobotUserId) {
 		robotMsg := fmt.Sprintf("【指派错误】@%s 未指派正确的Handler,请重新指派后再次审批", c.Issue.Author.Username)
 		return utils.GenerateError("AssigneerNotMatch", robotMsg)
@@ -390,7 +390,7 @@ func ParseTaskContent(descContent []byte) (*dto.IssueTaskContent, error) {
 	if err != nil {
 		var syntaxErr *json.SyntaxError
 		if errors.As(err, &syntaxErr) {
-			return nil, utils.GenerateError("JSONParseError", "issue decription syntax error:::"+err.Error())
+			return nil, utils.GenerateError("JSONParseError", "issue decription syntax error - "+err.Error())
 		}
 		return nil, err
 	}

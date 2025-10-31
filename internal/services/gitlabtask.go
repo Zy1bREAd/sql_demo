@@ -12,7 +12,6 @@ import (
 	glbapi "sql_demo/internal/clients/gitlab"
 	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/common"
-	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
@@ -105,7 +104,7 @@ func (srv *GitLabTaskService) IssueHandle(payload *IssuePayload) (*dto.TicketDTO
 		Content: payload.Content,
 		Issue:   payload.Issue,
 	}
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.GitLabIssuePreifx, tkData.UID)
 	c.RistCache.SetWithTTL(cKey, issCache, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 	c.RistCache.Wait()
@@ -183,7 +182,7 @@ func (srv *GitLabTaskService) ParseIssue() (*IssuePayload, error) {
 func (srv *GitLabTaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) (*IssuePayload, error) {
 	// 获取Task Body数据
 	var taskBodyVal *IssuePayload
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.GitLabIssuePreifx, srv.UID)
 	body, exist := c.RistCache.Get(cKey)
 	if !exist {
@@ -234,13 +233,13 @@ func (srv *GitLabTaskService) ReGetTaskBody() {
 		utils.ErrorPrint("ReDoError", err.Error())
 	}
 	// 存储缓存系统中
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.GitLabIssuePreifx, srv.UID)
 	c.RistCache.SetWithTTL(cKey, tempPayload, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 	// c.RistCache.Wait()
 }
 
-func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.PreCheckResultGroup) error {
+func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *PreCheckResultGroup) error {
 	// 通知
 	srv.NotifyGitLab("Start Pre-Checking\n")
 	// 获取Task Body数据v2(Gitlab) 重做机制版
@@ -274,7 +273,7 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 	}
 
 	//TODO: 增强SQL解析
-	parseStmts, err := core.ParseV3(ctx, issCache.Content.Statement)
+	parseStmts, err := ParseV3(ctx, issCache.Content.Statement)
 	if err != nil {
 		srv.NotifyGitLab(err.Error())
 		return err
@@ -282,7 +281,7 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 	resultGroup.Data.ParsedSQL = parseStmts
 
 	// EXPLAIN 解析与建议
-	var analysisOpts core.AnalysisFnOpts = core.AnalysisFnOpts{
+	var analysisOpts AnalysisFnOpts = AnalysisFnOpts{
 		WithExplain: true,
 	}
 	// 启用AI分析
@@ -321,11 +320,11 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 
 	// SOAR 分析（利用系统层面SOAR操作实现，捕获屏幕输出流）
 	if issCache.Content.IsSOAR {
-		soar := core.NewSoarAnalyzer(
-			core.WithReportFormat("json"),
-			core.WithSQLContent(issCache.Content.Statement),
-			core.WithCommandPath("/opt"),
-			core.WithCommand("soar.linux-amd64_v11"),
+		soar := NewSoarAnalyzer(
+			WithReportFormat("json"),
+			WithSQLContent(issCache.Content.Statement),
+			WithCommandPath("/opt"),
+			WithCommand("soar.linux-amd64_v11"),
 		)
 		soarResult, err := soar.Analysis()
 		if err != nil {
@@ -351,10 +350,10 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 	illegalTables := ist.ExcludeTableList()
 	recuErrCh := make(chan error, 1)
 	// 递归版
-	var recu func([]core.FromParse)
+	var recu func([]FromParse)
 	for _, stmt := range parseStmts {
 		stmtVal := stmt //! 避免闭包循环引用问题
-		recu = func(froms []core.FromParse) {
+		recu = func(froms []FromParse) {
 			// goroutine 资源控制
 			select {
 			case <-ctx.Done():
@@ -402,11 +401,11 @@ func (srv *GitLabTaskService) FristCheck(ctx context.Context, resultGroup *core.
 }
 
 func (srv *GitLabTaskService) doubleCheck(ctx context.Context) error {
-	doubleCheckVal := &core.PreCheckResultGroup{
-		Data: &core.PreCheckResult{
-			ParsedSQL:       make([]core.SQLForParseV2, 0),
-			ExplainAnalysis: make([]core.ExplainAnalysisResult, 0),
-			Soar: core.SoarCheck{
+	doubleCheckVal := &PreCheckResultGroup{
+		Data: &PreCheckResult{
+			ParsedSQL:       make([]SQLForParseV2, 0),
+			ExplainAnalysis: make([]ExplainAnalysisResult, 0),
+			Soar: SoarCheck{
 				Results: make([]byte, 0),
 			},
 		},
@@ -449,7 +448,7 @@ func (srv *GitLabTaskService) doubleCheck(ctx context.Context) error {
 				issCache.Content.Env,
 				issCache.Content.DBName,
 				issCache.Content.Service,
-				core.AnalysisFnOpts{
+				AnalysisFnOpts{
 					WithExplain: true,
 				},
 			)
@@ -590,7 +589,7 @@ func (srv *GitLabTaskService) online(ctx context.Context) error {
 	ep := event.GetEventProducer()
 
 	//!上线前二次检查
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	approvalKey := fmt.Sprintf("approved:%d", srv.UID)
 	execCount, exist := c.RistCache.Get(approvalKey)
 	// if execCount == 0 && exist && sqlt.Action != "select" {
@@ -619,8 +618,8 @@ func (srv *GitLabTaskService) online(ctx context.Context) error {
 	//! 发起sql_query的事件，准备执行SQL
 	ep.Produce(event.Event{
 		Type: "sql_query",
-		Payload: &core.IssueQTaskV2{
-			QTG: &core.QTaskGroupV2{
+		Payload: &IssueQTaskV2{
+			QTG: &QTaskGroupV2{
 				TicketID: srv.UID,
 				GID:      utils.GenerateUUIDKey(),
 				// DML:            issueCaches.Action,
@@ -663,7 +662,7 @@ func (srv *GitLabTaskService) ActionHandle(ctx context.Context, status int) erro
 }
 
 // ! 执行任务
-func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *core.IssueQTaskV2) error {
+func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *IssueQTaskV2) error {
 	errCh := make(chan error, 1)
 	ep := event.GetEventProducer()
 	glab := glbapi.InitGitLabAPI()
@@ -695,21 +694,11 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *core.IssueQTas
 		}
 
 		//！ 构造任务组V3
-		c := core.GetKVCache()
+		c := common.GetKVCache()
 		cKey := fmt.Sprintf("%s:%d", common.SQLTaskPrefix, srv.UID)
 		c.RistCache.SetWithTTL(cKey, issQTG, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
-		err = glab.CommentCreate(glbapi.GitLabComment{
-			ProjectID: issQTG.IssProjectID,
-			IssueIID:  issQTG.IssIID,
-			Message:   "SQL-Task is start work...",
-		})
-		if err != nil {
-			errCh <- err
-			return
-		}
-
-		taskGroup := make([]*core.SQLTask, 0)
+		taskGroup := make([]*SQLTask, 0)
 		var maxDeadline int
 		// 分别定义每个SQL语句的超时时间，SELECT和其他DML的不同超时时间
 		for _, s := range preCheckVal.Data.ParsedSQL {
@@ -727,7 +716,7 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *core.IssueQTas
 					ddl = common.OtherDDL
 				}
 			}
-			qTask := core.SQLTask{
+			qTask := SQLTask{
 				ID:        utils.GenerateUUIDKey(),
 				ParsedSQL: s,
 				Deadline:  ddl,
@@ -784,7 +773,7 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *core.IssueQTas
 			})
 			ep.Produce(event.Event{
 				Type: "save_result",
-				Payload: &core.SQLResultGroupV2{
+				Payload: &SQLResultGroupV2{
 					Data:     nil,
 					Errrr:    err,
 					GID:      issQTG.QTG.GID,
@@ -817,13 +806,17 @@ func (srv *GitLabTaskService) UpdateTicketStatus(status string) error {
 	return err
 }
 
-func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *core.SQLResultGroupV2) error {
+func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *SQLResultGroupV2) error {
 	glab := glbapi.InitGitLabAPI()
 	// 获取Ticket信息
 	tk, err := srv.getTicketByUID()
 	if err != nil {
 		return err
 	}
+	srv.ProjectID = uint(tk.ProjectID)
+	srv.IssueIID = uint(tk.IssueID)
+	srv.UserID = tk.AuthorID
+
 	// 处理整体的业务错误
 	if sqlResult.Errrr != nil {
 		err := glab.CommentCreate(glbapi.GitLabComment{
@@ -836,7 +829,7 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *core.SQ
 		}
 	}
 	//! 后期核心处理结果集的代码逻辑块
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.ResultPrefix, srv.UID)
 	c.RistCache.SetWithTTL(cKey, sqlResult, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
@@ -896,7 +889,7 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *core.SQ
 	if !ok {
 		return utils.GenerateError("CacheNotExist", "gitlab issue cache is not exist")
 	}
-	IssueVal, ok := val.(*core.IssueQTaskV2)
+	IssueVal, ok := val.(*IssueQTaskV2)
 	if !ok {
 		return utils.GenerateError("IssueNotMatch", "gitlab issue task cache is not match")
 	}
@@ -910,18 +903,11 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *core.SQ
 		TicketID:      tk.UID,
 		IsAllowExport: IssueVal.QTG.IsExport,
 	}, common.DefaultCacheMapDDL)
-	// err = dbo.SaveTempResult(sqlResult.TicketID, uuKey, common.DefaultCacheMapDDL, IssueVal.QTG.IsExport)
 	if err != nil {
 		return err
 	}
-	err = glab.CommentCreate(glbapi.GitLabComment{
-		ProjectID: uint(tk.ProjectID),
-		IssueIID:  uint(tk.IssueID),
-		Message:   tempURL,
-	})
-	if err != nil {
-		utils.ErrorPrint("GitlabCommentErr", err.Error())
-	}
+	srv.NotifyGitLab(tempURL)
+
 	// 自动关闭issue（表示完成）
 	// err = glab.IssueClose(v.IssProjectID, v.IssIID)
 	// if err != nil {
@@ -929,9 +915,6 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *core.SQ
 	// }
 
 	// ! 通知
-	srv.ProjectID = uint(tk.ProjectID)
-	srv.IssueIID = uint(tk.IssueID)
-	srv.UserID = tk.AuthorID
 	srv.NotifyWX()
 	return nil
 }
@@ -947,9 +930,9 @@ func (srv *GitLabTaskService) UpdateTicketStats(targetStats string, exceptStats 
 }
 
 // 存储预检数据
-func (srv *GitLabTaskService) SaveCheckData(ctx context.Context, preCheckVal *core.PreCheckResultGroup) error {
+func (srv *GitLabTaskService) SaveCheckData(ctx context.Context, preCheckVal *PreCheckResultGroup) error {
 	//! 存储预检任务信息
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
 	c.RistCache.SetWithTTL(cKey, preCheckVal, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 
@@ -966,9 +949,10 @@ func (srv *GitLabTaskService) SaveCheckData(ctx context.Context, preCheckVal *co
 	if !ok {
 		return utils.GenerateError("CachesNotMatch", "Gitlab Issue Cache Kind is not match")
 	}
+	srv.ProjectID = issue.ProjectID
+	srv.IssueIID = issue.IID
 
 	// Gitlab Issue评论情况更新
-	glab := glbapi.InitGitLabAPI()
 	var updateMsg, title string
 	if preCheckVal.IsDoubleCheck {
 		title = "Double-Check"
@@ -980,21 +964,14 @@ func (srv *GitLabTaskService) SaveCheckData(ctx context.Context, preCheckVal *co
 	} else {
 		updateMsg = fmt.Sprintf("%s Task is Success\n", title)
 	}
-	err := glab.CommentCreate(glbapi.GitLabComment{
-		ProjectID: issue.ProjectID,
-		IssueIID:  issue.Issue.IID,
-		Message:   updateMsg,
-	})
-	if err != nil {
-		utils.ErrorPrint("GitlabCommentErr", err.Error())
-	}
+	srv.NotifyGitLab(updateMsg)
 	return nil
 }
 
 // ! 获取预检结果集(支持重新解析)
-func (srv *GitLabTaskService) getPreCheckResult(ctx context.Context, redo ReExcute) (*core.PreCheckResultGroup, error) {
-	var fristCheckVal *core.PreCheckResultGroup
-	c := core.GetKVCache()
+func (srv *GitLabTaskService) getPreCheckResult(ctx context.Context, redo ReExcute) (*PreCheckResultGroup, error) {
+	var fristCheckVal *PreCheckResultGroup
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.CheckTaskPrefix, srv.UID)
 	val, exist := c.RistCache.Get(cKey)
 	if !exist {
@@ -1015,7 +992,7 @@ func (srv *GitLabTaskService) getPreCheckResult(ctx context.Context, redo ReExcu
 					if !ok {
 						continue
 					}
-					fristCheckVal, ok = mapVal.(*core.PreCheckResultGroup)
+					fristCheckVal, ok = mapVal.(*PreCheckResultGroup)
 					if !ok {
 						return nil, utils.GenerateError("PreCheckResultError", "pre-check result type is incorrect")
 					}
@@ -1036,7 +1013,7 @@ func (srv *GitLabTaskService) getPreCheckResult(ctx context.Context, redo ReExcu
 		}
 
 	}
-	fristCheckVal, ok := val.(*core.PreCheckResultGroup)
+	fristCheckVal, ok := val.(*PreCheckResultGroup)
 	if !ok {
 		return nil, utils.GenerateError("CheckResultError", "Frist Check Resul type is invalid")
 	}
@@ -1050,7 +1027,7 @@ func (srv *GitLabTaskService) NotifyWX() {
 	glab := glbapi.InitGitLabAPI()
 	iss, err := glab.IssueView(srv.ProjectID, srv.IssueIID)
 	if err != nil {
-		utils.DebugPrint("GitLabAPIError", err.Error())
+		utils.DebugPrint("NotifyErr", err.Error())
 	}
 	rob := wx.NewRobotNotice(&wx.InformTemplate{
 		UserName: iss.Author.Name,
@@ -1059,7 +1036,7 @@ func (srv *GitLabTaskService) NotifyWX() {
 	})
 	err = rob.InformRobot()
 	if err != nil {
-		utils.ErrorPrint("InformFailed", err.Error())
+		utils.ErrorPrint("NotifyErr", err.Error())
 	}
 }
 
@@ -1068,7 +1045,6 @@ func (srv *GitLabTaskService) NotifyGitLab(msg string) {
 	// GitLab Issue Comment
 	glab := glbapi.InitGitLabAPI()
 	retryErr := glab.Retry(3, func() error {
-		fmt.Println("debug print issue info 2", srv.ProjectID, srv.IssueIID)
 		return glab.CommentCreate(glbapi.GitLabComment{
 			ProjectID: srv.ProjectID,
 			IssueIID:  srv.IssueIID,

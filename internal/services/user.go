@@ -9,7 +9,6 @@ import (
 	clients "sql_demo/internal/clients/gitlab"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
-	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 )
@@ -82,7 +81,7 @@ func (srv *UserService) SSOLogin() (string, string, error) {
 // SSO回调
 func (srv *UserService) SSOCallBack(reqState, reqCode string) (*dto.SSOLoginDTO, error) {
 	// 避免伪造SSO请求
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%s", common.SessionPrefix, reqState)
 	_, exist := c.RistCache.Get(cKey)
 	if !exist {
@@ -102,7 +101,7 @@ func (srv *UserService) SSOCallBack(reqState, reqCode string) (*dto.SSOLoginDTO,
 	// 置换Token：通过获取身份提供商的token中的用户信息，构造我们application的token
 	oauthConf := auth.GetOAuthConfig()
 	client := oauthConf.Client(ctx, token)
-	appConf := conf.GetAppConf().GetBaseConfig()
+	appConf := conf.GetAppConf().BaseConfig()
 
 	resp, err := client.Get(appConf.SSOEnv.ClientAPI)
 	if err != nil {
@@ -135,7 +134,7 @@ func (srv *UserService) SSOCallBack(reqState, reqCode string) (*dto.SSOLoginDTO,
 		return nil, utils.GenerateError("SSOCallBackErr", err.Error())
 	}
 	// 生成JWT
-	appToken, err := utils.GenerateJWT(uid, loginUser.Name, loginUser.Email, loginUser.Kind)
+	appToken, err := auth.GenerateJWT(uid, loginUser.Name, loginUser.Email, loginUser.Kind)
 	if err != nil {
 		return nil, utils.GenerateError("SSOCallBackErr", err.Error())
 	}

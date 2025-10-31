@@ -7,7 +7,6 @@ import (
 	"reflect"
 	glbapi "sql_demo/internal/clients/gitlab"
 	"sql_demo/internal/common"
-	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/services"
@@ -68,14 +67,14 @@ func (eh *QueryEventHandler) Name() string {
 func (eh *QueryEventHandler) Work(ctx context.Context, e event.Event) error {
 	// 判断哪种类型的QueryTask
 	switch t := e.Payload.(type) {
-	case *core.QTaskGroupV2:
+	case *services.QTaskGroupV2:
 		apiSrv := services.NewAPITaskService(
 			services.WithAPITaskBusinessRef(e.MetaData.TraceID),
 			services.WithAPITaskUserID(t.UserID),
 		)
 		return apiSrv.Excute(ctx, t)
 
-	case *core.IssueQTaskV2:
+	case *services.IssueQTaskV2:
 		// 获取Service层操作对象
 		gitlabSrv := services.NewGitLabTaskService(
 			services.WithGitLabTaskProjectID(t.IssProjectID),
@@ -106,7 +105,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 	// 抽象成接口
 	case *dbo.SQLResult:
 		utils.DebugPrint("SQLResult查询结果事件消费", res.ID)
-	case *core.PreCheckResultGroup:
+	case *services.PreCheckResultGroup:
 		switch e.MetaData.Source {
 		case "gitlab":
 			// 核心数据获取，TicketID（一切的前提）
@@ -121,7 +120,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			utils.DebugPrint("UnknownSource", "未知请求源")
 		}
 
-	case *core.SQLResultGroupV2:
+	case *services.SQLResultGroupV2:
 		switch e.MetaData.Source {
 		case "gitlab":
 			// 核心数据获取，TicketID（一切的前提）
@@ -304,7 +303,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				_ = glab.CommentCreate(glbapi.GitLabComment{
 					ProjectID: commentBody.ProjectID,
 					IssueIID:  commentBody.IssueIID,
-					Message:   "上线成功,开始执行...",
+					Message:   "Online Success,Waiting for Execution...",
 				})
 
 			case services.CommentApprovalPassed: // ! 审批通过
@@ -317,7 +316,7 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				_ = glab.CommentCreate(glbapi.GitLabComment{
 					ProjectID: commentBody.ProjectID,
 					IssueIID:  commentBody.IssueIID,
-					Message:   "审批成功, 等待上线...",
+					Message:   "Approval Success, Waiting for Online.",
 				})
 
 			case services.CommentApprovalReject: // ! 驳回
@@ -392,11 +391,11 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 	errCh := make(chan error, 1)
 	defer close(errCh)
 	ep := event.GetEventProducer()
-	preCheckRes := &core.PreCheckResultGroup{
-		Data: &core.PreCheckResult{
-			ParsedSQL:       make([]core.SQLForParseV2, 0),
-			ExplainAnalysis: make([]core.ExplainAnalysisResult, 0),
-			Soar: core.SoarCheck{
+	preCheckRes := &services.PreCheckResultGroup{
+		Data: &services.PreCheckResult{
+			ParsedSQL:       make([]services.SQLForParseV2, 0),
+			ExplainAnalysis: make([]services.ExplainAnalysisResult, 0),
+			Soar: services.SoarCheck{
 				Results: make([]byte, 0),
 			},
 		},
@@ -417,6 +416,7 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 					err := gitlabSrv.FristCheck(parentCtx, preCheckRes)
 					if err != nil {
 						errCh <- err
+						preCheckRes.Errrr = err
 						return
 					}
 					// 表示正常完成（!）
@@ -429,8 +429,8 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 					tasker = apiSrv
 					err := apiSrv.FristCheck(parentCtx, preCheckRes)
 					if err != nil {
-						utils.DebugPrint("PreCheckErr", err.Error())
 						errCh <- err
+						preCheckRes.Errrr = err
 						return
 					}
 					errCh <- nil // 表示正常完成（!）

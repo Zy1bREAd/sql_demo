@@ -26,7 +26,7 @@ type GitLabComment struct {
 }
 
 func InitGitLabAPI() *GitLabAPI {
-	gitlabConfig := conf.GetAppConf().GetBaseConfig().GitLabEnv
+	gitlabConfig := conf.GetAppConf().BaseConfig().GitLabEnv
 	return &GitLabAPI{
 		URL:         gitlabConfig.URL,
 		AccessToken: gitlabConfig.AccessToken,
@@ -237,7 +237,7 @@ func (gitlab *GitLabAPI) UserList() ([]GUser, error) {
 
 // 生成临时链接
 func NewHashTempLink() (string, string) {
-	appConfig := conf.GetAppConf().GetBaseConfig()
+	appConfig := conf.GetAppConf().BaseConfig()
 	uuKey := utils.GenerateUUIDKey()
 	// 导出链接组成
 	tempResultURL := fmt.Sprintf("http://%s/result/temp-view/%s", appConfig.WebSrvEnv.HostName, uuKey)

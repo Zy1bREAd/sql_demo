@@ -71,7 +71,7 @@ func (body *RejectInformBody) Fill() string {
 
 // 通知企业微信机器人
 func (robot *RobotNotice) InformRobot() error {
-	informURL := conf.GetAppConf().GetBaseConfig().WeixinEnv.InformWebhook
+	informURL := conf.GetAppConf().BaseConfig().WeixinEnv.InformWebhook
 	if informURL == "" {
 		return utils.GenerateError("URLNull", "inform url is null")
 	}

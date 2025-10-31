@@ -56,7 +56,7 @@ func connect(dsn string, maxIdle, maxConn int) error {
 
 // 初始化自身数据库连接配置
 func InitSelfDB() *SelfDatabase {
-	config := conf.GetAppConf().GetBaseConfig()
+	config := conf.GetAppConf().BaseConfig()
 	for driver, conf := range config.DBEnv {
 		// 判断不同数据库驱动选择不同的连接方式
 		switch {

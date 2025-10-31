@@ -9,12 +9,44 @@ import (
 	dto "sql_demo/internal/api/dto"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
-	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
 	"time"
 )
+
+// 预检相关结构体
+type SoarCheck struct {
+	Results []byte // SOAR结果集
+}
+
+type ExplainCheck struct {
+	Results []dbo.SQLResult // 引入普通的SQL结果集
+}
+
+type PreCheckResult struct {
+	ParsedSQL       []SQLForParseV2 // 预检结果
+	ExplainAnalysis []ExplainAnalysisResult
+	Soar            SoarCheck
+}
+
+// 结果集
+type SQLResultGroupV2 struct {
+	Data     []*dbo.SQLResult
+	Errrr    error
+	GID      string
+	TicketID int64 `json:"-"`
+}
+
+type PreCheckResultGroup struct {
+	GID           string
+	ErrMsg        string
+	Errrr         error `json:"-"`
+	Data          *PreCheckResult
+	TicketID      int64 `json:"-"`
+	IsDoubleCheck bool  `json:"-"` // 首次或第二次检查
+	IsReDone      bool  `json:"-"` // 表示是否重做
+}
 
 // 临时结果集
 type TempResultService struct {
@@ -33,7 +65,7 @@ func NewTempResultService(userID string) *TempResultService {
 
 // 从数据库中获取结果集是否存在、是否过期？审计日志可选
 // 通过UUkey -> Ticket ID -> 结果集
-func (srv *TempResultService) GetData(ctx context.Context, cond dto.TempResultDTO, isAudit bool) (*core.SQLResultGroupV2, error) {
+func (srv *TempResultService) GetData(ctx context.Context, cond dto.TempResultDTO, isAudit bool) (*SQLResultGroupV2, error) {
 	condORM := srv.toORMData(cond)
 	findRes, err := srv.DAO.FindOne(condORM)
 	if err != nil {
@@ -43,14 +75,14 @@ func (srv *TempResultService) GetData(ctx context.Context, cond dto.TempResultDT
 	srv.isExpried = findRes.IsExpired()
 
 	//! 查找并获取结果集
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%d", common.ResultPrefix, findRes.TicketID)
 	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		// 不要什么都重做，这里需要手动执行重做。
 		return nil, utils.GenerateError("CacheNotExist", "Result Data Cache is not exist")
 	}
-	resultVal, ok := val.(*core.SQLResultGroupV2)
+	resultVal, ok := val.(*SQLResultGroupV2)
 	if !ok {
 		return nil, utils.GenerateError("CacheNotMatch", "Result Data Cache Kind is not match")
 	}
@@ -193,7 +225,7 @@ func WithExportResultIndex(index int) ExportOption {
 // 准备【导出结果集】的事件
 func (srv *ExportResultService) Prepare() (chan ExportDetails, error) {
 	now := time.Now().Format("20060102150405")
-	conf := conf.GetAppConf().GetBaseConfig()
+	conf := conf.GetAppConf().BaseConfig()
 	// 构建导出事件
 	exportEvent := &ExportEvent{
 		TaskID:        srv.TaskID,
@@ -258,7 +290,7 @@ func (srv *ExportResultService) Export(ctx context.Context, ee *ExportEvent) err
 	}
 
 	// 构建并另存为文件
-	conf := conf.GetAppConf().GetBaseConfig()
+	conf := conf.GetAppConf().BaseConfig()
 	if ee.IsOnly {
 		// 仅导出
 		csvRes := utils.CSVResult{

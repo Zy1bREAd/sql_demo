@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
-	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
 	"sync"
 	"time"
@@ -28,16 +27,16 @@ func generateSSOState() (string, error) {
 }
 
 func InitOAuth2() {
-	conf := conf.GetAppConf().GetBaseConfig()
+	cfg := conf.GetAppConf().BaseConfig()
 	oauthOnce.Do(func() {
 		oauthConf = &oauth2.Config{
-			ClientID:     conf.SSOEnv.ClientEnv.ID,
-			ClientSecret: conf.SSOEnv.ClientEnv.Secret,
-			RedirectURL:  conf.SSOEnv.RedirectURL,
+			ClientID:     cfg.SSOEnv.ClientEnv.ID,
+			ClientSecret: cfg.SSOEnv.ClientEnv.Secret,
+			RedirectURL:  cfg.SSOEnv.RedirectURL,
 			Scopes:       []string{"read_user"},
 			Endpoint: oauth2.Endpoint{
-				AuthURL:  conf.SSOEnv.EndpointEnv.AuthURL,
-				TokenURL: conf.SSOEnv.EndpointEnv.TokenURL,
+				AuthURL:  cfg.SSOEnv.EndpointEnv.AuthURL,
+				TokenURL: cfg.SSOEnv.EndpointEnv.TokenURL,
 			}, // gitlab 提供商
 		}
 	})
@@ -55,7 +54,7 @@ func SetState() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	c := core.GetKVCache()
+	c := common.GetKVCache()
 	cKey := fmt.Sprintf("%s:%s", common.SessionPrefix, state)
 	c.RistCache.SetWithTTL(cKey, struct{}{}, common.SmallItemCost, common.DefaultCacheMapDDL*time.Second)
 	return state, nil

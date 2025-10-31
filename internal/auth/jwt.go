@@ -1,6 +1,7 @@
-package utils
+package auth
 
 import (
+	"sql_demo/internal/utils"
 	"strconv"
 	"time"
 
@@ -61,7 +62,7 @@ func GenerateJWT(uid, name, email string, kind uint) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, userclaim)
 	tokenStr, err := token.SignedString([]byte(secretKey))
 	if err != nil {
-		return "", GenerateError("GenerateJWTFailed", err.Error())
+		return "", utils.GenerateError("GenerateJWTFailed", err.Error())
 	}
 	return tokenStr, nil
 }
@@ -71,18 +72,18 @@ func ParseJWT(tokenStr string) (*UserClaim, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &UserClaim{}, func(t *jwt.Token) (interface{}, error) {
 		// 判断jwt加密方法是否匹配
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, GenerateError("SignMethodNotMatch", "unexpected signing method")
+			return nil, utils.GenerateError("SignMethodNotMatch", "unexpected signing method")
 		}
 		return []byte(secretKey), nil
 	})
 	if err != nil {
-		return nil, GenerateError("ParseJWTError", err.Error())
+		return nil, utils.GenerateError("ParseJWTError", err.Error())
 	}
 	// 断言判断获取声明
 	if tokenClaim, ok := token.Claims.(*UserClaim); ok && token.Valid {
 		return tokenClaim, nil
 	}
-	return nil, GenerateError("InvalidJWTClaim", "this is a invalid jwt claim")
+	return nil, utils.GenerateError("InvalidJWTClaim", "this is a invalid jwt claim")
 }
 
 // string转换uint的方法
