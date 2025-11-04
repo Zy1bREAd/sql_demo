@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"time"
@@ -115,7 +116,8 @@ func (ce *DoubleCheckEvent) UpdateTicketStats(targetStats string, exceptStats ..
 
 // 多SQL执行(可Query可Excute), 遇到错误立即退出后续执行
 func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) *SQLResultGroupV2 {
-	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is working...", qtg.GID))
+	logger := core.GetLogger()
+	logger.Info(fmt.Sprintf("Task Group GID=%s is working...", qtg.GID))
 	//! 执行任务函数只当只关心任务处理逻辑本身
 
 	rg := &SQLResultGroupV2{
@@ -131,7 +133,7 @@ func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) *SQLResultGroupV2 {
 		}
 		timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(task.Deadline)*time.Second) // 针对SQL查询任务超时控制的上下文
 		defer cancel()
-		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is working...", task.ID))
+		logger.Info(fmt.Sprintf("Task IID=%s is working...", task.ID))
 		var result dbo.SQLResult = dbo.SQLResult{
 			ID:   task.ID,
 			Stmt: task.ParsedSQL.SafeStmt,
@@ -162,11 +164,11 @@ func (qtg *QTaskGroupV2) ExcuteTask(ctx context.Context) *SQLResultGroupV2 {
 		rg.Data = append(rg.Data, &result)
 		// 如果该条SQL遇到ERROR立即中止后续执行
 		if result.Errrrr != nil {
-			utils.ErrorPrint("TaskDetails", fmt.Sprintf("Task IID=%s is failed", task.ID))
+			logger.Error(fmt.Sprintf("Task IID=%s is failed", task.ID))
 			break
 		}
-		utils.DebugPrint("TaskDetails", fmt.Sprintf("Task IID=%s is completed", task.ID))
+		logger.Info(fmt.Sprintf("Task IID=%s is completed", task.ID))
 	}
-	utils.DebugPrint("TaskDetails", fmt.Sprintf("Task GID=%s is completed", qtg.GID))
+	logger.Info(fmt.Sprintf("Task Group GID=%s is completed", qtg.GID))
 	return rg
 }

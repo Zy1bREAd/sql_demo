@@ -12,10 +12,13 @@ import (
 	glbapi "sql_demo/internal/clients/gitlab"
 	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/common"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type GitLabOption func(*GitLabTaskService)
@@ -165,7 +168,8 @@ func (srv *GitLabTaskService) ParseIssue() (*IssuePayload, error) {
 	// 解析Issue详情
 	descBytes, err := glbapi.ParseIssueDesc(iss.Description)
 	if err != nil {
-		utils.DebugPrint("ParseIssueErr", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "ParseIssueErr"))
 		return nil, err
 	}
 	issDesc, err := ParseTaskContent(descBytes)
@@ -230,7 +234,8 @@ func (srv *GitLabTaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) 
 func (srv *GitLabTaskService) ReGetTaskBody() {
 	tempPayload, err := srv.ParseIssue()
 	if err != nil {
-		utils.ErrorPrint("ReDoError", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "ReDoError"))
 	}
 	// 存储缓存系统中
 	c := common.GetKVCache()
@@ -742,7 +747,8 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *IssueQTaskV2) 
 		// 日志审计插入v2
 		jsonBytes, err := json.Marshal(taskGroup)
 		if err != nil {
-			utils.ErrorPrint("AuditRecordV2", err.Error())
+			logger := core.GetLogger()
+			logger.Error(err.Error(), zap.String("title", "AuditRecordErr"))
 		}
 		auditLogSrv := NewAuditRecordService()
 		err = auditLogSrv.Insert(dto.AuditRecordDTO{
@@ -787,7 +793,8 @@ func (srv *GitLabTaskService) Excute(ctx context.Context, issQTG *IssueQTaskV2) 
 			})
 		}
 	case <-ctx.Done():
-		utils.ErrorPrint("GoroutineErr", "goroutine is error")
+		logger := core.GetLogger()
+		logger.Error("Goroutine is break off", zap.String("title", "GoroutineErr"))
 	}
 	return nil
 }
@@ -825,7 +832,8 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *SQLResu
 			Message:   sqlResult.Errrr.Error(),
 		})
 		if err != nil {
-			utils.ErrorPrint("GitlabCommentErr", err.Error())
+			logger := core.GetLogger()
+			logger.Error(err.Error(), zap.String("title", "GitlabCommentErr"))
 		}
 	}
 	//! 后期核心处理结果集的代码逻辑块
@@ -847,7 +855,8 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *SQLResu
 		Message:   "SQL-Task is completed",
 	})
 	if err != nil {
-		utils.ErrorPrint("GitlabCommentErr", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "GitlabCommentErr"))
 	}
 
 	// 遍历每条SQL的细致Error
@@ -860,7 +869,8 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *SQLResu
 				Message:   errMsg,
 			})
 			if err != nil {
-				utils.DebugPrint("CommentError", "query task result comment is failed"+err.Error())
+				logger := core.GetLogger()
+				logger.Error(err.Error(), zap.String("title", "GitlabCommentErr"))
 			}
 			// Ticket状态：失败
 			err = tk.ValidateAndUpdateStatus(&dbo.Ticket{
@@ -912,6 +922,8 @@ func (srv *GitLabTaskService) SaveResult(ctx context.Context, sqlResult *SQLResu
 	// err = glab.IssueClose(v.IssProjectID, v.IssIID)
 	// if err != nil {
 	// 	utils.DebugPrint("GitLabAPIError", err.Error())
+	// logger := core.GetLogger()
+	// logger.Error(err.Error(), zap.String("title", "GitlabAPItErr"))
 	// }
 
 	// ! 通知
@@ -976,7 +988,8 @@ func (srv *GitLabTaskService) getPreCheckResult(ctx context.Context, redo ReExcu
 	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		if redo.IsReExcute {
-			fmt.Println("debug print 开启重做...")
+			logger := core.GetLogger()
+			logger.Warn("Starting Redo Precheck Result")
 			go redo.Fn()
 			// 同步方式每秒检测是否查询任务完成，来获取结果集
 			ticker := time.NewTicker(time.Duration(time.Second))
@@ -1027,7 +1040,8 @@ func (srv *GitLabTaskService) NotifyWX() {
 	glab := glbapi.InitGitLabAPI()
 	iss, err := glab.IssueView(srv.ProjectID, srv.IssueIID)
 	if err != nil {
-		utils.DebugPrint("NotifyErr", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "GitlabAPIErr"))
 	}
 	rob := wx.NewRobotNotice(&wx.InformTemplate{
 		UserName: iss.Author.Name,
@@ -1036,7 +1050,8 @@ func (srv *GitLabTaskService) NotifyWX() {
 	})
 	err = rob.InformRobot()
 	if err != nil {
-		utils.ErrorPrint("NotifyErr", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "NotifyErr"))
 	}
 }
 
@@ -1052,6 +1067,7 @@ func (srv *GitLabTaskService) NotifyGitLab(msg string) {
 		})
 	})
 	if retryErr != nil {
-		utils.ErrorPrint("CommentFailed", retryErr.Error())
+		logger := core.GetLogger()
+		logger.Error(retryErr.Error(), zap.String("title", "CommentFailed"))
 	}
 }

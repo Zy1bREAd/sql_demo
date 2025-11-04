@@ -8,10 +8,12 @@ import (
 	"regexp"
 	"sql_demo/internal/clients"
 	"sql_demo/internal/common"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"strconv"
 
+	"go.uber.org/zap"
 	"vitess.io/vitess/go/vt/sqlparser"
 )
 
@@ -155,12 +157,14 @@ func parseSQLs(stmts string) ([]sqlparser.Statement, error) {
 func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 	sql := SQLForParseV2{}
 	buf := sqlparser.NewTrackedBuffer(nil)
+	logger := core.GetLogger()
+
 	switch s := stmt.(type) {
 	case *sqlparser.Select:
 		sql.Action = "select"
 		froms, ok := sql.parseSQLFrom(s.GetFrom())
 		if !ok {
-			utils.ErrorPrint("ParseFROMErr", "Parse FROM is failed")
+			logger.Error("Parse FROM is failed", zap.String("title", "ParseStmtErr"))
 		}
 		sql.From = froms
 		// Where
@@ -204,7 +208,7 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 		sql.Action = "update"
 		froms, ok := sql.parseSQLFrom(s.GetFrom())
 		if !ok {
-			utils.ErrorPrint("ParseFROMErr", "Parse FROM is failed")
+			logger.Error("Parse FROM is failed", zap.String("title", "ParseStmtErr"))
 		}
 		sql.From = froms
 		// Where解析
@@ -240,7 +244,7 @@ func parseStmt(stmt sqlparser.Statement) (SQLForParseV2, error) {
 		sql.Action = "insert"
 		table, err := s.Table.TableName()
 		if err != nil {
-			utils.ErrorPrint("InsertTableErr", err.Error())
+			logger.Error(err.Error(), zap.String("title", "ParseStmtErr"))
 			return SQLForParseV2{}, err
 		}
 		froms := []FromParse{{
@@ -316,7 +320,8 @@ func (s *SQLForParseV2) parseSQLSelectColumns(colsExpr []sqlparser.SelectExpr) [
 			colsRes = append(colsRes, col)
 			//! TODO：若列的Expr是SelectExpr则再次进入相对应的逻辑。
 		case *sqlparser.Nextval:
-			utils.ErrorPrint("NextValErr", "Dont Support Next For Value")
+			logger := core.GetLogger()
+			logger.Warn("Dont Support Next For Value", zap.String("title", "ParseStmtErr"))
 			buf := sqlparser.NewTrackedBuffer(nil)
 			c.Format(buf)
 			colsRes = append(colsRes, ColParse{
@@ -324,7 +329,8 @@ func (s *SQLForParseV2) parseSQLSelectColumns(colsExpr []sqlparser.SelectExpr) [
 			})
 			buf.Reset()
 		default:
-			utils.ErrorPrint("UnknownColsExpr", "Unknown Col Type"+reflect.TypeOf(c).String())
+			logger := core.GetLogger()
+			logger.Warn("Unknown Col Type"+reflect.TypeOf(c).String(), zap.String("title", "ParseStmtErr"))
 		}
 	}
 
@@ -376,11 +382,13 @@ func (s *SQLForParseV2) parseSQLFrom(tableExprs []sqlparser.TableExpr) ([]FromPa
 					// 未知！
 					tempBuf := sqlparser.NewTrackedBuffer(nil)
 					subSelect.Format(tempBuf)
-					utils.DebugPrint("UnknownSQL", "Oops:: "+tempBuf.String())
+					logger := core.GetLogger()
+					logger.Warn("UnknownSQL: "+"Oops:: "+tempBuf.String(), zap.String("title", "ParseStmtErr"))
 					return nil, false
 				}
 			default:
-				utils.ErrorPrint("UnknownTableExpr", "仅支持解析普通Table和派生表")
+				logger := core.GetLogger()
+				logger.Error("仅支持解析普通Table和派生表", zap.String("title", "ParseStmtErr"))
 				return nil, false
 			}
 		// 左右Join表
@@ -400,10 +408,12 @@ func (s *SQLForParseV2) parseSQLFrom(tableExprs []sqlparser.TableExpr) ([]FromPa
 			}
 			parseList = append(parseList, joinFromRes...)
 		case *sqlparser.ParenTableExpr:
-			utils.ErrorPrint("UnknownTableExpr", f.Exprs)
+			logger := core.GetLogger()
+			logger.Error("Unknown Table Expr, 仅支持As、Join形式", zap.String("title", "ParseStmtErr"))
 			return nil, false
 		default:
-			utils.ErrorPrint("UnknownTableExpr", "仅支持As、Join形式")
+			logger := core.GetLogger()
+			logger.Error("Unknown Table Expr", zap.String("title", "ParseStmtErr"))
 			return nil, false
 		}
 	}
@@ -423,7 +433,9 @@ func (s *SQLForParseV2) parseSQLInsertVals(colVals sqlparser.InsertRows) []ColVa
 			Expr: buf.String(),
 		})
 	case *sqlparser.Union:
-		utils.ErrorPrint("UnknownSQLErr", "The Insert Col Type is Union???")
+		// TODO：支持Union解析
+		logger := core.GetLogger()
+		logger.Error("Unknown Table Expr,The Insert Col Type is Union???", zap.String("title", "ParseStmtErr"))
 	case sqlparser.Values:
 		// 使用元组的方式
 		for _, ic := range insertCols {
@@ -439,7 +451,8 @@ func (s *SQLForParseV2) parseSQLInsertVals(colVals sqlparser.InsertRows) []ColVa
 			})
 		}
 	default:
-		utils.ErrorPrint("UnknownSQLErr", "The Insert Col Type is Unknown")
+		logger := core.GetLogger()
+		logger.Error("The Insert Col Type is Unknown", zap.String("title", "ParseStmtErr"))
 	}
 	return colValsRes
 }
@@ -500,7 +513,6 @@ func (s *SQLForParseV2) parseSQLWhere(expr sqlparser.Expr) (WhereParse, error) {
 		where.Op = w.Operator.ToString()
 
 	case *sqlparser.OrExpr:
-		fmt.Println("Where Or")
 		leftVal, err := s.parseSQLWhere(w.Left)
 		if err != nil {
 			return WhereParse{}, err
@@ -513,7 +525,6 @@ func (s *SQLForParseV2) parseSQLWhere(expr sqlparser.Expr) (WhereParse, error) {
 		}
 		where.Right = &rightVal
 	case *sqlparser.AndExpr:
-		fmt.Println("Where And")
 		leftVal, err := s.parseSQLWhere(w.Left)
 		if err != nil {
 			return WhereParse{}, err
@@ -526,8 +537,6 @@ func (s *SQLForParseV2) parseSQLWhere(expr sqlparser.Expr) (WhereParse, error) {
 		}
 		where.Right = &rightVal
 	case *sqlparser.BetweenExpr:
-		fmt.Println("Where Between", w.From, w.To)
-		fmt.Println(reflect.TypeOf(w.From), reflect.TypeOf(w.To), reflect.TypeOf(w.Left))
 		leftVal, err := s.parseSQLWhere(w.Left)
 		if err != nil {
 			return WhereParse{}, err
@@ -580,7 +589,8 @@ func (s *SQLForParseV2) NewExplainPrompt(tableInfo, ddl []string, explain string
 	// 需要处理stmt中的反引号问题
 	reg, err := regexp.Compile("`")
 	if err != nil {
-		utils.ErrorPrint("RegexpError", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "RegexpError"))
 		return ""
 	}
 	regExplain := reg.ReplaceAllString(explain, "")

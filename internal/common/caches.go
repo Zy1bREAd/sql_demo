@@ -2,11 +2,13 @@ package common
 
 import (
 	"log"
+	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
 	"sync"
 	"time"
 
 	"github.com/dgraph-io/ristretto/v2"
+	"go.uber.org/zap"
 )
 
 // 全局变量：本地缓存
@@ -38,7 +40,8 @@ func InitKVCache() {
 // 获取本地缓存
 func GetKVCache() *KVCache {
 	if localCache.RistCache == nil {
-		utils.ErrorPrint("CacheInitErr", "KV Cache is not inited")
+		logger := core.GetLogger()
+		logger.Error("KV Cache is not inited", zap.String("title", "CacheInitErr"))
 		return nil
 	}
 	return &localCache
@@ -47,7 +50,8 @@ func GetKVCache() *KVCache {
 
 func CloseKVCache() {
 	if localCache.RistCache == nil {
-		utils.ErrorPrint("CacheInitErr", "KV Cache is not inited")
+		logger := core.GetLogger()
+		logger.Error("KV Cache is not inited", zap.String("title", "CacheInitErr"))
 		return
 	}
 	localCache.Close()

@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"sql_demo/internal/common"
+	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
 	"strings"
 	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -97,7 +99,8 @@ func LoadInDB(isReload bool) {
 				}
 				pwd, err := utils.DecryptAES256([]byte(dbConf.Password), dbConf.Salt)
 				if err != nil {
-					utils.ErrorPrint("DecryptPwdErr", fmt.Sprintf("%s: %s", err.Error(), dbConf.Name))
+					logger := core.GetLogger()
+					logger.Error(fmt.Sprintf("%s: %s", err.Error(), dbConf.Name), zap.String("title", "DecryptDBPwdErr"))
 					continue
 				}
 				istCfg := MySQLConfig{
@@ -230,8 +233,8 @@ func (ist *DBInstance) Excute(ctx context.Context, statement, taskId string) SQL
 		}
 		defer func() {
 			if recoverErr := recover(); recoverErr != nil {
-				fmt.Println(recoverErr)
-				utils.ErrorPrint("TransferExcute", "Transfer Excute Error::"+taskId)
+				logger := core.GetLogger()
+				logger.Error("Transfer Excute Error: "+taskId, zap.String("title", "DBExcuteErr"))
 				tx.Rollback()
 				errVal, ok := recoverErr.(error)
 				if !ok {
@@ -327,8 +330,9 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw, taskId string, dataMas
 	// 异步执行查询SQL
 	go func() {
 		start := time.Now()
+		logger := core.GetLogger()
 		if !common.CheckCtx(ctx) {
-			utils.ErrorPrint("GoroutineError", "收到父Ctx的退出信号")
+			logger.Error("Parent Goroutine is exited", zap.String("title", "GoroutineError"))
 			return
 		}
 		//! 核心查询
@@ -338,7 +342,7 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw, taskId string, dataMas
 			return
 		}
 		if !common.CheckCtx(ctx) {
-			utils.ErrorPrint("GoroutineError", "收到父Ctx的退出信号")
+			logger.Error("Parent Goroutine is exited", zap.String("title", "GoroutineError"))
 			return
 		}
 		defer rows.Close()
@@ -352,11 +356,11 @@ func (ist *DBInstance) Query(ctx context.Context, sqlRaw, taskId string, dataMas
 		// 遍历结果集，逐行处理结果
 		for rows.Next() {
 			if !common.CheckCtx(ctx) {
-				utils.ErrorPrint("GoroutineError", "收到父Ctx的退出信号")
+				logger.Error("Parent Goroutine is exited", zap.String("title", "GoroutineError"))
 				return
 			}
 			if rows.Err() != nil {
-				utils.ErrorPrint("RowDataErr", "该行数据有问题")
+				logger.Error("The Row Data have a problem", zap.String("title", "RowDataErr"))
 				break
 			}
 			// 每一行都创建结果集容器的切片,按照列的顺序进行存储
@@ -434,7 +438,8 @@ func NewDBInstance(conn ConnectInfo) (*DBInstance, error) {
 	go func() {
 		err = db.Ping()
 		if err != nil {
-			utils.ErrorPrint("DBIstPingErr", dsn)
+			logger := core.GetLogger()
+			logger.Error("The DB Istance is connect failed "+dsn, zap.String("title", "DBIstPingErr"))
 			dbIst.Errrr = err.Error()
 			dbIst.StatusCode = common.ConnectFailed
 			return
@@ -454,7 +459,8 @@ func TestDBIstConn(conn ConnectInfo) error {
 	}
 	err = db.Ping()
 	if err != nil {
-		utils.DebugPrint("DBPingErr", err.Error())
+		logger := core.GetLogger()
+		logger.Error("The DB Istance is connect failed "+dsn, zap.String("title", "DBIstPingErr"))
 		return err
 	}
 	defer db.Close()
@@ -478,7 +484,8 @@ func (manager *DBPoolManager) register(configData *AllEnvDBConfig) error {
 				IdleTime: dbConf.IdleTime,
 			})
 			if err != nil {
-				utils.ErrorPrint("DBRegisterError", istName+" database register is failed, "+err.Error())
+				logger := core.GetLogger()
+				logger.Error(istName+" database register is failed, "+err.Error(), zap.String("title", "DBRegisterErr"))
 				continue
 			}
 			db.name = istName
@@ -502,7 +509,8 @@ func (manager *DBPoolManager) CloseDBPool() {
 		for _, ist := range istList {
 			err := ist.conn.Close()
 			if err != nil {
-				utils.ErrorPrint("CloseDBError", fmt.Sprintf("[%s] close db %s connection is failed, %s", env, ist.name, err.Error()))
+				logger := core.GetLogger()
+				logger.Error(fmt.Sprintf("env:%s db istance %s close is failed:: %s", env, ist.name, err.Error()), zap.String("title", "DBCloseErr"))
 			}
 		}
 
@@ -542,7 +550,8 @@ func (s *SQLResult) OutputJSON() string {
 	}
 	val, err := json.Marshal(s.Results)
 	if err != nil {
-		utils.ErrorPrint("JSONMarshalError", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "JSONMarshalErr"))
 		return ""
 	}
 	return string(val)

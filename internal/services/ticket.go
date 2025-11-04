@@ -1,7 +1,6 @@
 package services
 
 import (
-	"fmt"
 	dto "sql_demo/internal/api/dto"
 	"sql_demo/internal/common"
 	dbo "sql_demo/internal/db"
@@ -147,7 +146,6 @@ func (tk *TicketService) Get(cond dto.TicketDTO, pagni *common.Pagniation) ([]dt
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(tksData, len(tksData), pagni.Page, pagni.PageSize)
 	// 格式化
 	DTOResults := make([]dto.TicketDTO, len(tksData))
 	for k, result := range tksData {

@@ -3,8 +3,11 @@ package event
 import (
 	"context"
 	"fmt"
+	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 // var globalEventChannel chan Event // 全局事件channel
@@ -53,16 +56,17 @@ func (ep *EventProducer) Init(eventCh chan Event) {
 
 // 事件产生核心
 func (ep *EventProducer) Produce(e Event) {
+	logger := core.GetLogger()
 	if ep.eventChan == nil {
-		utils.ErrorPrint("EventChannel", "eventChan is not init")
+		logger.Error("eventChan is not init", zap.String("title", "EventChannelErr"))
 		return
 	}
 	select {
 	case ep.eventChan <- e:
-		utils.DebugPrint("事件产生", e)
+		logger.Debug("事件产生: " + e.Type)
 	default:
 		// 全局事件生产channel已满
-		fmt.Println("全局事件通道已满，请稍后...", ep.eventChan)
+		logger.Error("全局事件通道已满，请稍后...")
 	}
 }
 
@@ -124,11 +128,12 @@ func (ed *EventDispatcher) RegisterHandler(eventType string, handler EventHandle
 
 // 2.0路由事件
 func (ed *EventDispatcher) Dispatch(ctx context.Context) {
+	logger := core.GetLogger()
 	if ed.Processer == 0 {
-		utils.ErrorPrint("DispatcherInit", "dispatcher init is failed...")
+		logger.Error("event dispatcher init failed", zap.String("title", "EventInitErr"))
 		return
 	}
-	fmt.Printf("[事件路由] 启动 %d 个 dispatcher\n", ed.Processer)
+	logger.Info(fmt.Sprintf("[事件路由] 启动 %d 个 dispatcher\n", ed.Processer))
 	for i := 0; i < ed.Processer; i++ {
 		go func() {
 			for {
@@ -136,15 +141,15 @@ func (ed *EventDispatcher) Dispatch(ctx context.Context) {
 				case event := <-ed.eventChan:
 					err := ed.processEvent(event)
 					if err != nil {
-						utils.DebugPrint("EventRouteError", err.Error())
+						logger.Error(err.Error(), zap.String("title", "EventRouteErr"))
 						return
 					}
 				case <-ed.stopChan:
-					utils.DebugPrint("EventRouteStop", "收到退出信号，退出当前调度者")
+					logger.Error("收到退出信号，退出当前调度者", zap.String("title", "EventRouteErr"))
 					return
 				case <-ctx.Done():
-					utils.DebugPrint("EventRouteStop", "收到全局退出信号，退出所有")
-					ed.Stop()
+					logger.Error("收到退出信号，退出所有", zap.String("title", "EventRouteErr"))
+					ed.Stop() // 退出所有goroutine
 					return
 				}
 			}
@@ -156,17 +161,20 @@ func (ed *EventDispatcher) processEvent(e Event) error {
 	ed.mapMutex.Lock()
 	handler, exist := ed.HandlerMap[e.Type]
 	ed.mapMutex.Unlock()
+	logger := core.GetLogger()
 	if !exist {
-		utils.DebugPrint("HandlerNotFound", "无处理者注册，事件类型="+e.Type)
-		return utils.GenerateError("HandlerNotFound", "无处理者注册，事件类型="+e.Type)
+		errMsg := "无处理者注册，事件类型: " + e.Type
+		logger.Error(errMsg, zap.String("title", "EventHandlerErr"))
+		return utils.GenerateError("EventHandlerErr", errMsg)
 	}
 	// 将事件路由到对应的EventHandler中来执行。
 	select {
 	case handler.queue <- e:
 		return nil
 	default:
-		utils.DebugPrint("HandlerQueueFull", "处理者队列已满")
-		return utils.GenerateError("HandlerQueueFull", "处理者队列已满，阻塞等待")
+		errMsg := "Event Handler队列已满"
+		logger.Error(errMsg, zap.String("title", "EventHandlerErr"))
+		return utils.GenerateError("HandlerQueueFull", errMsg)
 	}
 }
 
@@ -179,7 +187,8 @@ type EventHandlerWrapper struct {
 }
 
 func (wrapper *EventHandlerWrapper) Start() {
-	fmt.Printf("[%s] 启动 %d 个 Worker\n", wrapper.handler.Name(), wrapper.processor)
+	logger := core.GetLogger()
+	logger.Info(fmt.Sprintf("[%s] 启动 %d 个 Worker\n", wrapper.handler.Name(), wrapper.processor))
 	for i := 0; i < wrapper.processor; i++ {
 		// 开启多个goroutine来进入EventHandler Loop监听事件消息来工作
 		go wrapper.workLoop()
@@ -187,21 +196,22 @@ func (wrapper *EventHandlerWrapper) Start() {
 }
 
 func (wrapper *EventHandlerWrapper) workLoop() {
+	logger := core.GetLogger()
 	for {
 		select {
 		case <-wrapper.stopCh:
-			utils.DebugPrint("EventHandlerExit", fmt.Sprintf("正常收到信号，关闭 %s 处理", wrapper.handler.Name()))
+			logger.Warn(fmt.Sprintf("正常收到信号，关闭 %s 处理", wrapper.handler.Name()))
 			return
 		case event, ok := <-wrapper.queue:
 			if !ok {
-				utils.ErrorPrint("HandlerQueueErr", "The Message is invalid")
+				logger.Error("The Event Msg is invalid", zap.String("title", "EventHandlerErr"))
 				continue
 			}
 			ctx, cancel := context.WithCancel(context.Background()) // 正常取决于Event中的事件超时
 			err := wrapper.handler.Work(ctx, event)
 			if err != nil {
 				// TODO: 判断错误是否严重不可逆，来决定是否中断Worker
-				utils.ErrorPrint("EventHandlerError", err)
+				logger.Error(err.Error(), zap.String("title", "EventHandlerErr"))
 				cancel() // 显式取消
 				return
 			}

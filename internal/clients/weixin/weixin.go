@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type RobotNotice struct {
@@ -95,7 +99,9 @@ func (robot *RobotNotice) InformRobot() error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		utils.DebugPrint("RequestError", resp.Body)
+		logger := core.GetLogger()
+		read, _ := io.ReadAll(resp.Body)
+		logger.Error(string(read), zap.String("title", "RequestError"))
 		return utils.GenerateError("RequestError", resp.Status)
 	}
 

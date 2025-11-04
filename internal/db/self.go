@@ -9,10 +9,12 @@ import (
 	"slices"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -234,11 +236,13 @@ func SaveTempResult(ticketID int64, uukey string, expireTime uint, allowExport b
 	time.AfterFunc(time.Duration(expireTime)*time.Second, func() {
 		res := selfDB.conn.Model(&TempResult{}).Where("uid = ?", uukey).Where("ticket_id = ?", ticketID).Update("is_deleted", 1)
 		if res.Error != nil {
-			utils.DebugPrint("DelTempResultError", "delete temp result link is failed "+res.Error.Error())
+			logger := core.GetLogger()
+			logger.Error("delete temp result link is failed "+res.Error.Error(), zap.String("title", "DelTempResultErr"))
 			return
 		}
 		if res.RowsAffected == 0 {
-			utils.DebugPrint("DelTempResultError", "RowsAffected is zero")
+			logger := core.GetLogger()
+			logger.Error("RowsAffected is zero", zap.String("title", "DelTempResultErr"))
 			return
 		}
 
@@ -559,7 +563,6 @@ func (source *QueryDataBase) UpdateOne(cond, updateDB *QueryDataBase) error {
 		}
 		updateDB.Salt = secretKey
 		updateDB.Password = newPwd
-		fmt.Println("修改密码成功")
 	}
 
 	// updateDB.ID = source.ID
@@ -911,7 +914,8 @@ func (t *Ticket) MatchAgainst(cols []string, q string, fullIdxMode string, pagni
 		q += "*"
 	}
 	if err := dbConn.Model(&TaskContent{}).Select("ID").Where(rawQ, q).Find(&tksContentID).Error; err != nil {
-		utils.ErrorPrint("TestError", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "MatchAgainstErr"))
 		return nil, err
 	}
 

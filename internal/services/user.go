@@ -9,8 +9,11 @@ import (
 	clients "sql_demo/internal/clients/gitlab"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
+
+	"go.uber.org/zap"
 )
 
 type UserService struct {
@@ -30,7 +33,8 @@ func (srv *UserService) GetIDByIdentify(identify uint) string {
 		GitLabIdentity: identify,
 	})
 	if err != nil {
-		utils.ErrorPrint("UserSrvErr", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "UserSrvErr"))
 		return ""
 	}
 	return user.ID

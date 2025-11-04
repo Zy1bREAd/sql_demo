@@ -7,6 +7,7 @@ import (
 	"reflect"
 	glbapi "sql_demo/internal/clients/gitlab"
 	"sql_demo/internal/common"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/services"
@@ -14,6 +15,8 @@ import (
 	// "sql_demo/internal/services"
 	"sql_demo/internal/utils"
 	"sync"
+
+	"go.uber.org/zap"
 )
 
 var eventOnce sync.Once
@@ -104,7 +107,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 	switch res := e.Payload.(type) {
 	// 抽象成接口
 	case *dbo.SQLResult:
-		utils.DebugPrint("SQLResult查询结果事件消费", res.ID)
+		fmt.Println("SQLResult查询结果事件消费", res.ID)
 	case *services.PreCheckResultGroup:
 		switch e.MetaData.Source {
 		case "gitlab":
@@ -117,7 +120,8 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			return apiSrv.SaveCheckData(ctx, res)
 
 		default:
-			utils.DebugPrint("UnknownSource", "未知请求源")
+			logger := core.GetLogger()
+			logger.Error("Unknown Request Source", zap.String("title", "UnknownErr"))
 		}
 
 	case *services.SQLResultGroupV2:
@@ -133,7 +137,8 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 			return apiSrv.SaveResult(ctx, res)
 
 		default:
-			utils.DebugPrint("UnknownSource", "未知请求源")
+			logger := core.GetLogger()
+			logger.Error("Unknown Request Source", zap.String("title", "UnknownErr"))
 		}
 
 	default:
@@ -143,53 +148,7 @@ func (eh *ResultEventHandler) Work(ctx context.Context, e event.Event) error {
 	return nil
 }
 
-// type CleanEventHandler struct {
-// 	cleanTypeMap     map[int]*core.CachesMap
-// 	cleanTypeInfoMap map[int]string
-// }
-
-// func NewCleanEventHandler() event.EventHandler {
-
-// 	return &CleanEventHandler{
-// 		cleanTypeMap: map[int]*core.CachesMap{
-// 			common.ResultMapCleanFlag:      core.ResultMap,
-// 			common.QueryTaskMapCleanFlag:   core.QueryTaskMap,
-// 			common.SessionMapCleanFlag:     core.SessionMap,
-// 			common.ExportWorkMapCleanFlag:  core.ExportWorkMap,
-// 			common.CheckTaskMapCleanFlag:   core.CheckTaskMap,
-// 			common.APITaskBodyMapCleanFlag: core.APITaskBodyMap,
-// 		},
-// 		cleanTypeInfoMap: map[int]string{
-// 			common.ResultMapCleanFlag:      "ResultMap",
-// 			common.QueryTaskMapCleanFlag:   "QueryTaskMap",
-// 			common.SessionMapCleanFlag:     "SessionMap",
-// 			common.ExportWorkMapCleanFlag:  "ExportWorkMap",
-// 			common.CheckTaskMapCleanFlag:   "CheckTaskMap",
-// 			common.APITaskBodyMapCleanFlag: "APITaskBodyMap",
-// 		},
-// 	}
-// }
-
-// func (eh *CleanEventHandler) Name() string {
-// 	return "清理事件处理者"
-// }
-
-// func (eh *CleanEventHandler) Work(ctx context.Context, e event.Event) error {
-// 	body, ok := e.Payload.(core.CleanTask)
-// 	if !ok {
-// 		return utils.GenerateError("TypeError", "event payload type is incrroect")
-// 	}
-// 	utils.DebugPrint("清理结果事件消费", body.ID)
-// 	//! 后期核心处理结果集的代码逻辑块
-// 	mapOperator, ok := eh.cleanTypeMap[body.Kind]
-// 	if !ok {
-// 		utils.ErrorPrint("UnknownCleanFlag", "Unknown Clean Task Kind."+strconv.FormatInt(int64(body.Kind), 10))
-// 		return nil
-// 	}
-// 	mapOperator.Del(body.ID)
-// 	log.Printf("type=%v taskID=%d Cleaned Up", eh.cleanTypeInfoMap[body.Kind], body.ID)
-// 	return nil
-// }
+// 清理者模块v1 （已移除）
 
 // 结果导出者
 type ExportEventHandler struct {
@@ -208,16 +167,17 @@ func (eh *ExportEventHandler) Work(ctx context.Context, e event.Event) error {
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
-	utils.DebugPrint("ExportTask", fmt.Sprintf("Task:%s is Starting...", export.TaskID))
+	logger := core.GetLogger()
+	logger.Info(fmt.Sprintf("Task:%s is Starting...", export.TaskID), zap.String("title", "ExportTask"))
 	exportSrv := services.NewExportResultService(
 		services.WithExportUserID(e.MetaData.Operator),
 		services.WithExportIsOnly(export.IsOnly),
 	)
 	err := exportSrv.Export(ctx, export)
 	if err != nil {
-		utils.ErrorPrint("EventWorkerErr", err.Error())
+		logger.Info(err.Error(), zap.String("title", "EventWorkerErr"))
 	}
-	utils.DebugPrint("ExportTask", fmt.Sprintf("Task:%s is Completed", export.TaskID))
+	logger.Info(fmt.Sprintf("Task:%s is Completed", export.TaskID), zap.String("title", "ExportTask"))
 	return nil
 }
 
@@ -239,9 +199,15 @@ func (eh *HousekeepingEventHandler) Work(ctx context.Context, e event.Event) err
 	if !ok {
 		return utils.GenerateError("TypeError", "event payload type is incrroect")
 	}
-	utils.DebugPrint("文件清理事件消费", body.TaskID)
+	logger := core.GetLogger()
+	logger.Info("Start File HouseKeep: "+body.TaskID, zap.String("title", "HouseKeepTask"))
 	//! 后期核心处理结果集的代码逻辑块
-	utils.FileClean(body.FilePath)
+	err := utils.FileClean(body.FilePath)
+	if err != nil {
+		logger.Info(err.Error(), zap.String("title", "HouseKeepTaskErr"))
+		return nil
+	}
+	logger.Info("Completed File HouseKeep: "+body.TaskID, zap.String("title", "HouseKeepTask"))
 	return nil
 }
 
@@ -355,7 +321,6 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 		if err != nil {
 			// 统一错误处理
 			retryErr := glab.Retry(3, func() error {
-				fmt.Println("debug pirnt issue info", commentBody.ProjectID, commentBody.IssueIID)
 				return glab.CommentCreate(glbapi.GitLabComment{
 					ProjectID: commentBody.ProjectID,
 					IssueIID:  commentBody.IssueIID,
@@ -363,13 +328,15 @@ func (eg *GitLabEventHandler) Work(ctx context.Context, e event.Event) error {
 				})
 			})
 			if retryErr != nil {
-				utils.ErrorPrint("CommentFailed", retryErr.Error())
+				logger := core.GetLogger()
+				logger.Error(retryErr.Error(), zap.String("title", "CommentFailed"))
 				return retryErr
 			}
 			return nil
 		}
 	case <-ctx.Done():
-		utils.ErrorPrint("GoroutineErr", "goroutine is break off(interrupted)")
+		logger := core.GetLogger()
+		logger.Error("goroutine is break off(interrupted)", zap.String("title", "GoroutineErr"))
 	}
 	return nil
 }
@@ -437,7 +404,8 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 
 				}(ctx)
 			default:
-				utils.DebugPrint("UnknownSource", "未知请求源")
+				logger := core.GetLogger()
+				logger.Error("Unknown Request Source", zap.String("title", "UnknownErr"))
 			}
 		}
 	}()
@@ -455,7 +423,8 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 
 			err = tasker.UpdateTicketStats(common.PreCheckFailedStatus)
 			if err != nil {
-				utils.ErrorPrint("TicketStatsErr", "Update Ticket Status is failed")
+				logger := core.GetLogger()
+				logger.Error("Update Ticket Status is failed", zap.String("title", "TicketStatsErr"))
 			}
 			return nil
 		}
@@ -467,7 +436,8 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 		})
 
 	case <-ctx.Done():
-		utils.ErrorPrint("GoroutineErr", "goroutine is error,break off!")
+		logger := core.GetLogger()
+		logger.Error("goroutine is error,break off!", zap.String("title", "GoroutineErr"))
 	}
 	return nil
 }

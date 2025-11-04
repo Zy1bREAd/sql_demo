@@ -41,7 +41,8 @@ func main() {
 	// 针对请求-工作-处理结果的context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
-		utils.DebugPrint("PrintGoroutineNumber3", runtime.NumGoroutine())
+		logger := core.GetLogger()
+		logger.Info("PrintGoroutineNumber: " + string(runtime.NumGoroutine()))
 		fmt.Println("PrintGoroutineNumber2", runtime.NumGoroutine())
 		cancel()
 	}()

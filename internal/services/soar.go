@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
+
+	"go.uber.org/zap"
 )
 
 // Soar Result
@@ -117,7 +120,8 @@ func (soar *SoarAnalyzer) IsExistSoar() bool {
 		if os.IsNotExist(err) {
 			return false
 		}
-		utils.ErrorPrint("SOARErr", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "SOARErr"))
 		return false
 	}
 	return true

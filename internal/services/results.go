@@ -9,10 +9,13 @@ import (
 	dto "sql_demo/internal/api/dto"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // 预检相关结构体
@@ -163,7 +166,8 @@ func (srv *TempResultService) Insert(data dto.TempResultDTO, ddl int) error {
 		})
 		err := srv.DAO.Update(condORM, updateORM)
 		if err != nil {
-			utils.DebugPrint("CleanTempDataError", "delete temp result data is failed "+err.Error())
+			logger := core.GetLogger()
+			logger.Error(err.Error(), zap.String("title", "CommentFailed"))
 			return
 		}
 	})

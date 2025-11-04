@@ -80,6 +80,7 @@ func (exr *ExcelResult) CreateFile() error {
 
 func (exr *ExcelResult) Convert() error {
 	var f *excelize.File
+
 	filePath := exr.BasePath + "/" + exr.FileName
 	f, err := excelize.OpenFile(filePath)
 	if err != nil {
@@ -161,7 +162,6 @@ func (cr *CSVResult) Convert() error {
 		return nil
 	}
 	colsName := getHeadersData(cr.Data[0])
-	fmt.Println("debug headers:", colsName)
 
 	// 写入表头
 	if err := w.Write(colsName); err != nil {
@@ -172,7 +172,6 @@ func (cr *CSVResult) Convert() error {
 	// 写入结果集数据
 	for _, row := range cr.Data {
 		rowData := getRowsData(row, colsName)
-		fmt.Println("debug rowData:", rowData)
 		err := w.Write(rowData)
 		if err != nil {
 			log.Println("write row data csv file is error,", err.Error())
@@ -183,25 +182,22 @@ func (cr *CSVResult) Convert() error {
 }
 
 // 清理临时文件（如导出文件）
-func FileClean(filepath string) {
+func FileClean(filepath string) error {
 	fileInfo, err := os.Stat(filepath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			ErrorPrint("FileCleanErr", filepath+" is not exist")
-			return
+			return GenerateError("FileCleanErr", filepath+" is not exist")
 		}
-		ErrorPrint("FileCleanErr", err.Error())
-		return
+		return GenerateError("FileCleanErr", err.Error())
 	}
 	if fileInfo.IsDir() {
-		ErrorPrint("FileCleanErr", filepath+" is not a file")
-		return
+		return GenerateError("FileCleanErr", filepath+" is not a file")
 	}
 	err = os.Remove(filepath)
 	if err != nil {
-		ErrorPrint("FileRemoveErr", err.Error())
+		return GenerateError("FileCleanErr", err.Error())
 	}
-	DebugPrint("FileClean", fileInfo.Name()+" is cleaned up")
+	return nil
 }
 
 // 制造表头

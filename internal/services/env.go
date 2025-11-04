@@ -4,9 +4,12 @@ import (
 	"slices"
 	dto "sql_demo/internal/api/dto"
 	"sql_demo/internal/common"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 // 服务层，封装Core函数组成业务性函数、方法
@@ -111,7 +114,8 @@ func hotReloadDBCfg(f func() error) error {
 	defer func() {
 		select {
 		case <-okCh:
-			utils.DebugPrint("HotReload", "hot reload config")
+			logger := core.GetLogger()
+			logger.Info("Config hot reload", zap.String("title", "HotReload"))
 			dbo.LoadInDB(true) // 触发热加载配置
 		default:
 			// 因error没有触发热加载

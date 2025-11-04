@@ -5,9 +5,12 @@ import (
 	"slices"
 	dto "sql_demo/internal/api/dto"
 	"sql_demo/internal/common"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/utils"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 type SourcesService struct {
@@ -39,7 +42,8 @@ func (source *SourcesService) toORMData(dto dto.QueryDataBaseDTO) *dbo.QueryData
 		}
 		pwd, err = utils.EncryptAES256([]byte(dto.Connection.Password), secretKey)
 		if err != nil {
-			utils.DebugPrint("EncryptPWDErr", err.Error())
+			logger := core.GetLogger()
+			logger.Error(err.Error(), zap.String("title", "EncryptPWDErr"))
 			return nil
 		}
 	}

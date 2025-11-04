@@ -37,5 +37,5 @@ func TestDecryptAES256(t *testing.T) {
 }
 
 func TestStudyFn(t *testing.T) {
-	StudyFn()
+	// StudyFn()
 }

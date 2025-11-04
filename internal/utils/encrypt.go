@@ -9,10 +9,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bwmarrin/snowflake"
@@ -153,35 +151,31 @@ func pkcs7Unpad(data []byte, blockSize int) ([]byte, error) {
 	return data[:len(data)-pad], nil
 }
 
-func StudyFn() {
-	once := sync.OnceValue(func() int {
-		sum := 0
-		for i := 0; i < 1000; i++ {
-			sum += i
-		}
-		return sum
-	})
-	done := make(chan bool, 10)
-	// 开启多个goroutine共同调用once
-	for i := 0; i < 50; i++ {
-		go func() {
-			val := once()
-			if val != 499500 {
-				fmt.Println("got got want want")
-				done <- false
-				return
-			}
-			fmt.Println("i=", i)
-			done <- true
-		}()
-	}
+// func StudyFn() {
+// 	once := sync.OnceValue(func() int {
+// 		sum := 0
+// 		for i := 0; i < 1000; i++ {
+// 			sum += i
+// 		}
+// 		return sum
+// 	})
+// 	done := make(chan bool, 10)
+// 	// 开启多个goroutine共同调用once
+// 	for i := 0; i < 50; i++ {
+// 		go func() {
+// 			val := once()
+// 			if val != 499500 {
+// 				done <- false
+// 				return
+// 			}
+// 			done <- true
+// 		}()
+// 	}
 
-	for i := 0; i < 50; i++ {
-		msg, ok := <-done
-		if !ok {
-			fmt.Println("closed channel")
-			return
-		}
-		fmt.Println(msg)
-	}
-}
+// 	for i := 0; i < 50; i++ {
+// 		msg, ok := <-done
+// 		if !ok {
+// 			return
+// 		}
+// 	}
+// }

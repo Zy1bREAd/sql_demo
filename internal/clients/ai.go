@@ -3,11 +3,12 @@ package clients
 import (
 	"context"
 	"sql_demo/internal/conf"
-	"sql_demo/internal/utils"
+	"sql_demo/internal/core"
 	"sync"
 
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/option"
+	"go.uber.org/zap"
 )
 
 type AIClient struct {
@@ -44,7 +45,8 @@ func (ai *AIClient) NewChat(ctx context.Context, question string) (*ChatResult, 
 		Model: ai.Model,
 	})
 	if err != nil {
-		utils.ErrorPrint("AIChatErr", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "AIChatErr"))
 		return nil, err
 	}
 	return &ChatResult{

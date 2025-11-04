@@ -9,12 +9,14 @@ import (
 	clients "sql_demo/internal/clients/gitlab"
 	wx "sql_demo/internal/clients/weixin"
 	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
+	"go.uber.org/zap"
 )
 
 // type IssueCache struct {
@@ -118,13 +120,14 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 	// 初始化
 	var issContent *dto.IssueTaskContent
 	ep := event.GetEventProducer()
+	logger := core.GetLogger()
 
 	switch i.ObjectAttr.Action {
 	// 打开一个新的Issue
 	case "open":
 		descBytes, err := clients.ParseIssueDesc(i.ObjectAttr.Description)
 		if err != nil {
-			utils.DebugPrint("ParseError", err.Error())
+			logger.Error(err.Error(), zap.String("title", "IssueParseErr"))
 			return err
 		}
 		issDesc, err := ParseTaskContent(descBytes)
@@ -132,7 +135,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 			return err
 		}
 		issContent = issDesc
-		utils.DebugPrint("OpenIssueHandle", "open new a issue")
+
 		rob := wx.NewRobotNotice(&wx.TicketInformBody{
 			Action:   "Create",
 			Title:    i.ObjectAttr.Title,
@@ -144,7 +147,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 		// 发送消息给通知机器人
 		err = rob.InformRobot()
 		if err != nil {
-			utils.DebugPrint("InformError", err.Error())
+			logger.Error(err.Error(), zap.String("title", "InformError"))
 		}
 		// 事件驱动下一阶段
 		ep.Produce(event.Event{
@@ -168,7 +171,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 				// 解析Issue详情内容
 				descBytes, err := clients.ParseIssueDesc(i.ObjectAttr.Description)
 				if err != nil {
-					utils.DebugPrint("ParseError", err.Error())
+					logger.Error(err.Error(), zap.String("title", "IssueParseErr"))
 					return err
 				}
 				issDesc, err := ParseTaskContent(descBytes)
@@ -187,7 +190,7 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 				// 发送消息给通知机器人
 				err = rob.InformRobot()
 				if err != nil {
-					utils.DebugPrint("InformError", err.Error())
+					logger.Error(err.Error(), zap.String("title", "InformError"))
 				}
 				// 事件驱动下一阶段
 				ep.Produce(event.Event{
@@ -205,7 +208,8 @@ func (i *IssueWebhook) OpenIssueHandle() error {
 		}
 	default:
 		// 检查是否为Issue关闭状态：
-		utils.DebugPrint("UnknownErr", i.ObjectAttr.Action)
+		logger := core.GetLogger()
+		logger.Error("Unknown Request Source: "+i.ObjectAttr.Action, zap.String("title", "UnknownErr"))
 	}
 	return nil
 }
@@ -240,7 +244,8 @@ func (c *CommentWebhook) handleApprovalPassed() error {
 	// 解析Issue详情
 	descBytes, err := clients.ParseIssueDesc(iss.Description)
 	if err != nil {
-		utils.DebugPrint("ParseError", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "IssueParseError"))
 		return err
 	}
 	issDesc, err := ParseTaskContent(descBytes)
@@ -299,7 +304,8 @@ func (c *CommentWebhook) handleApprovalRejected(reason string) error {
 	})
 	err = rob.InformRobot()
 	if err != nil {
-		utils.DebugPrint("InformError", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "InformError"))
 	}
 
 	// 进入Webhook其他操作
@@ -367,7 +373,8 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	var content CommentContent
 	err := json.Unmarshal([]byte(c.ObjectAttr.Note), &content)
 	if err != nil {
-		utils.DebugPrint("IsNotJSON", "comment is not JSON format, maybe is string. "+c.ObjectAttr.Note)
+		logger := core.GetLogger()
+		logger.Warn("comment is not JSON format, maybe is string. " + c.ObjectAttr.Note)
 		return nil
 	}
 	// 控制分支
@@ -378,7 +385,8 @@ func (c *CommentWebhook) CommentIssueHandle() error {
 	} else if content.Online == CommentOnlineExcute {
 		return c.handleOnlineExcute()
 	} else {
-		utils.DebugPrint("Unknown Action = %d", content.Approval)
+		logger := core.GetLogger()
+		logger.Error(fmt.Sprintf("Unknown Action: %s", content.Approval), zap.String("title", "UnknownErr"))
 		return nil
 	}
 }

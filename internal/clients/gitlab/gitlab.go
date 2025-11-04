@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sql_demo/internal/common"
 	"sql_demo/internal/conf"
+	"sql_demo/internal/core"
 	"sql_demo/internal/utils"
 	"strings"
 	"time"
@@ -87,7 +88,8 @@ func (gitlab *GitLabAPI) Retry(times int, fn func() error) error {
 		if err == nil {
 			return nil
 		}
-		fmt.Printf("GitLab 评论重试: %d 次", i+1)
+		logger := core.GetLogger()
+		logger.Warn(fmt.Sprintf("GitLab 评论重试: %d 次", i+1))
 		time.Sleep(5 * time.Second)
 	}
 	return fmt.Errorf("GitLab Comment Retry is Failed %s", err.Error())

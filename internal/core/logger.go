@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var Logger *zap.Logger
+var zapLogger *zap.Logger
 
 func InitManualLogger() {
 	consoleEncoder := zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
@@ -29,7 +29,7 @@ func InitManualLogger() {
 		zapcore.NewCore(fileEncoder, fileWriteSyncer, zapcore.InfoLevel),
 	)
 
-	Logger = zap.New(coreLog, zap.AddCaller())
+	zapLogger = zap.New(coreLog, zap.AddCaller())
 }
 
 func InitSimplyLogger() {
@@ -37,15 +37,15 @@ func InitSimplyLogger() {
 	if err != nil {
 		panic(err)
 	}
-	Logger = l
+	zapLogger = l
 }
 
 func GetLogger() *zap.Logger {
-	return Logger
+	return zapLogger
 }
 
 func CloseLogger() {
-	err := Logger.Sync()
+	err := zapLogger.Sync()
 	if err != nil {
 		log.Println(err)
 	}

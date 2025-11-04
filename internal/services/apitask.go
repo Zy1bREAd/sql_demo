@@ -8,10 +8,13 @@ import (
 	"slices"
 	dto "sql_demo/internal/api/dto"
 	"sql_demo/internal/common"
+	"sql_demo/internal/core"
 	dbo "sql_demo/internal/db"
 	"sql_demo/internal/event"
 	"sql_demo/internal/utils"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type ReExcute struct {
@@ -447,7 +450,8 @@ func (srv *APITaskService) retryGetTaskBody() {
 	})
 	res, err := tk.DAO.FindOne(dataORM)
 	if err != nil {
-		utils.ErrorPrint("RedoError", err.Error())
+		logger := core.GetLogger()
+		logger.Error(err.Error(), zap.String("title", "RedoErr"))
 	}
 	taskBodyData := dto.SQLTaskRequest{
 		ID:           res.TaskContent.ID,
@@ -783,7 +787,8 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *QTaskGroupV2) error 
 		// 日志审计插入v2
 		jsonBytes, err := json.Marshal(taskGroup)
 		if err != nil {
-			utils.ErrorPrint("AuditRecordV2", err.Error())
+			logger := core.GetLogger()
+			logger.Error(err.Error(), zap.String("title", "AuditRecordV2"))
 		}
 		auditLogSrv := NewAuditRecordService()
 		err = auditLogSrv.Insert(dto.AuditRecordDTO{
@@ -806,7 +811,8 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *QTaskGroupV2) error 
 		if err != nil {
 			err := srv.UpdateTicketStats(common.FailedStatus)
 			if err != nil {
-				utils.ErrorPrint("TicketStatsError", "Ticket Status update is failed")
+				logger := core.GetLogger()
+				logger.Error(err.Error(), zap.String("title", "TicketStatsError"))
 			}
 
 			// 传递携带错误信息的结果集
@@ -827,7 +833,8 @@ func (srv *APITaskService) Excute(ctx context.Context, qtg *QTaskGroupV2) error 
 			})
 		}
 	case <-ctx.Done():
-		utils.ErrorPrint("GoroutineErr", "goroutine is error")
+		logger := core.GetLogger()
+		logger.Error("goroutine is break off", zap.String("title", "GoroutineErr"))
 	}
 	return nil
 }
@@ -895,7 +902,8 @@ func (srv *APITaskService) getPreCheckResult(ctx context.Context, redo ReExcute)
 	val, exist := c.RistCache.Get(cKey)
 	if !exist {
 		if redo.IsReExcute {
-			fmt.Println("debug print 开启重做...")
+			logger := core.GetLogger()
+			logger.Warn("Starting Redo Precheck Result")
 			go redo.Fn()
 			// 同步方式每秒检测是否查询任务完成，来获取结果集
 			ticker := time.NewTicker(time.Duration(time.Second))
