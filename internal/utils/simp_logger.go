@@ -32,7 +32,6 @@ func generateLog(level int, errorTitle string, msg string) string {
 
 // 生成自定义错误
 func GenerateError(errorTitle string, msg string) error {
-	ErrorPrint(errorTitle, msg)
 	newErr := fmt.Errorf("[%s] %s", errorTitle, msg)
 	return newErr
 }

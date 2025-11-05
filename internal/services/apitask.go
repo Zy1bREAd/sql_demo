@@ -146,7 +146,15 @@ func (srv *APITaskService) Update(data dto.SQLTaskRequest) error {
 	if err != nil {
 		return err
 	}
+	tkContent, err := tk.GetTaskContent(tkData)
+	if err != nil {
+		return err
+	}
 	tkID := srv.getTicketID()
+	// !临时存储
+	c := common.GetKVCache()
+	cKey := fmt.Sprintf("%s:%d", common.APITaskBodyPrefix, tkID)
+	c.RistCache.SetWithTTL(cKey, tkContent, common.LargeItemCost, common.DefaultCacheMapDDL*time.Second)
 	// 创建SQLTask的审计日志
 	taskBody, err := json.Marshal(data)
 	if err != nil {
@@ -403,6 +411,7 @@ func (srv *APITaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) (dt
 	body, ok := c.RistCache.Get(cKey)
 	if !ok {
 		if redo.IsReExcute {
+			fmt.Println("debug print redo...")
 			// TODO: 补充超时控制context
 			go redo.Fn()
 			ticker := time.NewTicker(time.Duration(time.Second))
@@ -430,6 +439,8 @@ func (srv *APITaskService) getTaskBodyV2(ctx context.Context, redo ReExcute) (dt
 					return dto.SQLTaskRequest{}, utils.GenerateError("ReExcuteTask", "re-excute task is timeout...")
 				}
 			}
+		} else {
+			return dto.SQLTaskRequest{}, utils.GenerateError("TaskBodyError", "API Task Body is not found")
 		}
 		return taskBodyVal, nil
 	} else {
@@ -478,7 +489,7 @@ func (srv *APITaskService) FristCheck(ctx context.Context, resultGroup *PreCheck
 		Fn:         srv.retryGetTaskBody,
 	})
 	if err != nil {
-		return utils.GenerateError("TaskBodyError", err.Error())
+		return err
 	}
 
 	// 更新Ticket信息(正在处理预检)

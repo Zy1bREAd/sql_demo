@@ -229,3 +229,13 @@ type FristCheckEventV2 struct {
 	Source   int
 	TicketID int64
 }
+
+func (tk *TicketService) GetTaskContent(cond dto.TicketDTO) (dto.SQLTaskRequest, error) {
+	condORM := tk.toORMData(cond)
+	findRes, err := tk.DAO.FindOne(condORM)
+	if err != nil {
+		return dto.SQLTaskRequest{}, err
+	}
+	dataDTO := tk.toDTOData(*findRes)
+	return dataDTO.TaskContent, nil
+}

@@ -528,12 +528,6 @@ func HaveDBIst(env, name, service string) (*DBInstance, error) {
 		return nil, utils.GenerateError("InstanceIsNull", "env name is null")
 	}
 	// 检查数据库黑名单列表(已迁移至预检阶段)
-	// for _, illegal := range dp.ExcludeDBList() {
-	// 	if name != illegal {
-	// 		continue
-	// 	}
-	// 	return nil, utils.GenerateError("IllegalInstance", name+" DB Instance is illegal")
-	// }
 	// 获取实例
 	if dbIstMap, ok := dp.Pool[env]; ok {
 		if dbIst, ok := dbIstMap[service]; ok {

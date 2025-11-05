@@ -64,7 +64,7 @@ func WithGitLabTaskIssueIID(issueIID uint) GitLabOption {
 	}
 }
 
-// GitLab调用创建SQLTask和Ticket
+// GitLab调用创建或更新SQLTask和Ticket
 func (srv *GitLabTaskService) IssueHandle(payload *IssuePayload) (*dto.TicketDTO, error) {
 	// 获取用户真实ID
 	usrSrv := NewUserService()

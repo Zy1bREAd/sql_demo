@@ -36,7 +36,9 @@ import (
 // @externalDocs.description	OpenAPI
 // @externalDocs.url			https://swagger.io/resources/open-api/
 func main() {
-	core.InitSimplyLogger()
+	// 开启文件日志记录
+	conf.InitAppConfig()
+	core.InitManualLogger()
 	defer core.CloseLogger()
 	// 针对请求-工作-处理结果的context
 	ctx, cancel := context.WithCancel(context.Background())
@@ -46,8 +48,7 @@ func main() {
 		fmt.Println("PrintGoroutineNumber2", runtime.NumGoroutine())
 		cancel()
 	}()
-	// 开启文件日志记录
-	conf.InitAppConfig()
+
 	file := utils.StartFileLogging()
 	defer file.Close()
 	common.InitKVCache()

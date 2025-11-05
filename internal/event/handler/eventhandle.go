@@ -415,11 +415,6 @@ func (eh *PreCheckEventHandler) Work(ctx context.Context, e event.Event) error {
 	case err := <-errCh:
 		if err != nil {
 			preCheckRes.ErrMsg = err.Error()
-			ep.Produce(event.Event{
-				Type:     "save_result",
-				Payload:  preCheckRes,
-				MetaData: e.MetaData,
-			})
 
 			err = tasker.UpdateTicketStats(common.PreCheckFailedStatus)
 			if err != nil {
